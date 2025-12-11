@@ -2,7 +2,11 @@
 
 The VERA (Virtual Experience Research Accelerator) Unity package is a comprehensive plugin that enables researchers to build, deploy, and manage virtual reality experiments through direct integration with the VERA web interface.
 
-This plugin is meant to be used alongside the VERA web portal, which can be found at **[https://sreal.ucf.edu/vera-portal](https://sreal.ucf.edu/vera-portal)**.
+***NOTE: THIS PACKAGE IS CURRENTLY UNDER DEVELOPMENT***. This is a pre-release build, meant only to be used by in-house test users.
+
+## Contacting Us and Getting Involved
+
+If you would like to contact us, get involved, or see some more information about VERA, see the VERA homepage: https://vera.research.ucf.edu/
 
 ## Overview
 
@@ -11,6 +15,8 @@ VERA provides a complete workflow for XR research experiments, from development 
 - **Build XR Experiments**: Use Unity to create immersive virtual reality research experiences
 - **WebXR Deployment**: Build and upload experiments for WebXR directly to the VERA web interface for use in remote experiment distributions
 - **Data Recording & Upload**: Automatically capture and upload experimental data to the VERA platform
+
+This package interacts directly with the VERA web interface. This web interface is only accessible to authorized in-house test users.
 
 ## Features
 
@@ -34,11 +40,3 @@ VERA provides a complete workflow for XR research experiments, from development 
 2. Open the **VERA Settings** window by selecting *VERA* > *Settings* from the Unity menu bar
 3. Authenticate your account through the VERA Settings window
 4. Select your experiment from the VERA Settings window
-
-## Documentation
-
-For detailed documentation, tutorials, and API reference, visit:
-
-**[https://sreal.ucf.edu/vera-portal/documentation](https://sreal.ucf.edu/vera-portal/documentation)**
-
-For more information about VERA and virtual reality research at UCF, visit [sreal.ucf.edu](https://sreal.ucf.edu)
