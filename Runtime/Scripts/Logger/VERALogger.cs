@@ -26,6 +26,7 @@ namespace VERA
         public static VERALogger Instance;
 
         public VERAParticipantManager activeParticipant { get; private set; }
+        public VERATrialWorkflowManager trialWorkflow { get; private set; }
         private VERAPeriodicSyncHandler periodicSyncHandler;
         private VERAGenericFileHelper genericFileHelper;
 
@@ -130,6 +131,10 @@ namespace VERA
             periodicSyncHandler.StartPeriodicSync();
 
             yield return InitializeExperimentConditions();
+
+            // Initialize trial workflow manager
+            trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
+            yield return trialWorkflow.Initialize(experimentUUID, apiKey);
 
             // Short buffer for subscriptions to register
             yield return null;
