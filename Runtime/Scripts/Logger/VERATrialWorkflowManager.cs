@@ -110,6 +110,9 @@ namespace VERA
                         // Flatten the hierarchical trial structure into a sequential workflow
                         trialWorkflow = FlattenTrialHierarchy(response.trials);
 
+                        // Apply automatic ordering based on trialOrdering property if specified
+                        ApplyAutomaticOrdering(response.trials);
+
                         isInitialized = true;
                         Debug.Log($"[VERA Trial Workflow] Successfully loaded {trialWorkflow.Count} trials from workflow (version: {response.version})");
                     }
@@ -174,6 +177,70 @@ namespace VERA
             }
 
             return flattenedTrials;
+        }
+
+        // Applies automatic ordering based on the trialOrdering property from the API response
+        // This checks the top-level trials for ordering instructions and applies them if present
+        private void ApplyAutomaticOrdering(TrialConfig[] topLevelTrials)
+        {
+            if (topLevelTrials == null || topLevelTrials.Length == 0)
+            {
+                return;
+            }
+
+            // Check if any top-level trial has a trialOrdering specified
+            // We use the first trial's ordering as the global ordering instruction
+            string ordering = null;
+            foreach (TrialConfig trial in topLevelTrials)
+            {
+                if (!string.IsNullOrEmpty(trial.trialOrdering))
+                {
+                    ordering = trial.trialOrdering;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(ordering))
+            {
+                Debug.Log("[VERA Trial Workflow] No automatic ordering specified, using sequential order from API.");
+                return;
+            }
+
+            Debug.Log($"[VERA Trial Workflow] Applying automatic ordering: {ordering}");
+
+            // Apply ordering based on the trialOrdering value
+            switch (ordering.ToLower())
+            {
+                case "random":
+                case "randomize":
+                    RandomizeWorkflow();
+                    break;
+
+                case "latin_square":
+                case "latinsquare":
+                case "counterbalanced":
+                    // Use participant ID for Latin square (requires VERALogger instance)
+                    if (VERALogger.Instance != null && VERALogger.Instance.activeParticipant != null)
+                    {
+                        int participantId = VERALogger.Instance.activeParticipant.participantShortId;
+                        ApplyLatinSquareOrdering(participantId);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: participant ID not available yet.");
+                    }
+                    break;
+
+                case "sequential":
+                case "default":
+                    // Do nothing, keep the order from API
+                    Debug.Log("[VERA Trial Workflow] Using sequential order (default).");
+                    break;
+
+                default:
+                    Debug.LogWarning($"[VERA Trial Workflow] Unknown ordering type '{ordering}', using sequential order.");
+                    break;
+            }
         }
 
         #endregion
@@ -406,22 +473,127 @@ namespace VERA
         #endregion
 
 
+        #region TRIAL PROPERTY ACCESSORS
+
+        /// <summary>
+        /// Gets the within-subjects independent variables for the current trial.
+        /// Returns null if no trial is current or the trial has no within-subjects IVs.
+        /// </summary>
+        public string[] GetCurrentTrialWithinSubjectsIVs()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.withinSubjectsIVs;
+        }
+
+        /// <summary>
+        /// Gets the between-subjects independent variables for the current trial.
+        /// Returns null if no trial is current or the trial has no between-subjects IVs.
+        /// </summary>
+        public string[] GetCurrentTrialBetweenSubjectsIVs()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.betweenSubjectsIVs;
+        }
+
+        /// <summary>
+        /// Gets the randomization type for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public string GetCurrentTrialRandomizationType()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.randomizationType;
+        }
+
+        /// <summary>
+        /// Gets the trial ordering configuration for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public string GetCurrentTrialOrdering()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.trialOrdering;
+        }
+
+        /// <summary>
+        /// Gets the per-trial distributions for the current trial.
+        /// Used for between-subjects designs to specify condition distribution percentages.
+        /// Returns null if no trial is current or the trial has no distributions.
+        /// </summary>
+        public Dictionary<string, float> GetCurrentTrialDistributions()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.perTrialDistributions;
+        }
+
+        /// <summary>
+        /// Gets the trial ID for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public string GetCurrentTrialId()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.id;
+        }
+
+        /// <summary>
+        /// Gets the trial type for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public string GetCurrentTrialType()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.type;
+        }
+
+        /// <summary>
+        /// Gets the trial conditions (IV assignments) for the current trial.
+        /// Returns null if no trial is current or the trial has no conditions.
+        /// </summary>
+        public Dictionary<string, string> GetCurrentTrialConditions()
+        {
+            if (CurrentTrial == null)
+            {
+                return null;
+            }
+            return CurrentTrial.conditions;
+        }
+
+        #endregion
+
+
         #region TRIAL ORDERING HELPERS
 
         /// <summary>
         /// Randomizes the entire trial workflow using Fisher-Yates shuffle algorithm.
-        /// Should be called after initialization but before starting any trials.
+        /// Can be called automatically during initialization or manually before starting any trials.
         /// WARNING: Cannot be called once trials have started (currentTrialIndex > -1).
         /// </summary>
         public void RandomizeWorkflow()
         {
-            if (!isInitialized)
-            {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
-                return;
-            }
-
-            if (currentTrialIndex >= 0)
+            // Allow during initialization (before isInitialized is set) or after initialization but before trials start
+            if (isInitialized && currentTrialIndex >= 0)
             {
                 Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
                 return;
@@ -451,19 +623,14 @@ namespace VERA
         /// <summary>
         /// Applies Latin Square counterbalancing to the trial workflow.
         /// Uses participant number to determine the row offset in the Latin square.
-        /// Should be called after initialization but before starting any trials.
+        /// Can be called automatically during initialization or manually before starting any trials.
         /// WARNING: Cannot be called once trials have started (currentTrialIndex > -1).
         /// </summary>
         /// <param name="participantNumber">The participant number (determines Latin square row)</param>
         public void ApplyLatinSquareOrdering(int participantNumber)
         {
-            if (!isInitialized)
-            {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: workflow not initialized.");
-                return;
-            }
-
-            if (currentTrialIndex >= 0)
+            // Allow during initialization (before isInitialized is set) or after initialization but before trials start
+            if (isInitialized && currentTrialIndex >= 0)
             {
                 Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: trials have already started.");
                 return;

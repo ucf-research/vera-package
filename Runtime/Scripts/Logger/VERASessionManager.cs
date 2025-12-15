@@ -314,6 +314,143 @@ namespace VERA
         }
 
         /// <summary>
+        /// Gets the within-subjects independent variables for the current trial.
+        /// Returns null if no trial is current or the trial has no within-subjects IVs.
+        /// </summary>
+        public static string[] CurrentTrialWithinSubjectsIVs
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get within-subjects IVs: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialWithinSubjectsIVs();
+            }
+        }
+
+        /// <summary>
+        /// Gets the between-subjects independent variables for the current trial.
+        /// Returns null if no trial is current or the trial has no between-subjects IVs.
+        /// </summary>
+        public static string[] CurrentTrialBetweenSubjectsIVs
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get between-subjects IVs: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialBetweenSubjectsIVs();
+            }
+        }
+
+        /// <summary>
+        /// Gets the randomization type for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public static string CurrentTrialRandomizationType
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get randomization type: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialRandomizationType();
+            }
+        }
+
+        /// <summary>
+        /// Gets the trial ordering configuration for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public static string CurrentTrialOrdering
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get trial ordering: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialOrdering();
+            }
+        }
+
+        /// <summary>
+        /// Gets the per-trial distributions for the current trial.
+        /// Used for between-subjects designs to specify condition distribution percentages.
+        /// Returns null if no trial is current or the trial has no distributions.
+        /// </summary>
+        public static Dictionary<string, float> CurrentTrialDistributions
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get trial distributions: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialDistributions();
+            }
+        }
+
+        /// <summary>
+        /// Gets the trial ID for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public static string CurrentTrialId
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get trial ID: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialId();
+            }
+        }
+
+        /// <summary>
+        /// Gets the trial type for the current trial.
+        /// Returns null if no trial is current.
+        /// </summary>
+        public static string CurrentTrialType
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get trial type: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialType();
+            }
+        }
+
+        /// <summary>
+        /// Gets the trial conditions (IV assignments) for the current trial.
+        /// Returns null if no trial is current or the trial has no conditions.
+        /// </summary>
+        public static Dictionary<string, string> CurrentTrialConditions
+        {
+            get
+            {
+                if (!initialized)
+                {
+                    Debug.LogWarning("[VERASessionManager] Cannot get trial conditions: VERA not initialized.");
+                    return null;
+                }
+                return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialConditions();
+            }
+        }
+
+        /// <summary>
         /// Randomizes trials within blocks while preserving block structure.
         /// Must be called after VERA initialization but before starting any trials.
         /// Useful for blocked randomization designs.
