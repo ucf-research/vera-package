@@ -16,9 +16,8 @@ namespace VERA
         [Tooltip("Also start logging immediately when scene starts (fallback if no experiment state)")]
         public bool fallbackAutoStart = true;
         
-        [Tooltip("Sampling rate for baseline data collection (samples per second)")]
-        [Range(1, 120)]
-        public int defaultSamplingRate = 30;
+        [Tooltip("Log baseline data every frame (enabled by default for maximum fidelity)")]
+        public bool logEveryFrame = true;
 
         [Header("Info")]
         [TextArea(3, 5)]
@@ -93,8 +92,8 @@ namespace VERA
             
             // Configure with sensible defaults - always enable auto-start
             logger.autoStartLogging = true;  // Always start when VERA Logger is ready
-            
-            logger.SetLogRate(defaultSamplingRate);
+
+            logger.SetLogEveryFrame(logEveryFrame);
             
             createdLogger = logger;
             
