@@ -10,6 +10,10 @@ namespace VERA
 
         // DemoSurveyStarter provides example starting of a VERA survey via the SurveyInterfaceIO
         // Should be attached to a SurveyInterface prefab to properly work
+        //
+        // NOTE: For easier usage, consider using the new VERASurveyManager API instead:
+        //   VERASurveyManager.ShowSurvey(surveyId, onCompleted);
+        // See ExperimentSurveyExample.cs for more examples.
 
         private SurveyInterfaceIO surveyInterface;
 
