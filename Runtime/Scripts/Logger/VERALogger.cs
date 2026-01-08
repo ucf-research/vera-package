@@ -340,10 +340,10 @@ namespace VERA
                 autoSetup.autoCreateBaselineLogger = true;
                 autoSetup.startOnExperimentBegin = true;
                 autoSetup.fallbackAutoStart = true;
-                autoSetup.defaultSamplingRate = 30;
+                autoSetup.logEveryFrame = true;
 
                 Debug.Log("[VERA Logger] Baseline data logging setup created automatically. " +
-                         "VR baseline data will be collected at 30Hz when experiment starts.");
+                         "VR baseline data will be collected every frame when experiment starts.");
             }
             else
             {

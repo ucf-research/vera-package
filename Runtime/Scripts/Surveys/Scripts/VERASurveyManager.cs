@@ -63,7 +63,7 @@ namespace VERA
             }
 
             // Try to find existing SurveyInterfaceIO in the scene
-            instance = Object.FindObjectOfType<SurveyInterfaceIO>();
+            instance = Object.FindFirstObjectByType<SurveyInterfaceIO>();
 
             if (instance != null)
             {

@@ -128,7 +128,7 @@ namespace VERA
             {
                 isValid = true,
                 currentSampleIndex = baselineLogger.GetCurrentSampleIndex(),
-                logRate = baselineLogger.GetLogRate(),
+                logRate = baselineLogger.GetLogEveryFrame() ? -1 : 0,
                 isLogging = baselineLogger.IsLogging(),
                 timestamp = System.DateTime.UtcNow
             };

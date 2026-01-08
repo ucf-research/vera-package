@@ -40,7 +40,7 @@ namespace VERA
                 baselineLogger = loggerObject.AddComponent<VERABaselineDataLogger>();
                 
                 // Configure the logger
-                baselineLogger.SetLogRate(logRate);
+                baselineLogger.SetLogEveryFrame(true);
             }
             else
             {

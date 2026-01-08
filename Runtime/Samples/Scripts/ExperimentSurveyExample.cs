@@ -23,7 +23,6 @@ namespace VERA
         public int trialsBeforeMidSurvey = 5;
 
         private int currentTrial = 0;
-        private bool experimentStarted = false;
 
         void Start()
         {
@@ -40,7 +39,6 @@ namespace VERA
 
         void StartExperiment()
         {
-            experimentStarted = true;
             Debug.Log("[Example] Experiment started.");
             // Your experiment initialization code here
         }
