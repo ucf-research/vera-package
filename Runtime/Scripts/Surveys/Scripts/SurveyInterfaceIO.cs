@@ -22,8 +22,6 @@ namespace VERA
         private string surveyId;
         private string surveyInstanceId;
 
-        [SerializeField] private bool testingLocally = true;
-
         public bool uploadSuccessful { get; private set; } = false;
         public bool reconnectSuccessful { get; private set; } = false;
 
