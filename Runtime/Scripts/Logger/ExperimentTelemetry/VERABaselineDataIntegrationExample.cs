@@ -128,7 +128,6 @@ namespace VERA
             {
                 isValid = true,
                 currentSampleIndex = baselineLogger.GetCurrentSampleIndex(),
-                logRate = baselineLogger.GetLogEveryFrame() ? -1 : 0,
                 isLogging = baselineLogger.IsLogging(),
                 timestamp = System.DateTime.UtcNow
             };
@@ -155,13 +154,12 @@ namespace VERA
         {
             public bool isValid;
             public int currentSampleIndex;
-            public float logRate;
             public bool isLogging;
             public System.DateTime timestamp;
-            
+
             public override string ToString()
             {
-                return $"Baseline Sample: {currentSampleIndex}, Rate: {logRate}Hz, Logging: {isLogging}";
+                return $"Baseline Sample: {currentSampleIndex}, Logging: {isLogging}";
             }
         }
         

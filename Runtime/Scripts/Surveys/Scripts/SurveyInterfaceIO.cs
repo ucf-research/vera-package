@@ -20,6 +20,9 @@ namespace VERA
         private SurveyManager surveyManager;
         private string apiUrl { get { return VERAHost.hostUrl; } }
         private string surveyId;
+        private string surveyInstanceId;
+
+        [SerializeField] private bool testingLocally = true;
 
         public bool uploadSuccessful { get; private set; } = false;
         public bool reconnectSuccessful { get; private set; } = false;
@@ -87,7 +90,10 @@ namespace VERA
         // Coroutine for above
         private IEnumerator StartSurveyByIdCoroutine()
         {
-            using (UnityWebRequest request = UnityWebRequest.Get(apiUrl + "/api/surveys/" + surveyId))
+            string requestUrl = apiUrl + "/api/surveys/" + surveyId;
+            Debug.Log($"[Survey] Fetching survey from: {requestUrl}");
+
+            using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
             {
                 // Send the request and wait for a response
                 yield return request.SendWebRequest();
@@ -96,7 +102,7 @@ namespace VERA
                 {
                     reconnectSuccessful = false;
                     isSurveyActive = false;
-                    Debug.LogError("Error fetching survey: " + request.error);
+                    Debug.LogError($"[Survey] Error fetching survey from {requestUrl}: {request.error}");
                     surveyManager.DisplayConnectionIssue();
                     yield break;
                 }
@@ -213,6 +219,182 @@ namespace VERA
         public void StartSurveyFromReconnect()
         {
             surveyManager.BeginSurvey(surveyInfo);
+        }
+
+        // Starts a survey by instance ID (production mode - uses pre-created instance)
+        public void StartSurveyByInstanceId(string instanceId)
+        {
+            StartSurveyByInstanceId(instanceId, null);
+        }
+
+        // Starts a survey by instance ID with optional completion callback
+        public void StartSurveyByInstanceId(string instanceId, System.Action onCompleted)
+        {
+            if (!ValidateVERAContext())
+            {
+                Debug.LogWarning("[Survey] VERA context validation failed. Survey request ignored.");
+                return;
+            }
+
+            if (isSurveyActive)
+            {
+                QueueSurvey(instanceId, onCompleted);
+                return;
+            }
+
+            isSurveyActive = true;
+            this.currentSurveyCallback = onCompleted;
+            this.surveyInstanceId = instanceId;
+            StartCoroutine(StartSurveyByInstanceIdCoroutine());
+        }
+
+        // Coroutine for starting survey by instance ID
+        private IEnumerator StartSurveyByInstanceIdCoroutine()
+        {
+            string requestUrl = apiUrl + "/api/surveys/instances/" + surveyInstanceId;
+            Debug.Log($"[Survey] Fetching survey instance from: {requestUrl}");
+
+            using (UnityWebRequest instanceRequest = UnityWebRequest.Get(requestUrl))
+            {
+                yield return instanceRequest.SendWebRequest();
+
+                if (instanceRequest.result == UnityWebRequest.Result.ConnectionError || instanceRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    reconnectSuccessful = false;
+                    isSurveyActive = false;
+                    Debug.LogError($"[Survey] Error fetching survey instance from {requestUrl}: {instanceRequest.error}");
+                    surveyManager.DisplayConnectionIssue();
+                    yield break;
+                }
+
+                string jsonResponse = instanceRequest.downloadHandler.text;
+                JObject instanceData = JObject.Parse(jsonResponse);
+
+                // Get the survey ID from the instance
+                string surveyIdFromInstance = instanceData["survey"]?.ToString();
+
+                if (string.IsNullOrEmpty(surveyIdFromInstance))
+                {
+                    Debug.LogError("[Survey] Survey instance does not have a valid survey ID.");
+                    isSurveyActive = false;
+                    surveyManager.DisplayConnectionIssue();
+                    yield break;
+                }
+
+                this.surveyId = surveyIdFromInstance;
+
+                // Now fetch the survey template
+                requestUrl = apiUrl + "/api/surveys/" + surveyId;
+                Debug.Log($"[Survey] Fetching survey template from: {requestUrl}");
+
+                using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
+                {
+                    yield return request.SendWebRequest();
+
+                    if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+                    {
+                        reconnectSuccessful = false;
+                        isSurveyActive = false;
+                        Debug.LogError($"[Survey] Error fetching survey from {requestUrl}: {request.error}");
+                        surveyManager.DisplayConnectionIssue();
+                        yield break;
+                    }
+
+                    jsonResponse = request.downloadHandler.text;
+
+                    Survey survey;
+                    try
+                    {
+                        survey = JsonUtility.FromJson<Survey>(jsonResponse);
+                    }
+                    catch
+                    {
+                        reconnectSuccessful = false;
+                        isSurveyActive = false;
+                        Debug.LogError("[Survey] Error parsing survey return. Response: " + jsonResponse);
+                        surveyManager.DisplayConnectionIssue();
+                        yield break;
+                    }
+
+                    // Fetch questions
+                    List<SurveyQuestion> questionObjects = new List<SurveyQuestion>();
+
+                    if (survey.questions != null && survey.questions.Count > 0)
+                    {
+                        yield return FetchQuestionsForSurvey(survey._id, questionObjects);
+
+                        if (questionObjects.Count == 0)
+                        {
+                            reconnectSuccessful = false;
+                            isSurveyActive = false;
+                            Debug.LogError("[Survey] Error: Failed to fetch questions for survey.");
+                            surveyManager.DisplayConnectionIssue();
+                            yield break;
+                        }
+                    }
+                    else
+                    {
+                        reconnectSuccessful = false;
+                        isSurveyActive = false;
+                        Debug.LogError("[Survey] Error: Survey has no questions.");
+                        surveyManager.DisplayConnectionIssue();
+                        yield break;
+                    }
+
+                    // Setup SurveyInfo
+                    surveyInfo = ScriptableObject.CreateInstance<SurveyInfo>();
+                    surveyInfo.surveyName = survey.surveyName;
+                    surveyInfo.surveyDescription = survey.surveyDescription;
+                    surveyInfo.surveyEndStatement = survey.surveyEndStatement;
+                    surveyInfo.surveyId = survey._id;
+
+                    List<SurveyQuestionInfo> surveyQuestionInfos = new List<SurveyQuestionInfo>();
+
+                    foreach (SurveyQuestion question in questionObjects)
+                    {
+                        SurveyQuestionInfo currentQuestion = new SurveyQuestionInfo();
+                        currentQuestion.questionText = question.questionText;
+                        currentQuestion.orderInSurvey = question.questionNumberInSurvey;
+                        currentQuestion.questionId = question._id;
+
+                        switch (question.questionType)
+                        {
+                            case "selection":
+                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
+                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                                break;
+                            case "multipleChoice":
+                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.MultipleChoice;
+                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                                break;
+                            case "likert":
+                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
+                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                                break;
+                            case "slider":
+                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Slider;
+                                currentQuestion.leftSliderText = question.leftSliderText;
+                                currentQuestion.rightSliderText = question.rightSliderText;
+                                break;
+                            case "matrix":
+                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Matrix;
+                                currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
+                                currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
+                                break;
+                            default:
+                                Debug.LogError("[Survey] Unsupported survey question type: " + question.questionType);
+                                break;
+                        }
+
+                        surveyQuestionInfos.Add(currentQuestion);
+                    }
+
+                    surveyQuestionInfos = surveyQuestionInfos.OrderBy(q => q.orderInSurvey).ToList();
+                    surveyInfo.surveyQuestions = surveyQuestionInfos;
+
+                    surveyManager.BeginSurvey(surveyInfo);
+                }
+            }
         }
 
         // Tries to reconnect, setting survey info on success
@@ -462,74 +644,91 @@ namespace VERA
         {
             uploadSuccessful = false;
 
-            // Create the SurveyInstance based on input
-            SurveyInstance surveyInstance = new SurveyInstance();
-            surveyInstance.studyId = VERALogger.Instance.experimentUUID;
-            surveyInstance.experimentId = VERALogger.Instance.experimentUUID; // Same as studyId for now
-            surveyInstance.survey = surveyToOutput.surveyId;
-            surveyInstance.participantId = VERALogger.Instance.activeParticipant.participantUUID;
-            surveyInstance.activated = true;
+            string instanceId;
 
-            // Convert to JSON
-            string instanceJson = JsonUtility.ToJson(surveyInstance);
-
-            // Create the request
-            UnityWebRequest instanceRequest = new UnityWebRequest(apiUrl + "/api/surveys/instances", "POST");
-            byte[] instanceBodyRaw = System.Text.Encoding.UTF8.GetBytes(instanceJson);
-            instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
-            instanceRequest.downloadHandler = new DownloadHandlerBuffer();
-            instanceRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Send the request and wait for a response
-            yield return instanceRequest.SendWebRequest();
-
-            if (instanceRequest.result == UnityWebRequest.Result.Success)
+            // Check if we're using an existing instance (production mode) or creating a new one (testing mode)
+            if (!string.IsNullOrEmpty(surveyInstanceId))
             {
-                // Parse the response to get the ID of the created SurveyInstance
-                string responseText = instanceRequest.downloadHandler.text;
-                JObject jsonResponse = JObject.Parse(responseText);
-                string instanceId = jsonResponse["_id"]?.ToString();
-
-                // Create SurveyResponses
-                for (int i = 0; i < surveyResults.Length; i++)
-                {
-                    // Create the SurveyResponse based on input
-                    SurveyResponse surveyResponse = new SurveyResponse
-                    {
-                        question = surveyResults[i].Key,
-                        surveyInstance = instanceId,
-                        answer = surveyResults[i].Value,
-                        participantId = VERALogger.Instance.activeParticipant.participantUUID
-                    };
-
-                    // Convert to JSON
-                    string responseJson = JsonUtility.ToJson(surveyResponse);
-
-                    // Create the request
-                    UnityWebRequest responseRequest = new UnityWebRequest(apiUrl + "/api/surveys/responses", "POST");
-                    byte[] responseBodyRaw = System.Text.Encoding.UTF8.GetBytes(responseJson);
-                    responseRequest.uploadHandler = new UploadHandlerRaw(responseBodyRaw);
-                    responseRequest.downloadHandler = new DownloadHandlerBuffer();
-                    responseRequest.SetRequestHeader("Content-Type", "application/json");
-
-                    // Send the request and wait for a response
-                    yield return responseRequest.SendWebRequest();
-
-                    if (responseRequest.result == UnityWebRequest.Result.Success)
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        Debug.LogError("Error creating SurveyResponse: " + responseRequest.error);
-                        yield break;
-                    }
-                }
+                // Production mode: use the existing instance ID
+                instanceId = surveyInstanceId;
+                Debug.Log($"[Survey] Using existing survey instance: {instanceId}");
             }
             else
             {
-                Debug.LogError("Error creating SurveyInstance: " + instanceRequest.error);
-                yield break;
+                // Testing mode: create a new instance
+                Debug.Log("[Survey] Creating new survey instance (testing mode)");
+
+                SurveyInstance surveyInstance = new SurveyInstance();
+                surveyInstance.studyId = VERALogger.Instance.experimentUUID;
+                surveyInstance.experimentId = VERALogger.Instance.experimentUUID;
+                surveyInstance.survey = surveyToOutput.surveyId;
+                surveyInstance.participantId = VERALogger.Instance.activeParticipant.participantUUID;
+                surveyInstance.activated = true;
+
+                string instanceJson = JsonUtility.ToJson(surveyInstance);
+                string requestUrl = apiUrl + "/api/surveys/instances";
+                Debug.Log($"[Survey] Creating instance at: {requestUrl}");
+
+                UnityWebRequest instanceRequest = new UnityWebRequest(requestUrl, "POST");
+                byte[] instanceBodyRaw = System.Text.Encoding.UTF8.GetBytes(instanceJson);
+                instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
+                instanceRequest.downloadHandler = new DownloadHandlerBuffer();
+                instanceRequest.SetRequestHeader("Content-Type", "application/json");
+
+                yield return instanceRequest.SendWebRequest();
+
+                if (instanceRequest.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"[Survey] Error creating SurveyInstance at {requestUrl}: {instanceRequest.error}");
+                    yield break;
+                }
+
+                string responseText = instanceRequest.downloadHandler.text;
+                JObject jsonResponse = JObject.Parse(responseText);
+                instanceId = jsonResponse["_id"]?.ToString();
+
+                if (string.IsNullOrEmpty(instanceId))
+                {
+                    Debug.LogError("[Survey] Failed to get instance ID from response.");
+                    yield break;
+                }
+            }
+
+            // Now create survey responses for this instance
+            for (int i = 0; i < surveyResults.Length; i++)
+            {
+                // Create the SurveyResponse based on input
+                SurveyResponse surveyResponse = new SurveyResponse
+                {
+                    question = surveyResults[i].Key,
+                    surveyInstance = instanceId,
+                    answer = surveyResults[i].Value,
+                    participantId = VERALogger.Instance.activeParticipant.participantUUID
+                };
+
+                // Convert to JSON
+                string responseJson = JsonUtility.ToJson(surveyResponse);
+
+                // Create the request
+                string requestUrl = apiUrl + "/api/surveys/responses";
+                UnityWebRequest responseRequest = new UnityWebRequest(requestUrl, "POST");
+                byte[] responseBodyRaw = System.Text.Encoding.UTF8.GetBytes(responseJson);
+                responseRequest.uploadHandler = new UploadHandlerRaw(responseBodyRaw);
+                responseRequest.downloadHandler = new DownloadHandlerBuffer();
+                responseRequest.SetRequestHeader("Content-Type", "application/json");
+
+                // Send the request and wait for a response
+                yield return responseRequest.SendWebRequest();
+
+                if (responseRequest.result == UnityWebRequest.Result.Success)
+                {
+                    continue;
+                }
+                else
+                {
+                    Debug.LogError($"[Survey] Error creating SurveyResponse at {requestUrl}: {responseRequest.error}");
+                    yield break;
+                }
             }
 
             Debug.Log("VERA Survey results successfully uploaded.");

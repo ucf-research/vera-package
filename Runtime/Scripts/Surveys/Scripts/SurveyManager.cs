@@ -22,6 +22,7 @@ namespace VERA
         private bool connectionIssues = false;
         private bool previousConnectionIssues = false;
         private SurveyInterfaceIO surveyInterfaceIo;
+        private GameObject backgroundPanel;
 
         // References
         [Header("References")]
@@ -95,12 +96,36 @@ namespace VERA
 
             moreOptionsNotif.SetActive(false);
 
+            // Create black background panel to block out environment and prevent user distraction
+            CreateBackgroundPanel();
+
             vlatMenuNav = gameObject.AddComponent<VLAT_MenuNavigator>();
             vlatMenuNav.ManualSetup();
             vlatMenuNav.onChangeHighlightedItem.AddListener(OnHighlightedItemChanged);
 
             managerCanvGroup.alpha = 0f;
             managerCanvas.gameObject.SetActive(false);
+        }
+
+        // Creates a full-screen black background panel to block out the environment
+        private void CreateBackgroundPanel()
+        {
+            // Create background panel GameObject
+            backgroundPanel = new GameObject("Survey Background Panel");
+            backgroundPanel.transform.SetParent(managerCanvas.transform, false);
+            backgroundPanel.transform.SetAsFirstSibling(); // Place behind all other UI
+
+            // Add RectTransform and configure as full-screen
+            RectTransform rectTransform = backgroundPanel.AddComponent<RectTransform>();
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.one;
+            rectTransform.sizeDelta = Vector2.zero;
+            rectTransform.anchoredPosition = Vector2.zero;
+
+            // Add Image component and set to black with high opacity
+            Image backgroundImage = backgroundPanel.AddComponent<Image>();
+            backgroundImage.color = new Color(0f, 0f, 0f, 0.95f); // Almost fully opaque black
+            backgroundImage.raycastTarget = false; // Don't block raycasts to UI elements
         }
 
         #endregion
@@ -672,8 +697,8 @@ namespace VERA
             TMP_Text newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
             newBlock.text = activeSurvey.surveyDescription;
 
-            // Set the question text and update desired size
-            questionText.text = activeSurvey.surveyName;
+            // Clear the question text (survey name no longer displayed)
+            questionText.text = "";
 
             UpdateQuestionResponseSizes();
 

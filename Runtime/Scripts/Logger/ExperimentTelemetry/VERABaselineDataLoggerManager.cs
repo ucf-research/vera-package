@@ -9,11 +9,7 @@ namespace VERA
         [Header("Auto-Setup")]
         [Tooltip("Automatically create VERABaselineDataLogger if none exists")]
         [SerializeField] private bool autoCreateLogger = true;
-        
-        [Header("Logging Settings")]
-        [Tooltip("Logging rate in Hz")]
-        [SerializeField] private float logRate = 30f;
-        
+
         private VERABaselineDataLogger baselineLogger;
         
         private void Awake()
@@ -38,8 +34,8 @@ namespace VERA
                 // Create new GameObject for the baseline logger
                 GameObject loggerObject = new GameObject("VERABaselineDataLogger");
                 baselineLogger = loggerObject.AddComponent<VERABaselineDataLogger>();
-                
-                // Configure the logger
+
+                // Configure the logger - will automatically log every frame for maximum fidelity
                 baselineLogger.SetLogEveryFrame(true);
             }
             else

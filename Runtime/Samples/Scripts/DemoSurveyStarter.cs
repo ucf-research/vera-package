@@ -17,8 +17,17 @@ namespace VERA
 
         private SurveyInterfaceIO surveyInterface;
 
-        [Tooltip("The ID of the survey you wish to start")]
+        [Header("Mode Selection")]
+        [Tooltip("Use instance ID (production mode) or survey ID (testing mode)")]
+        [SerializeField] private bool useInstanceId = false;
+
+        [Header("Survey Configuration")]
+        [Tooltip("The ID of the survey template (testing mode)")]
         [SerializeField] private string surveyId;
+        [Tooltip("The ID of the survey instance (production mode)")]
+        [SerializeField] private string surveyInstanceId;
+
+        [Header("Behavior")]
         [Tooltip("Whether the survey should begin immediately upon Start()")]
         [SerializeField] private bool beginOnStart;
 
@@ -31,10 +40,19 @@ namespace VERA
                 StartSurvey();
         }
 
-        // Starts survey
+        // Starts survey using either instance ID (production) or survey ID (testing)
         public void StartSurvey()
         {
-            surveyInterface.StartSurveyById(surveyId);
+            if (useInstanceId)
+            {
+                // Production mode: use pre-created instance
+                surveyInterface.StartSurveyByInstanceId(surveyInstanceId);
+            }
+            else
+            {
+                // Testing mode: create new instance from template
+                surveyInterface.StartSurveyById(surveyId);
+            }
         }
     }
 }
