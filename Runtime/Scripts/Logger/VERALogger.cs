@@ -29,6 +29,7 @@ namespace VERA
         public VERATrialWorkflowManager trialWorkflow { get; private set; }
         private VERAPeriodicSyncHandler periodicSyncHandler;
         private VERAGenericFileHelper genericFileHelper;
+        private Dictionary<string, int> manualBetweenSubjectsAssignments;
 
         // Keys
         public string apiKey;
@@ -132,9 +133,20 @@ namespace VERA
 
             yield return InitializeExperimentConditions();
 
-            // Initialize trial workflow manager
+            // Initialize trial workflow manager (pass participant info for between-subjects assignment and checkpointing)
             trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
-            yield return trialWorkflow.Initialize(experimentUUID, apiKey);
+            int participantNum = activeParticipant != null ? activeParticipant.participantShortId : -1;
+            string participantId = activeParticipant != null ? activeParticipant.participantUUID : null;
+
+            // Allow for manual between-subjects assignments (set via SetBetweenSubjectsAssignment before initialization)
+            yield return trialWorkflow.Initialize(experimentUUID, apiKey, participantNum, participantId, manualBetweenSubjectsAssignments);
+
+            // Auto-apply Latin square ordering if required
+            if (trialWorkflow.RequiresLatinSquareOrdering && activeParticipant != null)
+            {
+                trialWorkflow.ApplyLatinSquareOrdering(participantNum);
+                Debug.Log($"[VERA Logger] Auto-applied Latin square ordering for participant {participantNum}.");
+            }
 
             // Short buffer for subscriptions to register
             yield return null;
@@ -345,10 +357,10 @@ namespace VERA
                 autoSetup.autoCreateBaselineLogger = true;
                 autoSetup.startOnExperimentBegin = true;
                 autoSetup.fallbackAutoStart = true;
-                autoSetup.defaultSamplingRate = 30;
+                autoSetup.logEveryFrame = true;  // Log every frame for maximum fidelity
 
                 Debug.Log("[VERA Logger] Baseline data logging setup created automatically. " +
-                         "VR baseline data will be collected at 30Hz when experiment starts.");
+                         "VR baseline data will be collected every frame when experiment starts.");
             }
             else
             {
@@ -875,6 +887,303 @@ namespace VERA
         {
             public string name;
             public string encoding;
+        }
+
+
+        #endregion
+
+
+        #region TRIAL WORKFLOW
+
+
+        /// <summary>
+        /// Gets the current trial configuration.
+        /// Returns null if no trial is active or workflow is not initialized.
+        /// </summary>
+        public TrialConfig GetCurrentTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return null;
+            }
+            return trialWorkflow.GetCurrentTrial();
+        }
+
+        /// <summary>
+        /// Advances to the next trial and starts it.
+        /// Automatically sets the experiment's condition values based on the trial's conditions.
+        /// Returns the trial that was started, or null if there are no more trials.
+        /// </summary>
+        public TrialConfig StartNextTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return null;
+            }
+
+            TrialConfig trial = trialWorkflow.StartNextTrial();
+
+            // Automatically set condition values from trial data
+            if (trial?.conditions != null)
+            {
+                foreach (var condition in trial.conditions)
+                {
+                    SetSelectedIVValue(condition.Key, condition.Value);
+                }
+            }
+
+            return trial;
+        }
+
+        /// <summary>
+        /// Marks the current trial as completed.
+        /// Returns true if successful.
+        /// </summary>
+        public bool CompleteTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return false;
+            }
+            return trialWorkflow.CompleteTrial();
+        }
+
+        /// <summary>
+        /// Marks the current trial as aborted.
+        /// </summary>
+        /// <param name="reason">Optional reason for aborting</param>
+        public bool AbortTrial(string reason = "")
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return false;
+            }
+            return trialWorkflow.AbortTrial(reason);
+        }
+
+        /// <summary>
+        /// Gets the next trial without starting it (preview).
+        /// </summary>
+        public TrialConfig PeekNextTrial()
+        {
+            return trialWorkflow?.PeekNextTrial();
+        }
+
+        /// <summary>
+        /// Gets a condition value for the current trial.
+        /// </summary>
+        /// <param name="conditionName">The condition/IV name</param>
+        public string GetTrialConditionValue(string conditionName)
+        {
+            return trialWorkflow?.GetConditionValue(conditionName);
+        }
+
+        /// <summary>
+        /// Gets the elapsed time for the current trial in seconds.
+        /// </summary>
+        public float GetTrialElapsedTime()
+        {
+            return trialWorkflow?.GetTrialElapsedTime() ?? 0f;
+        }
+
+        /// <summary>
+        /// Checks if there are more trials remaining.
+        /// </summary>
+        public bool HasMoreTrials => trialWorkflow?.HasMoreTrials ?? false;
+
+        /// <summary>
+        /// Gets the total number of trials in the workflow.
+        /// </summary>
+        public int TotalTrialCount => trialWorkflow?.TotalTrialCount ?? 0;
+
+        /// <summary>
+        /// Gets the current trial index (0-based). Returns -1 if no trial started.
+        /// </summary>
+        public int CurrentTrialIndex => trialWorkflow?.CurrentTrialIndex ?? -1;
+
+        /// <summary>
+        /// Checks if the current trial belongs to a within/between-subjects group.
+        /// </summary>
+        public bool IsCurrentTrialInGroup()
+        {
+            return trialWorkflow?.IsCurrentTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the parent group ID for the current trial (null if standalone).
+        /// </summary>
+        public string GetCurrentGroupId()
+        {
+            return trialWorkflow?.GetCurrentGroupId();
+        }
+
+        /// <summary>
+        /// Gets the parent group type ("within" or "between") for the current trial.
+        /// </summary>
+        public string GetCurrentGroupType()
+        {
+            return trialWorkflow?.GetCurrentGroupType();
+        }
+
+        /// <summary>
+        /// Checks if this is the first trial in its group.
+        /// Useful for showing group instructions/setup.
+        /// </summary>
+        public bool IsFirstTrialInGroup()
+        {
+            return trialWorkflow?.IsFirstTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if this is the last trial in its group.
+        /// Useful for group completion logic.
+        /// </summary>
+        public bool IsLastTrialInGroup()
+        {
+            return trialWorkflow?.IsLastTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the trial's position within its group (1-indexed, 0 if standalone).
+        /// </summary>
+        public int GetTrialPositionInGroup()
+        {
+            return trialWorkflow?.GetTrialPositionInGroup() ?? 0;
+        }
+
+        /// <summary>
+        /// Gets the total trials in the current trial's group (0 if standalone).
+        /// </summary>
+        public int GetGroupTrialCount()
+        {
+            return trialWorkflow?.GetGroupTrialCount() ?? 0;
+        }
+
+        /// <summary>
+        /// Checks if the current workflow item is a standalone survey.
+        /// </summary>
+        public bool IsCurrentItemSurvey()
+        {
+            return trialWorkflow?.IsCurrentItemSurvey() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if the current trial has an attached survey.
+        /// </summary>
+        public bool CurrentTrialHasSurvey()
+        {
+            return trialWorkflow?.CurrentTrialHasSurvey() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if a survey should be shown BEFORE the current trial.
+        /// </summary>
+        public bool ShouldShowSurveyBefore()
+        {
+            return trialWorkflow?.ShouldShowSurveyBefore() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if a survey should be shown AFTER the current trial.
+        /// </summary>
+        public bool ShouldShowSurveyAfter()
+        {
+            return trialWorkflow?.ShouldShowSurveyAfter() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the survey ID for the current item (standalone or attached).
+        /// </summary>
+        public string GetCurrentSurveyId()
+        {
+            return trialWorkflow?.GetCurrentSurveyId();
+        }
+
+        /// <summary>
+        /// Gets the survey name for the current item.
+        /// </summary>
+        public string GetCurrentSurveyName()
+        {
+            return trialWorkflow?.GetCurrentSurveyName();
+        }
+
+        /// <summary>
+        /// Checks if the workflow requires Latin square ordering.
+        /// If true, call ApplyLatinSquareOrdering() with the participant number before starting trials.
+        /// </summary>
+        public bool RequiresLatinSquareOrdering => trialWorkflow?.RequiresLatinSquareOrdering ?? false;
+
+        /// <summary>
+        /// Applies Latin Square counterbalancing to the trial workflow.
+        /// Call this after initialization but before starting any trials.
+        ///
+        /// Example usage:
+        ///   if (VERALogger.Instance.RequiresLatinSquareOrdering)
+        ///   {
+        ///       int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///       VERALogger.Instance.ApplyLatinSquareOrdering(participantNum);
+        ///   }
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed)</param>
+        public void ApplyLatinSquareOrdering(int participantNumber)
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.ApplyLatinSquareOrdering(participantNumber);
+        }
+
+        /// <summary>
+        /// Gets the current trial ordering as a debug string.
+        /// Useful for logging/verifying the order.
+        /// </summary>
+        public string GetTrialOrderingDebugString()
+        {
+            return trialWorkflow?.GetTrialOrderingDebugString() ?? "No workflow";
+        }
+
+        /// <summary>
+        /// Gets info about within-subjects groups that need Latin square ordering.
+        /// Returns a dictionary of group ID -> number of trials in that group.
+        /// </summary>
+        public Dictionary<string, int> GetWithinGroupsForLatinSquare()
+        {
+            return trialWorkflow?.GetWithinGroupsForLatinSquare() ?? new Dictionary<string, int>();
+        }
+
+        /// <summary>
+        /// Manually assigns a participant to a specific condition in a between-subjects group.
+        /// Must be called BEFORE the logger initializes the trial workflow.
+        ///
+        /// Usage example (assign based on gender):
+        ///   // Call this in Awake() before logger initialization
+        ///   string gender = GetParticipantGender(); // "male" or "female"
+        ///   int conditionIndex = gender == "male" ? 0 : 1;
+        ///   VERALogger.Instance.SetBetweenSubjectsAssignment("group-id-123", conditionIndex);
+        /// </summary>
+        /// <param name="betweenSubjectsGroupId">The ID of the between-subjects group</param>
+        /// <param name="conditionIndex">The 0-based index of the condition to assign (0 = first condition, 1 = second, etc.)</param>
+        public void SetBetweenSubjectsAssignment(string betweenSubjectsGroupId, int conditionIndex)
+        {
+            if (initialized)
+            {
+                Debug.LogWarning("[VERA Logger] Cannot set between-subjects assignment after initialization. Call this before logger initializes.");
+                return;
+            }
+
+            if (manualBetweenSubjectsAssignments == null)
+            {
+                manualBetweenSubjectsAssignments = new Dictionary<string, int>();
+            }
+
+            manualBetweenSubjectsAssignments[betweenSubjectsGroupId] = conditionIndex;
+            Debug.Log($"[VERA Logger] Manual between-subjects assignment: group '{betweenSubjectsGroupId}' → condition {conditionIndex}");
         }
 
 
