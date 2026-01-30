@@ -35,7 +35,10 @@ namespace VERA
         public string surveyPosition;
         // For standalone surveys
         public string surveyId;
+        public string surveyName; // Full survey name (different from label)
         public string instanceId;
+        public Survey survey;
+        public SurveyInstanceData surveyInstanceData;
         public Dictionary<string, int> perTrialRepetitions;
 
         // Group tracking (set during flattening)
@@ -67,6 +70,14 @@ namespace VERA
 
         public bool isInitialized { get; private set; } = false;
         public TrialState currentTrialState { get; private set; } = TrialState.NotStarted;
+
+        // Survey-related events
+        public event System.Action<string, string, string> OnSurveyRequired; // surveyId, surveyName, position ("before" or "after")
+        public event System.Action<TrialConfig> OnTrialStarting; // Called before trial starts, allows survey check
+        public event System.Action<TrialConfig> OnTrialCompleted; // Called after trial completes, allows survey check
+
+        private bool waitingForSurvey = false;
+        private string pendingSurveyPosition = null;
 
         private float trialStartTime = 0f;
         private float trialDuration = 0f;
@@ -517,6 +528,13 @@ namespace VERA
                 return null;
             }
 
+            // Check if we're waiting for a survey to complete
+            if (waitingForSurvey)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] Cannot start next trial: waiting for attached survey to complete. Call MarkSurveyCompleted() first.");
+                return null;
+            }
+
             currentTrialIndex++;
 
             if (currentTrialIndex >= trialWorkflow.Count)
@@ -533,6 +551,23 @@ namespace VERA
             {
                 Debug.LogError($"[VERA Trial Workflow] Trial at index {currentTrialIndex} is null! This should not happen.");
                 currentTrialState = TrialState.Aborted;
+                return null;
+            }
+
+            // Fire event before starting trial (allows for survey checks)
+            OnTrialStarting?.Invoke(trial);
+
+            // Check for attached survey that should show BEFORE trial
+            if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
+            {
+                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
+                waitingForSurvey = true;
+                pendingSurveyPosition = "before";
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before");
+
+                // Don't start trial yet - waiting for survey completion
+                // Developer should call MarkSurveyCompleted() when survey is done, then call StartNextTrial() again
+                currentTrialIndex--; // Reset index so we can try again after survey
                 return null;
             }
 
@@ -622,11 +657,31 @@ namespace VERA
                 return false;
             }
 
+            // Check if we're waiting for a survey to complete
+            if (waitingForSurvey && pendingSurveyPosition == "before")
+            {
+                Debug.LogWarning("[VERA Trial Workflow] Cannot start trial: waiting for 'before' survey to complete. Call MarkSurveyCompleted() first.");
+                return false;
+            }
+
             TrialConfig trial = trialWorkflow[currentTrialIndex];
             if (trial == null)
             {
                 Debug.LogError($"[VERA Trial Workflow] Current trial is null!");
                 return false;
+            }
+
+            // Fire event before starting trial (allows for survey checks)
+            OnTrialStarting?.Invoke(trial);
+
+            // Check for attached survey that should show BEFORE trial
+            if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
+            {
+                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
+                waitingForSurvey = true;
+                pendingSurveyPosition = "before";
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before");
+                return false; // Don't start trial yet
             }
 
             currentTrialState = TrialState.InProgress;
@@ -659,10 +714,27 @@ namespace VERA
             TrialConfig trial = GetCurrentTrial();
             Debug.Log($"[VERA Trial Workflow] Completed trial: {trial?.label ?? "Unknown"} (Duration: {trialDuration:F2}s)");
 
-            // Auto-save checkpoint after trial completion
-            if (!string.IsNullOrEmpty(participantUUID))
+            // Fire event after trial completes
+            OnTrialCompleted?.Invoke(trial);
+
+            // Check for attached survey that should show AFTER trial
+            if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "after")
             {
-                VERALogger.Instance.StartCoroutine(SaveCheckpoint());
+                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show AFTER trial completion.");
+                waitingForSurvey = true;
+                pendingSurveyPosition = "after";
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "after");
+
+                // Don't auto-advance - waiting for survey completion
+                // Developer should call MarkSurveyCompleted() when survey is done
+            }
+            else
+            {
+                // Auto-save checkpoint after trial completion (only if no survey pending)
+                if (!string.IsNullOrEmpty(participantUUID))
+                {
+                    VERALogger.Instance.StartCoroutine(SaveCheckpoint());
+                }
             }
 
             return true;
@@ -694,6 +766,8 @@ namespace VERA
             currentTrialState = TrialState.NotStarted;
             trialStartTime = 0f;
             trialDuration = 0f;
+            waitingForSurvey = false;
+            pendingSurveyPosition = null;
             Debug.Log("[VERA Trial Workflow] Workflow reset to beginning.");
         }
 
@@ -730,6 +804,8 @@ namespace VERA
             trialStartTime = 0f;
             trialDuration = 0f;
             isInitialized = false;
+            waitingForSurvey = false;
+            pendingSurveyPosition = null;
 
             // Clear credentials
             experimentUUID = null;
@@ -943,6 +1019,49 @@ namespace VERA
         #region SURVEY HANDLING
 
         /// <summary>
+        /// Survey Handling in Trial Workflow
+        ///
+        /// Attached surveys can be configured to show "before" or "after" a trial.
+        /// The workflow manager automatically detects these and pauses progression until surveys complete.
+        ///
+        /// Workflow with attached surveys:
+        /// 1. Call StartNextTrial() or GetNextTrial() + StartTrial()
+        /// 2. If trial has "before" survey: OnSurveyRequired event fires, StartNextTrial/StartTrial returns null/false
+        /// 3. Show survey to participant using the surveyId from the event
+        /// 4. When survey completes, call MarkSurveyCompleted()
+        /// 5. Call StartNextTrial() again to actually start the trial
+        /// 6. Run your trial logic
+        /// 7. Call CompleteTrial()
+        /// 8. If trial has "after" survey: OnSurveyRequired event fires
+        /// 9. Show survey to participant
+        /// 10. When survey completes, call MarkSurveyCompleted()
+        /// 11. Continue to next trial
+        ///
+        /// Example usage:
+        /// <code>
+        /// // Subscribe to survey event
+        /// trialManager.OnSurveyRequired += (surveyId, surveyName, position) => {
+        ///     Debug.Log($"Survey required: {surveyName} ({position})");
+        ///     StartCoroutine(ShowSurvey(surveyId, surveyName));
+        /// };
+        ///
+        /// // Start trial
+        /// var trial = trialManager.StartNextTrial();
+        /// if (trial == null && trialManager.IsWaitingForSurvey()) {
+        ///     // Survey is being shown, wait for it to complete
+        ///     return;
+        /// }
+        ///
+        /// // In your survey completion handler:
+        /// trialManager.MarkSurveyCompleted();
+        /// if (trialManager.GetPendingSurveyPosition() == null) {
+        ///     // No more surveys, continue workflow
+        ///     var nextTrial = trialManager.StartNextTrial();
+        /// }
+        /// </code>
+        /// </summary>
+
+        /// <summary>
         /// Checks if the current workflow item is a standalone survey.
         /// </summary>
         public bool IsCurrentItemSurvey()
@@ -1014,6 +1133,58 @@ namespace VERA
                 return trial.label;
 
             return trial.attachedSurveyName;
+        }
+
+        /// <summary>
+        /// Marks an attached survey as completed. Call this after a survey finishes
+        /// to allow the workflow to continue.
+        /// </summary>
+        public void MarkSurveyCompleted()
+        {
+            if (!waitingForSurvey)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] MarkSurveyCompleted called but no survey was pending.");
+                return;
+            }
+
+            Debug.Log($"[VERA Trial Workflow] Survey marked as completed (position: {pendingSurveyPosition})");
+            waitingForSurvey = false;
+            pendingSurveyPosition = null;
+
+            // Auto-save checkpoint after survey completion
+            if (!string.IsNullOrEmpty(participantUUID))
+            {
+                VERALogger.Instance.StartCoroutine(SaveCheckpoint());
+            }
+        }
+
+        /// <summary>
+        /// Checks if the workflow is currently waiting for a survey to complete.
+        /// </summary>
+        public bool IsWaitingForSurvey()
+        {
+            return waitingForSurvey;
+        }
+
+        /// <summary>
+        /// Gets the position of the pending survey ("before" or "after"), or null if no survey is pending.
+        /// </summary>
+        public string GetPendingSurveyPosition()
+        {
+            return pendingSurveyPosition;
+        }
+
+        /// <summary>
+        /// Gets the attached survey info for the current trial, if any.
+        /// Returns null if no attached survey.
+        /// </summary>
+        public (string surveyId, string surveyName, string position)? GetCurrentAttachedSurvey()
+        {
+            var trial = GetCurrentTrial();
+            if (trial == null || string.IsNullOrEmpty(trial.attachedSurveyId))
+                return null;
+
+            return (trial.attachedSurveyId, trial.attachedSurveyName, trial.surveyPosition);
         }
 
         #endregion
@@ -1450,6 +1621,92 @@ namespace VERA
             }
         }
 
+        private Survey ParseSurveyData(JObject surveyObj)
+        {
+            if (surveyObj == null)
+                return null;
+
+            var survey = new Survey
+            {
+                _id = surveyObj.Value<string>("_id"),
+                surveyName = surveyObj.Value<string>("surveyName"),
+                shortSurveyName = surveyObj.Value<string>("shortSurveyName"),
+                surveyDescription = surveyObj.Value<string>("surveyDescription"),
+                surveyEndStatement = surveyObj.Value<string>("surveyEndStatement"),
+                createdBy = surveyObj.Value<string>("createdBy"),
+                experimentId = surveyObj.Value<string>("experimentId"),
+                isTemplate = surveyObj.Value<bool>("isTemplate")
+            };
+
+            // Parse tags
+            if (surveyObj["tags"] is JArray tagsArray)
+            {
+                survey.tags = new List<string>();
+                foreach (var tag in tagsArray)
+                    survey.tags.Add(tag.ToString());
+            }
+
+            // Parse citations
+            if (surveyObj["citations"] is JArray citationsArray)
+            {
+                survey.citations = new List<SurveyCitation>();
+                foreach (var citToken in citationsArray)
+                {
+                    if (citToken is JObject citObj)
+                    {
+                        survey.citations.Add(new SurveyCitation
+                        {
+                            _id = citObj.Value<string>("_id"),
+                            title = citObj.Value<string>("title"),
+                            fullCitation = citObj.Value<string>("fullCitation")
+                        });
+                    }
+                }
+            }
+
+            // Parse questions
+            if (surveyObj["questions"] is JArray questionsArray)
+            {
+                survey.questions = new List<SurveyQuestion>();
+                foreach (var qToken in questionsArray)
+                {
+                    if (qToken is JObject qObj)
+                    {
+                        var question = new SurveyQuestion
+                        {
+                            _id = qObj.Value<string>("_id"),
+                            surveyParent = qObj.Value<string>("surveyParent"),
+                            questionNumberInSurvey = qObj.Value<int>("questionNumberInSurvey"),
+                            questionText = qObj.Value<string>("questionText"),
+                            questionType = qObj.Value<string>("questionType"),
+                            leftSliderText = qObj.Value<string>("leftSliderText"),
+                            rightSliderText = qObj.Value<string>("rightSliderText")
+                        };
+
+                        // Parse question options
+                        if (qObj["questionOptions"] is JArray optionsArray)
+                        {
+                            question.questionOptions = new List<string>();
+                            foreach (var opt in optionsArray)
+                                question.questionOptions.Add(opt.ToString());
+                        }
+
+                        // Parse matrix column names
+                        if (qObj["matrixColumnNames"] is JArray matrixArray)
+                        {
+                            question.matrixColumnNames = new List<string>();
+                            foreach (var col in matrixArray)
+                                question.matrixColumnNames.Add(col.ToString());
+                        }
+
+                        survey.questions.Add(question);
+                    }
+                }
+            }
+
+            return survey;
+        }
+
         private TrialConfig[] ParseTrials(JArray trialsArray)
         {
             List<TrialConfig> trials = new List<TrialConfig>();
@@ -1482,14 +1739,26 @@ namespace VERA
                         trialOrdering = trialToken.Value<string>("trialOrdering"),
                         randomizationLevel = trialToken.Value<string>("randomizationLevel"),
                         isRandomized = trialToken.Value<bool>("isRandomized"),
-                        // For surveys attached to trials
-                        attachedSurveyId = trialToken.Value<string>("attachedSurveyId"),
-                        attachedSurveyName = trialToken.Value<string>("attachedSurveyName"),
-                        surveyPosition = trialToken.Value<string>("surveyPosition"),
                         // For standalone surveys
                         surveyId = trialToken.Value<string>("surveyId"),
+                        surveyName = trialToken.Value<string>("surveyName"),
                         instanceId = trialToken.Value<string>("instanceId")
                     };
+
+                    // Parse attachedSurvey object (new format)
+                    if (trialToken["attachedSurvey"] is JObject attachedSurveyObj)
+                    {
+                        trial.attachedSurveyId = attachedSurveyObj.Value<string>("instanceId");
+                        trial.attachedSurveyName = attachedSurveyObj.Value<string>("surveyName");
+                        trial.surveyPosition = attachedSurveyObj.Value<string>("position");
+                    }
+                    // Fallback to old format for backward compatibility
+                    else
+                    {
+                        trial.attachedSurveyId = trialToken.Value<string>("attachedSurveyId");
+                        trial.attachedSurveyName = trialToken.Value<string>("attachedSurveyName");
+                        trial.surveyPosition = trialToken.Value<string>("surveyPosition");
+                    }
 
                     // Validate trial configuration
                     if (!ValidateTrialConfig(trial, out string validationError))
@@ -1533,6 +1802,23 @@ namespace VERA
 
                     if (trialToken["childTrials"] is JArray childTrialsArray && childTrialsArray.Count > 0)
                         trial.childTrials = ParseTrials(childTrialsArray);
+
+                    // Parse survey data for standalone surveys
+                    if (trialToken["survey"] is JObject surveyObj)
+                    {
+                        trial.survey = ParseSurveyData(surveyObj);
+                    }
+
+                    // Parse survey instance data
+                    if (trialToken["surveyInstanceData"] is JObject instanceObj)
+                    {
+                        trial.surveyInstanceData = new SurveyInstanceData
+                        {
+                            instanceId = instanceObj.Value<string>("instanceId"),
+                            experimentId = instanceObj.Value<string>("experimentId"),
+                            activated = instanceObj.Value<bool>("activated")
+                        };
+                    }
 
                     trials.Add(trial);
                 }

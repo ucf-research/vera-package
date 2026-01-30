@@ -144,6 +144,10 @@ namespace VERA
             // Display standalone survey-specific fields
             if (trial.type == "survey")
             {
+                if (!string.IsNullOrEmpty(trial.surveyName))
+                {
+                    EditorGUILayout.LabelField("Survey Name", trial.surveyName);
+                }
                 if (!string.IsNullOrEmpty(trial.surveyId))
                 {
                     EditorGUILayout.LabelField("Survey ID", trial.surveyId);
@@ -151,6 +155,35 @@ namespace VERA
                 if (!string.IsNullOrEmpty(trial.instanceId))
                 {
                     EditorGUILayout.LabelField("Instance ID", trial.instanceId);
+                }
+
+                // Display survey data if available
+                if (trial.survey != null)
+                {
+                    EditorGUILayout.Space(5);
+                    EditorGUILayout.LabelField("Survey Details:", EditorStyles.miniBoldLabel);
+                    EditorGUI.indentLevel++;
+
+                    if (!string.IsNullOrEmpty(trial.survey.surveyName))
+                    {
+                        EditorGUILayout.LabelField("Full Name", trial.survey.surveyName);
+                    }
+                    if (!string.IsNullOrEmpty(trial.survey.surveyDescription))
+                    {
+                        EditorGUILayout.LabelField("Description", trial.survey.surveyDescription, EditorStyles.wordWrappedLabel);
+                    }
+                    if (trial.survey.questionCount > 0)
+                    {
+                        EditorGUILayout.LabelField("Number of Questions", trial.survey.questionCount.ToString());
+                    }
+
+                    EditorGUI.indentLevel--;
+                }
+
+                // Display instance data if available
+                if (trial.surveyInstanceData != null)
+                {
+                    EditorGUILayout.LabelField("Activated", trial.surveyInstanceData.activated ? "Yes" : "No");
                 }
             }
 
@@ -413,14 +446,27 @@ namespace VERA
                     conditionsRandomized = trialToken.Value<bool>("conditionsRandomized"),
                     randomizedOrder = trialToken.Value<int>("randomizedOrder"),
                     completeAllRepetitions = trialToken.Value<bool>("completeAllRepetitions"),
-                    // For surveys attached to trials
-                    attachedSurveyId = trialToken.Value<string>("attachedSurveyId"),
-                    attachedSurveyName = trialToken.Value<string>("attachedSurveyName"),
-                    surveyPosition = trialToken.Value<string>("surveyPosition"),
                     // For standalone surveys
                     surveyId = trialToken.Value<string>("surveyId"),
+                    surveyName = trialToken.Value<string>("surveyName"),
                     instanceId = trialToken.Value<string>("instanceId")
                 };
+
+                // Parse attachedSurvey object (new format)
+                JObject attachedSurveyObj = trialToken["attachedSurvey"] as JObject;
+                if (attachedSurveyObj != null)
+                {
+                    trial.attachedSurveyId = attachedSurveyObj.Value<string>("instanceId");
+                    trial.attachedSurveyName = attachedSurveyObj.Value<string>("surveyName");
+                    trial.surveyPosition = attachedSurveyObj.Value<string>("position");
+                }
+                // Fallback to old format for backward compatibility
+                else
+                {
+                    trial.attachedSurveyId = trialToken.Value<string>("attachedSurveyId");
+                    trial.attachedSurveyName = trialToken.Value<string>("attachedSurveyName");
+                    trial.surveyPosition = trialToken.Value<string>("surveyPosition");
+                }
 
                 // Parse conditions dictionary
                 JObject conditionsObj = trialToken["conditions"] as JObject;
@@ -473,16 +519,66 @@ namespace VERA
                     trial.childTrials = ParseTrials(childTrialsArray);
                 }
 
+                // Parse survey data for standalone surveys
+                JObject surveyObj = trialToken["survey"] as JObject;
+                if (surveyObj != null)
+                {
+                    trial.survey = new SurveyData
+                    {
+                        surveyName = surveyObj.Value<string>("surveyName"),
+                        surveyDescription = surveyObj.Value<string>("surveyDescription"),
+                        questionCount = (surveyObj["questions"] as JArray)?.Count ?? 0
+                    };
+                }
+
+                // Parse survey instance data
+                JObject instanceObj = trialToken["surveyInstanceData"] as JObject;
+                if (instanceObj != null)
+                {
+                    trial.surveyInstanceData = new SurveyInstanceData
+                    {
+                        instanceId = instanceObj.Value<string>("instanceId"),
+                        activated = instanceObj.Value<bool>("activated")
+                    };
+                }
+
                 trials.Add(trial);
 
                 // Log what we parsed
                 string childInfo = trial.childTrials != null && trial.childTrials.Count > 0
                     ? $" with {trial.childTrials.Count} child trials"
                     : "";
-                Debug.Log($"[VERA Trial Workflow] Parsed {trial.type} item: {trial.label} (ID: {trial.id}){childInfo}");
+                string surveyInfo = trial.survey != null
+                    ? $" ({trial.survey.questionCount} questions)"
+                    : "";
+                Debug.Log($"[VERA Trial Workflow] Parsed {trial.type} item: {trial.label} (ID: {trial.id}){childInfo}{surveyInfo}");
             }
 
             return trials;
+        }
+
+        // Survey-related data classes
+        [System.Serializable]
+        private class SurveyQuestion
+        {
+            public string questionNumberInSurvey;
+            public string questionText;
+            public string questionType;
+        }
+
+        [System.Serializable]
+        private class SurveyData
+        {
+            public string surveyName;
+            public string surveyDescription;
+            public int questionCount;
+        }
+
+        [System.Serializable]
+        private class SurveyInstanceData
+        {
+            public string instanceId;
+            public bool activated;
         }
 
         // Data class for trial workflow items
@@ -512,7 +608,10 @@ namespace VERA
             public string surveyPosition;
             // For standalone surveys
             public string surveyId;
+            public string surveyName;
             public string instanceId;
+            public SurveyData survey;
+            public SurveyInstanceData surveyInstanceData;
         }
     }
 }

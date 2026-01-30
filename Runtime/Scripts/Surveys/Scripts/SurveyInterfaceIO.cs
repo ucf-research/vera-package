@@ -342,19 +342,33 @@ namespace VERA
 
     // Survey web result JSON parsing classes
     [System.Serializable]
-    internal class Survey
+    public class Survey
     {
         public string _id;
         public string surveyName;
+        public string shortSurveyName;
         public string surveyDescription;
         public string surveyEndStatement;
+        public List<string> tags;
+        public List<SurveyCitation> citations;
         public List<SurveyQuestion> questions;
+        public string createdBy;
+        public string experimentId;
+        public bool isTemplate;
         public string createdAt;
         public int __v;
     }
 
     [System.Serializable]
-    internal class SurveyQuestion
+    public class SurveyCitation
+    {
+        public string _id;
+        public string title;
+        public string fullCitation;
+    }
+
+    [System.Serializable]
+    public class SurveyQuestion
     {
         public string _id;
         public string surveyParent;
@@ -375,6 +389,14 @@ namespace VERA
         public string studyId;
         public string survey;
         public string participantId;
+    }
+
+    [System.Serializable]
+    public class SurveyInstanceData
+    {
+        public string instanceId;
+        public string experimentId;
+        public bool activated;
     }
 
     [System.Serializable]
