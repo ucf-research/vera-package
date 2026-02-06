@@ -40,6 +40,7 @@ namespace VERA
         public string baseFilePath = "";
         public string dataPath = "";
         public string genericDataPath = "";
+        public VERABuildAuthInfo buildAuthInfo;
 
         // Experiment management
         public bool sessionFinalized { get; private set; } = false;
@@ -78,7 +79,7 @@ namespace VERA
 #if UNITY_WEBGL && !UNITY_EDITOR
         if (QualitySettings.antiAliasing != 0)
         {
-            Debug.Log("[VERA Logger] Disabling MSAA for WebGL build.");
+            VERADebugger.Log("Disabling MSAA for WebGL build.", "VERA Logger", DebugPreference.Informative);
             QualitySettings.antiAliasing = 0;
         }
 #endif
@@ -88,9 +89,9 @@ namespace VERA
             // If we are NOT in a WebXR build (WebGL), initialize immediately
             // WebXR builds will initialize later via a message from the WebXR build
 #if UNITY_WEBGL && !UNITY_EDITOR
-        Debug.Log("[VERA Logger] WebXR build detected; initialization will occur via Unity message from the VERA site. Not initializing yet.");
+        VERADebugger.Log("WebXR build detected; initialization will occur via Unity message from the VERA site. Not initializing yet.", "VERA Logger", DebugPreference.Informative);
 #else
-            Debug.Log("[VERA Logger] Session is not running in an active WebXR session; initializing logger directly...");
+            VERADebugger.Log("Session is not running in an active WebXR session; initializing logger directly...", "VERA Logger", DebugPreference.Informative);
             StartCoroutine(Initialize());
 #endif
         }
@@ -101,7 +102,7 @@ namespace VERA
         {
             if (initialized)
             {
-                Debug.LogWarning("[VERA Logger] Logger is already initialized. Skipping reinitialization.");
+                VERADebugger.LogWarning("Logger is already initialized. Skipping reinitialization.", "VERA Logger");
                 yield break;
             }
 
@@ -114,9 +115,9 @@ namespace VERA
             }
 
             // Upload any existing unuploaded files
-            UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedCSVs.txt"), dataPath, ".csv");
-            UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedImages.txt"), dataPath, ".png");
-            UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedGeneric.txt"), genericDataPath, "");
+            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedCSVs.txt"), dataPath, ".csv");
+            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedImages.txt"), dataPath, ".png");
+            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedGeneric.txt"), genericDataPath, "");
 
             // Setup any file types, CSV logging, and the generic file helper
             SetupFileTypes();
@@ -134,7 +135,7 @@ namespace VERA
             // Short buffer for subscriptions to register
             yield return null;
 
-            Debug.Log("[VERA Logger] Logger initialized successfully.");
+            VERADebugger.Log("Logger initialized successfully. Data collection can now begin.", "VERA Logger", DebugPreference.Minimal);
             initialized = true;
             onLoggerInitialized?.Invoke();
         }
@@ -149,25 +150,45 @@ namespace VERA
                 // Load from file
                 string json = buildAuthFile.text;
                 VERABuildAuthInfo authInfo = JsonUtility.FromJson<VERABuildAuthInfo>(json);
+                buildAuthInfo = authInfo;
 
                 // Set PlayerPrefs to match file
                 PlayerPrefs.SetInt("VERA_BuildAuthenticated", authInfo.authenticated ? 1 : 0);
                 PlayerPrefs.SetString("VERA_BuildAuthToken", authInfo.buildAuthToken);
                 PlayerPrefs.SetString("VERA_ActiveExperiment", authInfo.activeExperiment);
                 PlayerPrefs.SetString("VERA_ActiveSite", authInfo.activeSite);
+                PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
+                PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
             }
             else
             {
+                VERABuildAuthInfo emptyAuthInfo = new VERABuildAuthInfo
+                {
+                    authenticated = false,
+                    buildAuthToken = String.Empty,
+                    activeExperiment = String.Empty,
+                    activeExperimentName = String.Empty,
+                    activeSite = String.Empty,
+                    activeSiteName = String.Empty,
+                    isMultiSite = false,
+                    currentBuildNumber = -1,
+                    dataRecordingType = DataRecordingType.RecordLocallyAndLive,
+                    debugPreference = DebugPreference.Informative
+                };
+                buildAuthInfo = emptyAuthInfo;
+
                 // File not found, authentication likely not set up yet; set default values
                 PlayerPrefs.SetInt("VERA_BuildAuthenticated", 0);
-                PlayerPrefs.SetString("VERA_BuildAuthToken", String.Empty);
-                PlayerPrefs.SetString("VERA_ActiveExperiment", String.Empty);
-                PlayerPrefs.SetString("VERA_ActiveSite", String.Empty);
+                PlayerPrefs.SetString("VERA_BuildAuthToken", emptyAuthInfo.buildAuthToken);
+                PlayerPrefs.SetString("VERA_ActiveExperiment", emptyAuthInfo.activeExperiment);
+                PlayerPrefs.SetString("VERA_ActiveSite", emptyAuthInfo.activeSite);
+                PlayerPrefs.SetInt("VERA_DataRecordingType", (int)emptyAuthInfo.dataRecordingType);
+                PlayerPrefs.SetInt("VERA_DebugPreference", (int)emptyAuthInfo.debugPreference);
 
                 // Log unauthenticated user
-                Debug.LogError("[VERA Authentication] Your experiment has not been authenticated, and will not be " +
+                VERADebugger.LogError("Your experiment has not been authenticated, and will not be " +
                     "able to record data. Authenticate via the Unity menu bar item, VERA -> Settings; if you are already " +
-                    "authenticated, try logging out and reauthenticating.");
+                    "authenticated, try logging out and reauthenticating.", "VERA Authentication");
             }
         }
 
@@ -186,8 +207,8 @@ namespace VERA
 
             if (string.IsNullOrEmpty(experimentUUID) || experimentUUID == "N/A")
             {
-                Debug.LogError("[VERA Logger] You do not have an active experiment. Without an active experiment, data cannot be collected using VERA." +
-                    " In the Menu Bar at the top of the editor, please click on the 'VERA' dropdown, then select 'Settings' to pick an active experiment.");
+                VERADebugger.LogError("You do not have an active experiment. Without an active experiment, data cannot be collected using VERA." +
+                    " In the Menu Bar at the top of the editor, please click on the 'VERA' dropdown, then select 'Settings' to pick an active experiment.", "VERA Logger");
                 yield break;
             }
 
@@ -228,9 +249,9 @@ namespace VERA
             yield return www.SendWebRequest();
 
             if (www.result == UnityWebRequest.Result.Success)
-                Debug.Log("[VERA Connection] You are connected to the VERA servers.");
+                VERADebugger.Log("You are connected to the VERA servers.", "VERA Connection", DebugPreference.Informative);
             else
-                Debug.LogError("[VERA Connection] Failed to connect to the VERA servers: " + www.error);
+                VERADebugger.LogError("Failed to connect to the VERA servers: " + www.error, "VERA Connection");
         }
 
         // Manually initializes the logger with the specified site ID and participant ID.
@@ -240,7 +261,7 @@ namespace VERA
         // Continues to initialize the logger after setting the site ID.
         public void ManualInitialization(string siteId, string participantId)
         {
-            Debug.Log("[VERA Logger] Overriding initialization with given parameters...");
+            VERADebugger.Log("Overriding initialization with given parameters...", "VERA Logger", DebugPreference.Informative);
 
             if (!string.IsNullOrEmpty(siteId))
             {
@@ -280,7 +301,7 @@ namespace VERA
 
             if (!result.success)
             {
-                Debug.LogError($"[VERA Logger] GET request failed for URL: {url}. Error: {result.error}. Response Code: {result.responseCode}");
+                VERADebugger.LogError($"GET request failed for URL: {url}. Error: {result.error}. Response Code: {result.responseCode}", "VERA Logger");
             }
 
             request.Dispose();
@@ -304,7 +325,7 @@ namespace VERA
             VERAColumnDefinition[] columnDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
             if (columnDefinitions == null || columnDefinitions.Length == 0)
             {
-                Debug.Log("[VERA Logger] No CSV file types found; continuing assuming no CSV logging will occur.");
+                VERADebugger.Log("No CSV file types found; continuing assuming no CSV logging will occur.", "VERA Logger", DebugPreference.Informative);
                 return;
             }
 
@@ -331,7 +352,7 @@ namespace VERA
             if (existingSetup == null)
             {
                 // No baseline setup found, create one automatically
-                Debug.Log("[VERA Logger] Auto-creating baseline data logging setup...");
+                VERADebugger.Log("Auto-creating baseline data logging setup...", "VERA Logger", DebugPreference.Verbose);
 
                 // Add the component to the VERALogger GameObject
                 VERABaselineAutoSetup autoSetup = gameObject.AddComponent<VERABaselineAutoSetup>();
@@ -340,14 +361,16 @@ namespace VERA
                 autoSetup.autoCreateBaselineLogger = true;
                 autoSetup.startOnExperimentBegin = true;
                 autoSetup.fallbackAutoStart = true;
-                autoSetup.defaultSamplingRate = 30;
 
-                Debug.Log("[VERA Logger] Baseline data logging setup created automatically. " +
-                         "VR baseline data will be collected at 30Hz when experiment starts.");
+                // TODO: RESET
+                // autoSetup.defaultSamplingRate = 30;
+
+                VERADebugger.Log("Baseline data logging setup created automatically. " +
+                         "VR baseline data will be collected at 30Hz when experiment starts.", "VERA Logger", DebugPreference.Informative);
             }
             else
             {
-                Debug.Log("[VERA Logger] Baseline data logging setup already exists - using existing configuration.");
+                VERADebugger.Log("Baseline data logging setup already exists - using existing configuration.", "VERA Logger", DebugPreference.Informative);
             }
         }
 
@@ -358,12 +381,12 @@ namespace VERA
         {
             if (!collecting)
             {
-                Debug.LogWarning("[VERA Logger] Cannot access CSV handers - collection is not yet enabled.");
+                VERADebugger.LogWarning("Cannot access CSV handers - collection is not yet enabled.", "VERA Logger");
                 return null;
             }
             if (!initialized)
             {
-                Debug.LogWarning("[VERA Logger]: Cannot access CSV handers - logger is not yet initialized.");
+                VERADebugger.LogWarning("Cannot access CSV handers - logger is not yet initialized.", "VERA Logger");
                 return null;
             }
 
@@ -393,17 +416,28 @@ namespace VERA
         #region ENTRY LOGGING AND SUBMISSION
 
 
+        /// <summary>
+        /// Gets the current data recording type set for this build.
+        /// </summary>
+        /// <returns>DataRecordingType enum value representing the current data recording type.</returns>
+        public DataRecordingType GetDataRecordingType()
+        {
+            int recordingTypeInt = PlayerPrefs.GetInt("VERA_DataRecordingType", (int)DataRecordingType.RecordLocallyAndLive);
+            return (DataRecordingType)recordingTypeInt;
+        }
+
+
         // Creates a CSV entry for the given file type
         public void CreateCsvEntry(string fileTypeName, int eventId, params object[] values)
         {
-            if (!collecting || !initialized)
+            if (!collecting || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)
                 return;
 
             VERACsvHandler csvHandler = FindCsvHandlerByFileName(fileTypeName);
             if (csvHandler == null)
             {
-                Debug.LogError("[VERA Logger]: No file type could be found associated with provided name \"" +
-                  fileTypeName + "\"; cannot log CSV entry to the file as desired.");
+                VERADebugger.LogError("No file type could be found associated with provided name \"" +
+                  fileTypeName + "\"; cannot log CSV entry to the file as desired.", "VERA Logger");
                 return;
             }
 
@@ -428,8 +462,8 @@ namespace VERA
 
             if (csvHandler == null)
             {
-                Debug.LogError("[VERA Logger]: No file type could be found associated with provided name \"" +
-                  fileTypeName + "\"; cannot submit the CSV as desired.");
+                VERADebugger.LogError("No file type could be found associated with provided name \"" +
+                  fileTypeName + "\"; cannot submit the CSV as desired.", "VERA Logger");
                 return;
             }
 
@@ -502,12 +536,12 @@ namespace VERA
             // Create directories if necessary
             if (!Directory.Exists(existingFilesFolderPath))
             {
-                Debug.Log($"[VERA Logger] Directory [{existingFilesFolderPath}] does not exist, creating it");
+                VERADebugger.Log($"Directory [{existingFilesFolderPath}] does not exist, creating it", "VERA Logger", DebugPreference.Informative);
                 Directory.CreateDirectory(existingFilesFolderPath);
             }
             if (!File.Exists(alreadyUploadedTxtPath))
             {
-                Debug.Log($"File [{alreadyUploadedTxtPath}] does not exist, creating it");
+                VERADebugger.Log($"File [{alreadyUploadedTxtPath}] does not exist, creating it", "VERA Logger", DebugPreference.Informative);
                 FileStream f = File.Create(alreadyUploadedTxtPath);
                 f.Close();
             }
@@ -524,19 +558,19 @@ namespace VERA
                     // Ignore and delete the file if it is partial
                     if (file.Contains("partial"))
                     {
-                        Debug.Log("[VERA Logger] Found a partial sync file \"" + file + "\"; deleting file...");
+                        VERADebugger.Log("Found a partial sync file \"" + file + "\"; deleting file...", "VERA Logger", DebugPreference.Informative);
                         try
                         {
                             File.Delete(file);
                         }
                         catch (Exception e)
                         {
-                            Debug.LogError("[VERA Logger] Failed to delete partial sync file \"" + file + "\": " + e.Message);
+                            VERADebugger.LogError("Failed to delete partial sync file \"" + file + "\": " + e.Message, "VERA Logger");
                         }
                         continue;
                     }
 
-                    Debug.Log("[VERA Logger] Found an unuploaded file \"" + file + "\"; uploading file...");
+                    VERADebugger.Log("Found an unuploaded file \"" + file + "\"; uploading file...", "VERA Logger", DebugPreference.Informative);
 
                     switch (extensionToUpload)
                     {
@@ -577,13 +611,13 @@ namespace VERA
                 }
                 else
                 {
-                    Debug.LogError("VERA: Invalid file name");
+                    VERADebugger.LogError("Invalid file name", "VERA Logger");
                     yield break;
                 }
             }
             else
             {
-                Debug.LogError("VERA: Invalid file name");
+                VERADebugger.LogError("Invalid file name", "VERA Logger");
                 yield break;
             }
 
@@ -594,7 +628,7 @@ namespace VERA
             yield return ReadBinaryDataFile(csvFilePath, (result) => fileData = result);
             if (fileData == null)
             {
-                Debug.Log("No file data to submit");
+                VERADebugger.Log("No file data to submit", "VERA Logger", DebugPreference.Informative);
                 yield break;
             }
 
@@ -613,12 +647,12 @@ namespace VERA
             // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Logger] Successfully uploaded existing file \"" + csvFilePath + "\".");
+                VERADebugger.Log("Successfully uploaded existing file \"" + csvFilePath + "\".", "VERA Logger", DebugPreference.Informative);
                 OnCsvFullyUploaded(csvFilePath);
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to upload existing file \"" + csvFilePath + "\".");
+                VERADebugger.LogError("Failed to upload existing file \"" + csvFilePath + "\".", "VERA Logger");
             }
         }
 
@@ -635,7 +669,14 @@ namespace VERA
                 return;
 
             sessionFinalized = true;
-            Debug.Log("[VERA Logger] Session finalized; marking COMPLETE and doing final sync.");
+
+            DataRecordingType recordingType = GetDataRecordingType();
+            if (recordingType == DataRecordingType.DoNotRecord)
+            {
+                return;
+            }
+
+            VERADebugger.Log("Session finalized; marking COMPLETE and doing final sync.", "VERA Logger", DebugPreference.Minimal);
 
             StartCoroutine(SyncFilesThenComplete());
         }
@@ -661,31 +702,30 @@ namespace VERA
                 if (!allUploadsCompleted)
                 {
                     // If there is an active upload request, wait for it to complete
-                    Debug.Log("[VERA Logger] Waiting for active upload requests to complete before marking participant as COMPLETE.");
+                    VERADebugger.Log("Waiting for active upload requests to complete before marking participant as COMPLETE.", "VERA Logger", DebugPreference.Verbose);
                     yield return new WaitForSeconds(0.5f);
                 }
                 else
                 {
-                    Debug.Log("[VERA Logger] All active upload requests completed. Marking participant as COMPLETE.");
+                    VERADebugger.Log("All active upload requests completed. Marking participant as COMPLETE.", "VERA Logger", DebugPreference.Verbose);
                 }
             }
 
             if (!activeParticipant.IsInFinalizedState())
                 yield return StartCoroutine(activeParticipant.RetryableChangeProgress(VERAParticipantManager.ParticipantProgressState.COMPLETE));
             else
-                Debug.LogWarning("[VERA Logger] Participant is already in a finalized state before session completion. No action taken.");
+                VERADebugger.LogWarning("Participant is already in a finalized state before session completion. No action taken.", "VERA Logger");
 
-            Debug.Log("[VERA Logger] Participant marked as COMPLETE successfully. All finalization tasks complete.");
-
-            #if UNITY_WEBGL && !UNITY_EDITOR
+            VERADebugger.Log("All finalization tasks have completed successfully.", "VERA Logger", DebugPreference.Minimal);
+#if UNITY_WEBGL && !UNITY_EDITOR
             // In WebGL builds, notify the site itself that the session is complete
-            Debug.Log("[VERA Logger] Notifying VERA portal that session has been finalized.");   
-            #if UNITY_2021_1_OR_NEWER
+            VERADebugger.Log("Notifying VERA portal that session has been finalized.", "VERA Logger", DebugPreference.Informative);   
+#if UNITY_2021_1_OR_NEWER
             Application.ExternalEval("window.unityMessageHandler('FINALIZE_SESSION')");
-            #else
+#else
             Application.ExternalCall("unityMessageHandler", "FINALIZE_SESSION");
-            #endif
-            #endif
+#endif
+#endif
         }
 
 
@@ -705,7 +745,7 @@ namespace VERA
                 return conditionsCache[ivName];
             }
 
-            Debug.LogError("[VERA Logger] No independent variable found with name \"" + ivName + "\"; cannot get selected value.");
+            VERADebugger.LogError("No independent variable found with name \"" + ivName + "\"; cannot get selected value.", "VERA Logger");
             return null;
         }
 
@@ -720,7 +760,7 @@ namespace VERA
                 return ivValue;
             }
 
-            Debug.LogError("[VERA Logger] No independent variable found with name \"" + ivName + "\"; cannot set selected value.");
+            VERADebugger.LogError("No independent variable found with name \"" + ivName + "\"; cannot set selected value.", "VERA Logger");
             return null;
         }
 
@@ -735,7 +775,7 @@ namespace VERA
 
             if (result == null || !result.success)
             {
-                Debug.LogError("[VERA Logger] Failed to get experiment conditions from server; cannot initialize conditions.");
+                VERADebugger.LogError("Failed to get experiment conditions from server; cannot initialize conditions.", "VERA Logger");
                 yield break;
             }
 
@@ -747,13 +787,13 @@ namespace VERA
             }
             catch (Exception e)
             {
-                Debug.LogError("[VERA Logger] Failed to parse experiment conditions response: " + e.Message);
+                VERADebugger.LogError("Failed to parse experiment conditions response: " + e.Message, "VERA Logger");
                 yield break;
             }
 
             if (resp == null || !resp.success || resp.independentVariables == null || resp.independentVariables.Length == 0)
             {
-                Debug.Log("[VERA Logger] No independent variables found in experiment conditions response; continuing assuming experiment has no conditions.");
+                VERADebugger.Log("No independent variables found in experiment conditions response; continuing assuming experiment has no conditions.", "VERA Logger", DebugPreference.Informative);
                 yield break;
             }
 
@@ -768,7 +808,7 @@ namespace VERA
                 }
                 else
                 {
-                    Debug.LogWarning("[VERA Logger] Independent variable \"" + iv.ivName + "\" has no selected condition value; defaulting to first condition.");
+                    VERADebugger.LogWarning("Independent variable \"" + iv.ivName + "\" has no selected condition value; defaulting to first condition.", "VERA Logger");
                     if (iv.conditions != null && iv.conditions.Length > 0 && iv.conditions[0].name != null && iv.conditions[0].name != "")
                     {
                         conditionsCache.Add(iv.ivName, iv.conditions[0].name);
@@ -776,21 +816,21 @@ namespace VERA
                     }
                     else
                     {
-                        Debug.LogError("[VERA Logger] Independent variable \"" + iv.ivName + "\" has no conditions defined; skipping.");
+                        VERADebugger.LogError("Independent variable \"" + iv.ivName + "\" has no conditions defined; skipping.", "VERA Logger");
                     }
                 }
             }
 
             if (ivChanged)
             {
-                Debug.Log("[VERA Logger] One or more independent variables had no selected condition; syncing updated conditions to server.");
+                VERADebugger.Log("One or more independent variables had no selected condition; syncing updated conditions to server.", "VERA Logger", DebugPreference.Informative);
                 foreach (string ivName in conditionsCache.Keys)
                 {
                     yield return StartCoroutine(SyncParticipantCondition(ivName));
                 }
             }
 
-            Debug.Log("[VERA Logger] Experiment conditions initialized successfully with " + conditionsCache.Count + " independent variables. Conditions: " + GetExperimentConditions());
+            VERADebugger.Log("Experiment conditions initialized successfully with " + conditionsCache.Count + " independent variables. Conditions: " + GetExperimentConditions(), "VERA Logger", DebugPreference.Informative);
         }
 
         // Syncs a single independent variable's selected condition to the server
@@ -798,7 +838,7 @@ namespace VERA
         {
             if (!conditionsCache.ContainsKey(ivName))
             {
-                Debug.LogError("[VERA Logger] No independent variable found with name \"" + ivName + "\"; cannot sync condition to server.");
+                VERADebugger.LogError("No independent variable found with name \"" + ivName + "\"; cannot sync condition to server.", "VERA Logger");
                 yield break;
             }
 
@@ -809,7 +849,7 @@ namespace VERA
             // Use simple string formatting for WebGL compatibility (no reflection emit)
             string jsonPayload = "{\"selected\":\"" + ivValue.Replace("\"", "\\\"") + "\"}";
             // Alternative: string jsonPayload = $"{{\"selected\":\"{ivValue.Replace("\"", "\\\"")}\"}}";
-            
+
 
             // Send the request
             UnityWebRequest request = new UnityWebRequest(url, "PATCH");
@@ -822,11 +862,11 @@ namespace VERA
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Logger] Successfully synced condition for IV \"" + ivName + "\" with value \"" + ivValue + "\" to server.");
+                VERADebugger.Log("Successfully synced condition for IV \"" + ivName + "\" with value \"" + ivValue + "\" to server.", "VERA Logger", DebugPreference.Informative);
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to sync condition for IV \"" + ivName + "\" to server. Error: " + request.error);
+                VERADebugger.LogError("Failed to sync condition for IV \"" + ivName + "\" to server. Error: " + request.error, "VERA Logger");
             }
         }
 
@@ -837,7 +877,7 @@ namespace VERA
             // Manual JSON serialization for WebGL compatibility (no reflection emit)
             if (conditionsCache == null || conditionsCache.Count == 0)
                 return "{}";
-            
+
             var pairs = new List<string>();
             foreach (var kvp in conditionsCache)
             {
@@ -885,7 +925,7 @@ namespace VERA
             // If participant is still in progress, mark as incomplete
             if (!sessionFinalized && !activeParticipant.IsInFinalizedState())
             {
-                Debug.LogWarning("[VERA Logger] App is quitting before participant is finalized. Marking participant as INCOMPLETE.");
+                VERADebugger.LogWarning("App is quitting before participant is finalized. Marking participant as INCOMPLETE.", "VERA Logger");
                 activeParticipant.SetParticipantProgress(VERAParticipantManager.ParticipantProgressState.INCOMPLETE);
                 periodicSyncHandler.StopPeriodicSync();
                 periodicSyncHandler.CleanupPartialSyncFiles();
@@ -924,14 +964,14 @@ namespace VERA
             {
                 try
                 {
-                    //Debug.Log("Reading file: " + filePath);
+                    //VERADebugger.Log("Reading file: " + filePath, "VERA Logger", DebugPreference.Verbose);
                     fileData = File.ReadAllBytes(filePath);
                     fileReadSuccess = true;
                     break;
                 }
                 catch (IOException ex)
                 {
-                    Debug.LogWarning($"[VERA Logger] Attempt {ex.Message} {i + 1}: Failed to read file due to sharing violation. Retrying...");
+                    VERADebugger.LogWarning($"Attempt {ex.Message} {i + 1}: Failed to read file due to sharing violation. Retrying...", "VERA Logger");
                 }
 
                 if (!fileReadSuccess)
@@ -942,13 +982,13 @@ namespace VERA
 
             if (!fileReadSuccess)
             {
-                Debug.LogError("[VERA Logger] Failed to read the file after multiple attempts.");
+                VERADebugger.LogError("Failed to read the file after multiple attempts.", "VERA Logger");
                 yield break;
             }
 
             if (fileData.Length > 50 * 1024 * 1024)
             {
-                Debug.LogError("[VERA Logger] File \"" + filePath + "\" size exceeds the limit of 50MB. File will not be uploaded.");
+                VERADebugger.LogError("File \"" + filePath + "\" size exceeds the limit of 50MB. File will not be uploaded.", "VERA Logger");
                 yield break;
             }
 
@@ -962,12 +1002,65 @@ namespace VERA
     }
 
 
+    /// <summary>
+    /// Defines how VERA should handle data recording.
+    /// </summary>
+    internal enum DataRecordingType
+    {
+        /// <summary>
+        /// VERA will not record any data. All logging calls will be ignored.
+        /// </summary>
+        DoNotRecord = 0,
+
+        /// <summary>
+        /// VERA will only save data locally. No data will be sent to the VERA web portal.
+        /// </summary>
+        OnlyRecordLocally = 1,
+
+        /// <summary>
+        /// VERA will save data locally and also push it to the VERA web portal in real-time.
+        /// </summary>
+        RecordLocallyAndLive = 2
+    }
+
+    /// <summary>
+    /// Defines the level of debug logging VERA should output.
+    /// </summary>
+    public enum DebugPreference
+    {
+        /// <summary>
+        /// VERA will output detailed debug logs, including all internal operations and state changes.
+        /// </summary>
+        Verbose = 0,
+
+        /// <summary>
+        /// VERA will output informative logs including errors, warnings, and important state changes.
+        /// </summary>
+        Informative = 1,
+
+        /// <summary>
+        /// VERA will only output essential logs such as errors and warnings.
+        /// </summary>
+        Minimal = 2,
+
+        /// <summary>
+        /// VERA will not output any debug logs to the console.
+        /// </summary>
+        None = 3
+    }
+
     [System.Serializable]
     internal class VERABuildAuthInfo
     {
         public bool authenticated = false;
         public string buildAuthToken = String.Empty;
         public string activeExperiment = String.Empty;
+        public string activeExperimentName = String.Empty;
+        public bool isMultiSite = false;
         public string activeSite = String.Empty;
+        public string activeSiteName = String.Empty;
+        public int currentBuildNumber = -1;
+        public DataRecordingType dataRecordingType = DataRecordingType.RecordLocallyAndLive;
+        public DebugPreference debugPreference = DebugPreference.Informative;
     }
 }

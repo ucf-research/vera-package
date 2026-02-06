@@ -23,7 +23,7 @@ public class VERAWebXRHookup : MonoBehaviour
         string siteId = queryParams["siteId"];
         string participantId = queryParams["participantId"];
 
-        Debug.Log("[VERAWebXRHookup] Initializing VERA with Site ID: " + siteId + " and Participant ID: " + participantId);
+        VERADebugger.Log("Initializing VERA with Site ID: " + siteId + " and Participant ID: " + participantId, "VERAWebXRHookup", DebugPreference.Informative);
         VERASessionManager.ManualInitialization(siteId, participantId);
     }
 }

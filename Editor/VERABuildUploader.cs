@@ -29,7 +29,7 @@ namespace VERA
         // Builds the experiment for WebXR and uploads to the portal
         public static async void BuildAndUploadExperiment()
         {
-            Debug.Log("Building and uploading experiment...");
+            VERADebugger.Log("Building and uploading experiment...", "VERA Build Uploader", DebugPreference.Minimal);
 
             // Ensure WebGL build platform exists and is selected
             bool webGLSettingsSuccess = EnsureWebGLSettings();
@@ -50,10 +50,10 @@ namespace VERA
             // If failed to ensure packages, show error and return
             if (!webXRExportPackageSuccess || !webXRInteractionsPackageSuccess)
             {
-                Debug.LogError("Build failed - could not ensure WebXR packages are installed. " +
+                VERADebugger.LogError("Build failed - could not ensure WebXR packages are installed. " +
                     "Please try manually installing the WebXR packages, then try again. " +
                     "Both the \"WebXR Export\" and \"WebXR Interactions\" packages are required to build the project for WebXR. " +
-                    "You can find instructions here: https://openupm.com/packages/com.de-panther.webxr/");
+                    "You can find instructions here: https://openupm.com/packages/com.de-panther.webxr/", "VERA Build Uploader");
 
                 EditorUtility.DisplayDialog("Build Failed",
                     "Could not ensure WebXR packages are installed. Please check the console for details.",
@@ -69,8 +69,8 @@ namespace VERA
 
             if (!buildSuccess)
             {
-                Debug.LogError("Build / upload failed - could not build / upload the project for WebXR. " +
-                    "Please check the console for details.");
+                VERADebugger.LogError("Build / upload failed - could not build / upload the project for WebXR. " +
+                    "Please check the console for details.", "VERA Build Uploader");
                 EditorUtility.DisplayDialog("Build Failed",
                     "Could not build or upload the project for WebXR. This is likely due to a general build error. " +
                     "Please check the console for details.",
@@ -84,7 +84,7 @@ namespace VERA
                 "For more information, please visit the VERA documentation.",
                 "Okay");
 
-            Debug.Log("Experiment built and uploaded successfully!");
+            VERADebugger.Log("Experiment built and uploaded successfully!", "VERA Build Uploader", DebugPreference.Minimal);
         }
 
 
@@ -124,19 +124,19 @@ namespace VERA
                 return true;
             }
 
-            Debug.Log("Switching build target to WebGL...");
+            VERADebugger.Log("Switching build target to WebGL...", "VERA Build Uploader", DebugPreference.Informative);
 
             // If not, switch to WebGL build target
             bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL);
 
             if (success)
             {
-                Debug.Log("Successfully switched build target to WebGL.");
+                VERADebugger.Log("Successfully switched build target to WebGL.", "VERA Build Uploader", DebugPreference.Informative);
                 return true;
             }
             else
             {
-                Debug.LogError("Failed to switch build target to WebGL. Check the console for details.");
+                VERADebugger.LogError("Failed to switch build target to WebGL. Check the console for details.", "VERA Build Uploader");
                 return false;
             }
         }
@@ -159,7 +159,7 @@ namespace VERA
 
             if (list.Status == StatusCode.Failure)
             {
-                Debug.LogError($"Package-list failed: {list.Error.message}");
+                VERADebugger.LogError($"Package-list failed: {list.Error.message}", "VERA Build Uploader");
                 return false;
             }
 
@@ -168,19 +168,18 @@ namespace VERA
                 return true;
 
             // Add the package if it doesn't exist yet
-            Debug.Log($"Installing package {packageName} from {gitUrl}...");
-
+            VERADebugger.Log($"Installing package {packageName} from {gitUrl}...", "VERA Build Uploader", DebugPreference.Informative);
             AddRequest add = Client.Add(gitUrl);
             while (!add.IsCompleted)
                 await Task.Yield();
 
             if (add.Status == StatusCode.Success)
             {
-                Debug.Log($"Successfully installed {packageName}");
+                VERADebugger.Log($"Successfully installed {packageName}", "VERA Build Uploader", DebugPreference.Informative);
                 return true;
             }
 
-            Debug.LogError($"Failed to install {packageName}: {add.Error.message}");
+            VERADebugger.LogError($"Failed to install {packageName}: {add.Error.message}", "VERA Build Uploader");
             return false;
         }
 
@@ -254,7 +253,7 @@ namespace VERA
         // Disables Anti-Aliasing for WebXR builds
         public static void DisableAA()
         {
-            Debug.Log("Disabling anti-aliasing for WebXR build...");
+            VERADebugger.Log("Disabling anti-aliasing for WebXR build...", "VERA Build Uploader", DebugPreference.Informative);
 
             // First, handle built-in render pipeline quality settings
             DisableBuiltinAA();
@@ -262,7 +261,7 @@ namespace VERA
             // Then, handle Scriptable Render Pipeline assets
             DisableSRPAA();
 
-            Debug.Log("Anti-aliasing disabled for all render pipelines.");
+            VERADebugger.Log("Anti-aliasing disabled for all render pipelines.", "VERA Build Uploader", DebugPreference.Informative);
         }
 
         // Disables AA in built-in render pipeline quality settings
@@ -278,7 +277,7 @@ namespace VERA
 
                 if (QualitySettings.antiAliasing != 0)
                 {
-                    Debug.Log($"Disabling built-in AA for quality level '{names[i]}' (was {QualitySettings.antiAliasing}x)");
+                    VERADebugger.Log($"Disabling built-in AA for quality level '{names[i]}' (was {QualitySettings.antiAliasing}x)", "VERA Build Uploader", DebugPreference.Informative);
                     QualitySettings.antiAliasing = 0;
                 }
             }
@@ -332,7 +331,7 @@ namespace VERA
             System.Type assetType = asset.GetType();
             string typeName = assetType.Name;
 
-            Debug.Log($"Processing render pipeline asset: {assetPath} (Type: {typeName})");
+            VERADebugger.Log($"Processing render pipeline asset: {assetPath} (Type: {typeName})", "VERA Build Uploader", DebugPreference.Informative);
 
             bool modified = false;
 
@@ -351,7 +350,7 @@ namespace VERA
             {
                 EditorUtility.SetDirty(asset);
                 AssetDatabase.SaveAssets();
-                Debug.Log($"Disabled anti-aliasing for {typeName} asset: {assetPath}");
+                VERADebugger.Log($"Disabled anti-aliasing for {typeName} asset: {assetPath}", "VERA Build Uploader", DebugPreference.Informative);
             }
         }
 
@@ -372,7 +371,7 @@ namespace VERA
                     {
                         msaaField.SetValue(asset, 1);
                         modified = true;
-                        Debug.Log($"URP MSAA disabled (was {currentValue})");
+                        VERADebugger.Log($"URP MSAA disabled (was {currentValue})", "VERA Build Uploader", DebugPreference.Informative);
                     }
                 }
 
@@ -385,7 +384,7 @@ namespace VERA
                     {
                         aaQualityField.SetValue(asset, 0);
                         modified = true;
-                        Debug.Log($"URP Anti-aliasing disabled (was {currentValue})");
+                        VERADebugger.Log($"URP Anti-aliasing disabled (was {currentValue})", "VERA Build Uploader", DebugPreference.Informative);
                     }
                 }
 
@@ -393,7 +392,7 @@ namespace VERA
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"Could not disable URP anti-aliasing via reflection: {e.Message}");
+                VERADebugger.LogWarning($"Could not disable URP anti-aliasing via reflection: {e.Message}", "VERA Build Uploader");
                 return false;
             }
         }
@@ -424,13 +423,13 @@ namespace VERA
                             {
                                 field.SetValue(asset, 0);
                                 modified = true;
-                                Debug.Log($"HDRP {field.Name} disabled (was {currentValue})");
+                                VERADebugger.Log($"HDRP {field.Name} disabled (was {currentValue})", "VERA Build Uploader", DebugPreference.Informative);
                             }
                             else if (field.FieldType == typeof(bool) && (bool)currentValue)
                             {
                                 field.SetValue(asset, false);
                                 modified = true;
-                                Debug.Log($"HDRP {field.Name} disabled");
+                                VERADebugger.Log($"HDRP {field.Name} disabled", "VERA Build Uploader", DebugPreference.Informative);
                             }
                             else if (field.FieldType.IsEnum)
                             {
@@ -440,13 +439,13 @@ namespace VERA
                                 {
                                     field.SetValue(asset, enumValues.GetValue(0));
                                     modified = true;
-                                    Debug.Log($"HDRP {field.Name} set to {enumValues.GetValue(0)} (was {currentValue})");
+                                    VERADebugger.Log($"HDRP {field.Name} set to {enumValues.GetValue(0)} (was {currentValue})", "VERA Build Uploader", DebugPreference.Informative);
                                 }
                             }
                         }
                         catch (System.Exception ex)
                         {
-                            Debug.LogWarning($"Could not modify HDRP field {field.Name}: {ex.Message}");
+                            VERADebugger.LogWarning($"Could not modify HDRP field {field.Name}: {ex.Message}", "VERA Build Uploader");
                         }
                     }
                 }
@@ -455,7 +454,7 @@ namespace VERA
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"Could not disable HDRP anti-aliasing via reflection: {e.Message}");
+                VERADebugger.LogWarning($"Could not disable HDRP anti-aliasing via reflection: {e.Message}", "VERA Build Uploader");
                 return false;
             }
         }
@@ -477,7 +476,7 @@ namespace VERA
             try
             {
                 // Build the project (using current build settings)
-                Debug.Log($"Building project into temporary directory: {tempBuildDir}...");
+                VERADebugger.Log($"Building project into temporary directory: {tempBuildDir}...", "VERA Build Uploader", DebugPreference.Informative);
                 BuildPlayerOptions bp = new BuildPlayerOptions
                 {
                     scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray(),
@@ -491,7 +490,7 @@ namespace VERA
                     throw new Exception($"Build failed: {report.summary.result}");
 
                 // Zip the build to a memory stream
-                Debug.Log("Build succeeded! Zipping build files...");
+                VERADebugger.Log("Build succeeded! Zipping build files...", "VERA Build Uploader", DebugPreference.Informative);
                 byte[] zipBytes;
                 using (MemoryStream ms = new MemoryStream())
                 {
@@ -509,7 +508,7 @@ namespace VERA
                 // Upload the zip to the VERA portal
                 string url = $"{VERAHost.hostUrl}/api/experiments/{PlayerPrefs.GetString("VERA_ActiveExperiment")}/webxr";
                 string jwtToken = PlayerPrefs.GetString("VERA_UserAuthToken");
-                Debug.Log($"Zip complete! Uploading to {url}, file size: {zipBytes.Length / 1024f:F1} KB...");
+                VERADebugger.Log($"Zip complete! Uploading to {url}, file size: {zipBytes.Length / 1024f:F1} KB...", "VERA Build Uploader", DebugPreference.Informative);
 
                 using (HttpClient http = new HttpClient())
                 using (MultipartFormDataContent content = new MultipartFormDataContent())
@@ -527,12 +526,12 @@ namespace VERA
                     if (!resp.IsSuccessStatusCode)
                         throw new Exception($"Upload failed ({(int)resp.StatusCode}): {body}");
 
-                    Debug.Log("Upload complete! Response: " + body);
+                    VERADebugger.Log("Upload complete! Response: " + body, "VERA Build Uploader", DebugPreference.Informative);
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to build and upload project. {ex}");
+                VERADebugger.LogError($"Failed to build and upload project. {ex}", "VERA Build Uploader");
                 return false;
             }
             finally
@@ -543,11 +542,11 @@ namespace VERA
                     if (Directory.Exists(tempBuildDir))
                         Directory.Delete(tempBuildDir, true);
 
-                    Debug.Log($"Temporary directory deleted: {tempBuildDir}");
+                    VERADebugger.Log($"Temporary directory deleted: {tempBuildDir}", "VERA Build Uploader", DebugPreference.Informative);
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"Could not delete temporary directory: {e.Message}");
+                    VERADebugger.LogWarning($"Could not delete temporary directory: {e.Message}", "VERA Build Uploader");
                 }
             }
 

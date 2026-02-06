@@ -33,7 +33,7 @@ namespace VERA
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error clearing condition code: {ex.Message}\n{ex.StackTrace}");
+                VERADebugger.LogError($"Error clearing condition code: {ex.Message}\n{ex.StackTrace}", "VERA Condition Generator");
             }
         }
 
@@ -42,7 +42,7 @@ namespace VERA
             string activeExperimentId = UnityEngine.PlayerPrefs.GetString("VERA_ActiveExperiment", "");
             if (string.IsNullOrEmpty(activeExperimentId))
             {
-                Debug.LogWarning("VERA: No active experiment set. Open VERA Settings and select an experiment first.");
+                VERADebugger.LogWarning("No active experiment set. Open VERA Settings and select an experiment first.", "VERA Condition Generator");
                 return;
             }
 
@@ -51,20 +51,20 @@ namespace VERA
             {
                 if (experiments == null)
                 {
-                    Debug.LogError("VERA: Failed to fetch experiments while regenerating conditions.");
+                    VERADebugger.LogError("Failed to fetch experiments while regenerating conditions.", "VERA Condition Generator");
                     return;
                 }
 
                 var active = experiments.Find(e => e._id == activeExperimentId);
                 if (active == null)
                 {
-                    Debug.LogError($"VERA: Active experiment '{activeExperimentId}' not found in fetched experiments.");
+                    VERADebugger.LogError($"Active experiment '{activeExperimentId}' not found in fetched experiments.", "VERA Condition Generator");
                     return;
                 }
 
                 ClearAllConditionCsCode();
                 GenerateAllConditionCsCode(active);
-                Debug.Log("VERA: Condition generation complete.");
+                VERADebugger.Log("Condition generation complete.", "VERA Condition Generator", DebugPreference.Verbose);
             });
         }
 
@@ -73,7 +73,7 @@ namespace VERA
         {
             if (experiment == null || experiment.conditions == null)
             {
-                Debug.LogError("No experiment or condition groups found");
+                VERADebugger.LogError("No experiment or condition groups found", "VERA Condition Generator");
                 return;
             }
 
@@ -92,7 +92,7 @@ namespace VERA
         {
             if (group == null || string.IsNullOrEmpty(group.ivName))
             {
-                Debug.LogError("IV group has no ivName");
+                VERADebugger.LogError("IV group has no ivName", "VERA Condition Generator");
                 return;
             }
 
@@ -107,7 +107,7 @@ namespace VERA
             {
                 if (string.IsNullOrEmpty(condition.name))
                 {
-                    Debug.LogWarning($"[VERA Condition] Skipping condition with no name in IV group {group.ivName}");
+                    VERADebugger.LogWarning($"Skipping condition with no name in IV group {group.ivName}", "VERA Condition Generator");
                     continue;
                 }
 
@@ -153,7 +153,7 @@ namespace VERA
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error generating condition code: {ex.Message}\n{ex.StackTrace}");
+                VERADebugger.LogError($"Error generating condition code: {ex.Message}\n{ex.StackTrace}", "VERA Condition Generator");
             }
         }
 

@@ -51,7 +51,7 @@ namespace VERA
             Destroy(screenshot);
             Destroy(resizedScreenshot);
 
-            Debug.Log("Screenshot saved to: " + filePath);
+            VERADebugger.Log("Screenshot saved to: " + filePath, "VERAScreenRecorder", DebugPreference.None);
 
             VERALogger.Instance.SubmitImageFile(filePath, timestamp, pngData);
         }

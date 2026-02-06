@@ -36,7 +36,7 @@ namespace VERA
             }
 
             // No XRI samples found, so we need to import XRI samples
-            Debug.Log("[VERA XRI Importer] Unable to automatically find XRI samples. Attempting to link / import...");
+            VERADebugger.Log("Unable to automatically find XRI samples. Attempting to link / import...", "VERA XRI Importer", DebugPreference.Informative);
             TryImportSamples();
         }
 
@@ -129,20 +129,19 @@ namespace VERA
                 {
                     if (sample.displayName.Contains("Starter Assets"))
                     {
-                        Debug.Log($"[VERA XRI Importer] Found and importing sample: {sample.displayName}");
+                        VERADebugger.Log($"Found and importing sample: {sample.displayName}", "VERA XRI Importer", DebugPreference.Informative);
                         sample.Import();
                         return;
                     }
                 }
 
-                Debug.LogWarning("[VERA XRI Importer] Could not find Starter Assets sample to import.");
+                VERADebugger.LogWarning("Could not find Starter Assets sample to import.", "VERA XRI Importer");
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"[VERA XRI Importer] Error importing XRI samples: {ex.Message}");
+                VERADebugger.LogError($"Error importing XRI samples: {ex.Message}", "VERA XRI Importer");
             }
         }
-
     }
 }
 #endif

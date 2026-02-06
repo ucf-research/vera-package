@@ -997,7 +997,7 @@ namespace VERA
                 {
                     bool parseSuccess = float.TryParse(parts[0], out savedSliderVal);
                     if (!parseSuccess)
-                        Debug.LogWarning("Unable to parse saved slider value; setting value to 0 and continuing.");
+                        VERADebugger.LogWarning("Unable to parse saved slider value; setting value to 0 and continuing.", "SurveyManager");
                 }
             }
 

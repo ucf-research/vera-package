@@ -30,6 +30,12 @@ namespace VERA
         // Starts the periodic sync of data
         public void StartPeriodicSync()
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                return;
+            }
+
             currentInterval = baseInterval;
             periodicSyncRoutineHandle = StartCoroutine(PeriodicSyncRoutine());
         }
@@ -41,7 +47,7 @@ namespace VERA
                 // 1) Check network
                 if (Application.internetReachability == NetworkReachability.NotReachable)
                 {
-                    Debug.LogWarning("[VERA Sync] Network unreachable; backing off.");
+                    VERADebugger.LogWarning("Network unreachable; backing off.", "VERA Sync");
                     yield return new WaitForSeconds(currentInterval);
                     Backoff();
                     continue;
@@ -49,19 +55,19 @@ namespace VERA
 
                 if (VERALogger.Instance == null)
                 {
-                    Debug.LogWarning("[VERA Sync] VERALogger.Instance is null; skipping this sync iteration and waiting.");
+                    VERADebugger.LogWarning("VERALogger.Instance is null; skipping this sync iteration and waiting.", "VERA Sync");
                     yield return new WaitForSeconds(currentInterval);
                     continue;
                 }
 
                 if (VERALogger.Instance.sessionFinalized)
                 {
-                    Debug.Log("[VERA Sync] Session finalized; stopping periodic sync.");
+                    VERADebugger.Log("Session finalized; stopping periodic sync.", "VERA Sync", DebugPreference.Informative);
                     yield break;
                 }
 
                 // 2) Attempt upload
-                Debug.Log($"[VERA Sync] Attempting sync (interval={currentInterval}s) at {DateTime.Now}");
+                VERADebugger.Log($"Attempting sync (interval={currentInterval}s) at {DateTime.Now}", "VERA Sync", DebugPreference.Verbose);
                 yield return StartCoroutine(UploadAllPending());
 
                 // 3) Wait and reset backoff on success
@@ -72,11 +78,17 @@ namespace VERA
 
         public void StopPeriodicSync()
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                return;
+            }
+
             if (periodicSyncRoutineHandle != null)
             {
                 StopCoroutine(periodicSyncRoutineHandle);
                 periodicSyncRoutineHandle = null;
-                Debug.Log("[VERA Sync] Stopped periodic sync coroutine.");
+                VERADebugger.Log("Stopped periodic sync coroutine.", "VERA Sync", DebugPreference.Informative);
             }
         }
 
@@ -94,17 +106,23 @@ namespace VERA
 
         public IEnumerator UploadAllPending()
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                yield break;
+            }
+
             // Get all CSV handlers from VERA Logger
             if (VERALogger.Instance == null)
             {
-                Debug.LogWarning("[VERA Sync] VERALogger.Instance is null; skipping UploadAllPending.");
+                VERADebugger.LogWarning("VERALogger.Instance is null; skipping UploadAllPending.", "VERA Sync");
                 yield break;
             }
 
             var handlers = VERALogger.Instance.csvHandlers;
             if (handlers == null)
             {
-                Debug.LogWarning("[VERA Sync] VERALogger.Instance.csvHandlers is null; nothing to upload.");
+                VERADebugger.LogWarning("VERALogger.Instance.csvHandlers is null; nothing to upload.", "VERA Sync");
                 yield break;
             }
 
@@ -127,6 +145,12 @@ namespace VERA
         // Performs a final sync of all data, ensuring everything is uploaded
         public IEnumerator FinalSync()
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                yield break;
+            }
+
             if (isFinalSynced) yield break;
             isFinalSynced = true;
 
@@ -134,7 +158,7 @@ namespace VERA
             if (periodicSyncRoutineHandle != null)
             {
                 StopCoroutine(periodicSyncRoutineHandle);
-                Debug.Log("[VERA Sync] Stopped periodic sync coroutine after final upload.");
+                VERADebugger.Log("Stopped periodic sync coroutine after final upload.", "VERA Sync", DebugPreference.Informative);
             }
 
             // Upload all CSVs
