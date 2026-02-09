@@ -9,13 +9,13 @@ namespace VERA
         [Header("Auto-Setup")]
         [Tooltip("Automatically create VERABaselineDataLogger if none exists")]
         [SerializeField] private bool autoCreateLogger = true;
-        
+
         [Header("Logging Settings")]
         [Tooltip("Logging rate in Hz")]
         [SerializeField] private float logRate = 30f;
-        
+
         private VERABaselineDataLogger baselineLogger;
-        
+
         private void Awake()
         {
             if (autoCreateLogger)
@@ -23,7 +23,7 @@ namespace VERA
                 SetupBaselineLogger();
             }
         }
-        
+
         private void SetupBaselineLogger()
         {
             // Check if VERABaselineDataLogger already exists in the scene
@@ -32,15 +32,15 @@ namespace VERA
 #else
             baselineLogger = FindObjectOfType<VERABaselineDataLogger>();
 #endif
-            
+
             if (baselineLogger == null)
             {
                 // Create new GameObject for the baseline logger
                 GameObject loggerObject = new GameObject("VERABaselineDataLogger");
                 baselineLogger = loggerObject.AddComponent<VERABaselineDataLogger>();
-                
+
                 // Configure the logger
-                baselineLogger.SetLogRate(logRate);
+                //baselineLogger.SetLogRate(logRate);
             }
             else
             {
@@ -60,7 +60,7 @@ namespace VERA
                 SetupBaselineLogger();
             }
         }
-        
+
         [ContextMenu("Stop Baseline Logging")]
         public void StopLogging()
         {
@@ -74,7 +74,7 @@ namespace VERA
         {
             return baselineLogger != null && baselineLogger.IsLogging();
         }
-        
+
         public int GetCurrentSampleIndex()
         {
             return baselineLogger != null ? baselineLogger.GetCurrentSampleIndex() : 0;

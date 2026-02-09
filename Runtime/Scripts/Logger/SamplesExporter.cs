@@ -40,7 +40,7 @@ namespace VERA
             // Copy the directory
             FileUtil.CopyFileOrDirectory(src, dst);
             AssetDatabase.Refresh();
-            Debug.Log($"Successfully exported sample from '{src}' to '{dst}'.");
+            VERADebugger.Log($"Successfully exported sample from '{src}' to '{dst}'.", "SamplesExporter", DebugPreference.None);
         }
     }
 }

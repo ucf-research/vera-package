@@ -113,8 +113,8 @@ namespace VERA
             // Check whether user is authenticated or not
             if (PlayerPrefs.GetInt("VERA_UserAuthenticated", 0) == 0)
             {
-                Debug.LogError("[VERA Dev Tools] You are not authenticated; cannot create simulated participant. " +
-                    "Please authenticate with the VERA -> Settings menu bar item and then try again.");
+                VERADebugger.LogError("You are not authenticated; cannot create simulated participant. " +
+                    "Please authenticate with the VERA -> Settings menu bar item and then try again.", "VERADevTools");
                 return;
             }
 
@@ -159,13 +159,13 @@ namespace VERA
                         // Save the participant ID into PlayerPrefs to be used for other dev tools
                         PlayerPrefs.SetString("VERA_SimParticipant", participantUUID);
 
-                        Debug.Log("[VERA Dev Tools] Successfully created a new simulated participant; " +
-                            "options are now available for recording dummy data to this participant.");
+                        VERADebugger.Log("Successfully created a new simulated participant; " +
+                            "options are now available for recording dummy data to this participant.", "VERADevTools", DebugPreference.None);
                         onComplete?.Invoke(true);
                     }
                     else
                     {
-                        Debug.LogError("[VERA Dev Tools] Failed to create a new simulated participant: " + request.error);
+                        VERADebugger.LogError("Failed to create a new simulated participant: " + request.error, "VERADevTools");
                         onComplete?.Invoke(false);
                     }
 
@@ -246,7 +246,7 @@ namespace VERA
             }
             catch (IOException ex)
             {
-                Debug.LogWarning($"[VERA Dev Tools] Failed to read file due to a sharing violation. Please try again. " + ex);
+                VERADebugger.LogWarning($"Failed to read file due to a sharing violation. Please try again. " + ex, "VERADevTools");
             }
 
             // Set up the request
@@ -288,12 +288,12 @@ namespace VERA
                             Path.GetFileName(filePath) + Environment.NewLine);
                         }
 
-                        Debug.Log("[VERA Dev Tools] Successfully submitted dummy data for this participant under file type \"" +
-                            columnDef.fileType.name + "\"");
+                        VERADebugger.Log("Successfully submitted dummy data for this participant under file type \"" +
+                            columnDef.fileType.name + "\"", "VERADevTools", DebugPreference.None);
                     }
                     else
                     {
-                        Debug.LogError("[VERA Dev Tools] Failed to submit dummy data: " + request.error);
+                        VERADebugger.LogError("Failed to submit dummy data: " + request.error, "VERADevTools", DebugPreference.None);
                     }
 
                     request.Dispose();
@@ -331,9 +331,9 @@ namespace VERA
                     EditorApplication.update -= EditorUpdate;
 
                     if (request.result == UnityWebRequest.Result.Success)
-                        Debug.Log($"[VERA Dev Tools] Successfully finalized simulated participant and set their state to COMPLETE.");
+                        VERADebugger.Log("Successfully finalized simulated participant and set their state to COMPLETE.", "VERADevTools", DebugPreference.None);
                     else
-                        Debug.LogError($"[VERA Dev Tools] Failed to finalize simulated session: " + request.error);
+                        VERADebugger.LogError("Failed to finalize simulated session: " + request.error, "VERADevTools", DebugPreference.None);
 
                     request.Dispose();
                     return;

@@ -47,7 +47,7 @@ namespace VERA
                 string[] files = Directory.GetFiles(dataPath, "*.csv");
                 if (files.Length == 0)
                 {
-                    Debug.LogError("No CSV file found in dataPath: " + dataPath);
+                    VERADebugger.LogError("No CSV file found in dataPath: " + dataPath, "TransformLogReplay");
                     return;
                 }
                 else
@@ -72,7 +72,7 @@ namespace VERA
 
             if (lines.Length <= 1)
             {
-                Debug.LogError("CSV file is empty or only contains headers.");
+                VERADebugger.LogError("CSV file is empty or only contains headers.", "TransformLogReplay");
                 return;
             }
 
@@ -93,7 +93,7 @@ namespace VERA
 
                 if (parts.Length < 3)
                 {
-                    Debug.LogWarning("Invalid line (less than 3 columns): " + line);
+                    VERADebugger.LogWarning("Invalid line (less than 3 columns): " + line, "TransformLogReplay");
                     continue;
                 }
 
@@ -104,7 +104,7 @@ namespace VERA
                 int eventId;
                 if (!int.TryParse(eventIdString, out eventId))
                 {
-                    Debug.LogWarning("Invalid eventId in line: " + line);
+                    VERADebugger.LogWarning("Invalid eventId in line: " + line, "TransformLogReplay");
                     continue;
                 }
 
@@ -119,7 +119,7 @@ namespace VERA
 
                 if (transformData == null)
                 {
-                    Debug.LogWarning("Invalid transform data in line: " + line);
+                    VERADebugger.LogWarning("Invalid transform data in line: " + line, "TransformLogReplay");
                     continue;
                 }
 

@@ -21,7 +21,7 @@ namespace VERA
             file = Path.Combine(Application.persistentDataPath, "test.txt");
 #endif
             FileStream f = File.Create(file);
-            Debug.Log($"file created at: {file}");
+            VERADebugger.Log($"file created at: {file}", "VERAGenericFileUploaderDemo", DebugPreference.None);
             f.Close();
             VERALogger.Instance.SubmitGenericFile(file);
         }

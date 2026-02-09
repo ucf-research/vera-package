@@ -116,7 +116,7 @@ namespace VERA
         {
             if (parentLogger == null)
             {
-                Debug.LogError("Debug line has no parent InGameDebugLog script; cannot print to debug log.");
+                VERADebugger.LogError("Debug line has no parent InGameDebugLog script; cannot print to debug log.", "InGameDebugLine");
                 return;
             }
 
