@@ -33,13 +33,6 @@ namespace VERA
             GUILayout.Label("Trial Workflow Execution Order", EditorStyles.boldLabel);
             GUILayout.Space(5);
 
-            // Check authentication
-            if (PlayerPrefs.GetInt("VERA_UserAuthenticated", 0) == 0)
-            {
-                EditorGUILayout.HelpBox("You must be authenticated to view the trial workflow. Go to VERA -> Settings to authenticate.", MessageType.Warning);
-                return;
-            }
-
             // Check if experiment is selected
             string activeExperiment = PlayerPrefs.GetString("VERA_ActiveExperiment", "");
             if (string.IsNullOrEmpty(activeExperiment))
@@ -67,17 +60,6 @@ namespace VERA
             if (!string.IsNullOrEmpty(errorMessage))
             {
                 EditorGUILayout.HelpBox(errorMessage, MessageType.Error);
-
-                // If auth error, show button to open settings
-                if (errorMessage.Contains("Authentication failed") || errorMessage.Contains("re-authenticate"))
-                {
-                    GUILayout.Space(5);
-                    if (GUILayout.Button("Open VERA Settings", GUILayout.Width(150)))
-                    {
-                        VERASettingsWindow.ShowWindow();
-                    }
-                }
-
                 return;
             }
 
@@ -307,13 +289,6 @@ namespace VERA
 
             UnityWebRequest request = UnityWebRequest.Get(url);
 
-            // The execution-order API is now public, but we still send auth token if available
-            string buildAuthToken = PlayerPrefs.GetString("VERA_BuildAuthToken", "");
-            if (!string.IsNullOrEmpty(buildAuthToken))
-            {
-                request.SetRequestHeader("Authorization", "Bearer " + buildAuthToken);
-            }
-
             var operation = request.SendWebRequest();
 
             EditorApplication.update += CheckRequest;
@@ -331,16 +306,6 @@ namespace VERA
                     if (request.responseCode == 404)
                     {
                         errorMessage = "Trial workflow not found. Make sure your experiment has a trial workflow configured in the VERA portal.";
-                    }
-                    else if (request.responseCode == 401 || request.responseCode == 403)
-                    {
-                        errorMessage = "Authentication failed. Please re-authenticate in VERA -> Settings.";
-
-                        // Clear authentication flags to force re-auth
-                        PlayerPrefs.SetInt("VERA_UserAuthenticated", 0);
-                        PlayerPrefs.Save();
-
-                        Debug.LogWarning("[VERA Trial Workflow] Authentication token expired or invalid. Please re-authenticate in VERA -> Settings.");
                     }
                 }
                 else

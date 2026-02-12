@@ -72,12 +72,21 @@ namespace VERA
         public TrialState currentTrialState { get; private set; } = TrialState.NotStarted;
 
         // Survey-related events
-        public event System.Action<string, string, string> OnSurveyRequired; // surveyId, surveyName, position ("before" or "after")
+        public event System.Action<string, string, string> OnSurveyRequired; // surveyId, surveyName, position ("before", "after", or "standalone")
         public event System.Action<TrialConfig> OnTrialStarting; // Called before trial starts, allows survey check
         public event System.Action<TrialConfig> OnTrialCompleted; // Called after trial completes, allows survey check
 
+        // Automation events
+        public event System.Action<TrialConfig> OnTrialReady; // Fired in automated mode when a trial is active and ready for developer logic. Call CompleteAutomatedTrial() when done.
+        public event System.Action OnWorkflowCompleted; // Fired when the automated workflow finishes all trials
+
         private bool waitingForSurvey = false;
         private string pendingSurveyPosition = null;
+
+        // Automation state
+        private bool automatedMode = false;
+        private bool waitingForTrialLogic = false;
+        private Coroutine automatedWorkflowCoroutine = null;
 
         private float trialStartTime = 0f;
         private float trialDuration = 0f;
@@ -279,9 +288,12 @@ namespace VERA
                 return false;
             }
 
-            // Validate that within/between groups have child trials
-            if ((trial.type == "within" || trial.type == "between") &&
-                (trial.childTrials == null || trial.childTrials.Length == 0))
+            // Validate that within/between GROUPS have child trials
+            // Only trials with IVs defined are groups that need childTrials
+            bool isGroup = (trial.type == "within" && trial.withinSubjectsIVs != null && trial.withinSubjectsIVs.Length > 0) ||
+                           (trial.type == "between" && trial.betweenSubjectsIVs != null && trial.betweenSubjectsIVs.Length > 0);
+
+            if (isGroup && (trial.childTrials == null || trial.childTrials.Length == 0))
             {
                 validationError = $"Group trial '{trial.id}' (type: {trial.type}) has no child trials";
                 return false;
@@ -557,6 +569,19 @@ namespace VERA
             // Fire event before starting trial (allows for survey checks)
             OnTrialStarting?.Invoke(trial);
 
+            // Check for standalone survey - must complete before workflow continues
+            if (trial.type == "survey")
+            {
+                string sid = trial.instanceId ?? trial.surveyId;
+                string sname = trial.surveyName ?? trial.label;
+                Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
+                waitingForSurvey = true;
+                pendingSurveyPosition = "standalone";
+                OnSurveyRequired?.Invoke(sid, sname, "standalone");
+                currentTrialIndex--; // Reset index so we can retry after survey completes
+                return null;
+            }
+
             // Check for attached survey that should show BEFORE trial
             if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
             {
@@ -577,11 +602,18 @@ namespace VERA
 
             Debug.Log($"[VERA Trial Workflow] Started trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}");
 
+            // Update experiment-level IV conditions from trial conditions
             if (trial.conditions != null && trial.conditions.Count > 0)
             {
                 string conditionsStr = string.Join(", ",
                     System.Linq.Enumerable.Select(trial.conditions, kvp => $"{kvp.Key}={kvp.Value}"));
                 Debug.Log($"[VERA Trial Workflow] Trial conditions: {conditionsStr}");
+
+                // Set the experiment-level IV values to match this trial's conditions
+                foreach (var kvp in trial.conditions)
+                {
+                    VERALogger.Instance.SetSelectedIVValue(kvp.Key, kvp.Value);
+                }
             }
 
             return trial;
@@ -658,9 +690,9 @@ namespace VERA
             }
 
             // Check if we're waiting for a survey to complete
-            if (waitingForSurvey && pendingSurveyPosition == "before")
+            if (waitingForSurvey)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot start trial: waiting for 'before' survey to complete. Call MarkSurveyCompleted() first.");
+                Debug.LogWarning($"[VERA Trial Workflow] Cannot start trial: waiting for '{pendingSurveyPosition}' survey to complete. Call MarkSurveyCompleted() first.");
                 return false;
             }
 
@@ -673,6 +705,18 @@ namespace VERA
 
             // Fire event before starting trial (allows for survey checks)
             OnTrialStarting?.Invoke(trial);
+
+            // Check for standalone survey - must complete before workflow continues
+            if (trial.type == "survey")
+            {
+                string sid = trial.instanceId ?? trial.surveyId;
+                string sname = trial.surveyName ?? trial.label;
+                Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
+                waitingForSurvey = true;
+                pendingSurveyPosition = "standalone";
+                OnSurveyRequired?.Invoke(sid, sname, "standalone");
+                return false;
+            }
 
             // Check for attached survey that should show BEFORE trial
             if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
@@ -806,6 +850,9 @@ namespace VERA
             isInitialized = false;
             waitingForSurvey = false;
             pendingSurveyPosition = null;
+            automatedMode = false;
+            waitingForTrialLogic = false;
+            automatedWorkflowCoroutine = null;
 
             // Clear credentials
             experimentUUID = null;
@@ -1021,15 +1068,23 @@ namespace VERA
         /// <summary>
         /// Survey Handling in Trial Workflow
         ///
-        /// Attached surveys can be configured to show "before" or "after" a trial.
-        /// The workflow manager automatically detects these and pauses progression until surveys complete.
+        /// The workflow manager handles two kinds of surveys:
         ///
-        /// Workflow with attached surveys:
+        /// 1. STANDALONE SURVEYS (type == "survey"):
+        ///    These are workflow items that ARE surveys. When encountered, the workflow pauses
+        ///    and fires OnSurveyRequired with position "standalone". The participant must
+        ///    complete the survey before the workflow continues.
+        ///
+        /// 2. ATTACHED SURVEYS:
+        ///    These are surveys attached to a trial, configured to show "before" or "after" the trial.
+        ///    The workflow pauses and fires OnSurveyRequired with the appropriate position.
+        ///
+        /// Workflow with surveys:
         /// 1. Call StartNextTrial() or GetNextTrial() + StartTrial()
-        /// 2. If trial has "before" survey: OnSurveyRequired event fires, StartNextTrial/StartTrial returns null/false
+        /// 2. If standalone survey or "before" survey: OnSurveyRequired event fires, returns null/false
         /// 3. Show survey to participant using the surveyId from the event
         /// 4. When survey completes, call MarkSurveyCompleted()
-        /// 5. Call StartNextTrial() again to actually start the trial
+        /// 5. Call StartNextTrial() again to continue (standalone surveys advance; "before" surveys start the trial)
         /// 6. Run your trial logic
         /// 7. Call CompleteTrial()
         /// 8. If trial has "after" survey: OnSurveyRequired event fires
@@ -1039,7 +1094,7 @@ namespace VERA
         ///
         /// Example usage:
         /// <code>
-        /// // Subscribe to survey event
+        /// // Subscribe to survey event - handles standalone, before, and after surveys
         /// trialManager.OnSurveyRequired += (surveyId, surveyName, position) => {
         ///     Debug.Log($"Survey required: {surveyName} ({position})");
         ///     StartCoroutine(ShowSurvey(surveyId, surveyName));
@@ -1536,6 +1591,211 @@ namespace VERA
         #endregion
 
 
+        #region WORKFLOW AUTOMATION
+
+        /// <summary>
+        /// Whether the workflow is currently running in automated mode.
+        /// </summary>
+        public bool IsAutomatedMode => automatedMode;
+
+        /// <summary>
+        /// Whether the automated workflow is waiting for the developer to call CompleteAutomatedTrial().
+        /// </summary>
+        public bool IsWaitingForTrialLogic => waitingForTrialLogic;
+
+        /// <summary>
+        /// Starts the automated workflow coroutine. The workflow will progress through all trials
+        /// automatically, pausing for surveys (OnSurveyRequired) and trial logic (OnTrialReady).
+        ///
+        /// Flow for each workflow item:
+        ///   1. Standalone survey → fires OnSurveyRequired, waits for MarkSurveyCompleted()
+        ///   2. Trial with "before" survey → fires OnSurveyRequired, waits for MarkSurveyCompleted()
+        ///   3. Trial starts → fires OnTrialReady with the TrialConfig (conditions already set)
+        ///   4. Developer runs trial logic, then calls CompleteAutomatedTrial()
+        ///   5. Trial with "after" survey → fires OnSurveyRequired, waits for MarkSurveyCompleted()
+        ///   6. Checkpoint saved, advance to next item
+        ///   7. When all items are done → fires OnWorkflowCompleted
+        ///
+        /// Usage:
+        /// <code>
+        /// var workflow = VERALogger.Instance.trialWorkflow;
+        /// workflow.OnTrialReady += (trial) => {
+        ///     // trial.conditions are already set; run your trial logic
+        ///     StartCoroutine(RunMyTrialLogic(trial));
+        /// };
+        /// workflow.OnSurveyRequired += (surveyId, surveyName, position) => {
+        ///     StartCoroutine(ShowSurveyUI(surveyId, surveyName, () => workflow.MarkSurveyCompleted()));
+        /// };
+        /// workflow.OnWorkflowCompleted += () => {
+        ///     Debug.Log("All trials done!");
+        /// };
+        /// workflow.StartAutomatedWorkflow();
+        /// </code>
+        /// </summary>
+        public void StartAutomatedWorkflow()
+        {
+            if (!isInitialized)
+            {
+                Debug.LogError("[VERA Trial Workflow] Cannot start automated workflow: not initialized.");
+                return;
+            }
+
+            if (automatedMode)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] Automated workflow is already running.");
+                return;
+            }
+
+            if (trialWorkflow.Count == 0)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] No trials in workflow. Nothing to automate.");
+                OnWorkflowCompleted?.Invoke();
+                return;
+            }
+
+            automatedMode = true;
+            Debug.Log($"[VERA Trial Workflow] Starting automated workflow with {trialWorkflow.Count} items.");
+            automatedWorkflowCoroutine = StartCoroutine(RunAutomatedWorkflow());
+        }
+
+        /// <summary>
+        /// Stops the automated workflow. The current trial remains in its current state.
+        /// You can resume manual control after stopping.
+        /// </summary>
+        public void StopAutomatedWorkflow()
+        {
+            if (!automatedMode)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] Automated workflow is not running.");
+                return;
+            }
+
+            if (automatedWorkflowCoroutine != null)
+            {
+                StopCoroutine(automatedWorkflowCoroutine);
+                automatedWorkflowCoroutine = null;
+            }
+
+            automatedMode = false;
+            waitingForTrialLogic = false;
+            Debug.Log("[VERA Trial Workflow] Automated workflow stopped.");
+        }
+
+        /// <summary>
+        /// Call this from your trial logic to signal that the current trial is done.
+        /// Only used in automated mode. This completes the trial and lets the workflow advance.
+        /// </summary>
+        public void CompleteAutomatedTrial()
+        {
+            if (!automatedMode)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but automated mode is not active. Use CompleteTrial() for manual mode.");
+                return;
+            }
+
+            if (!waitingForTrialLogic)
+            {
+                Debug.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but no trial is waiting for completion.");
+                return;
+            }
+
+            // Complete the trial through the normal path
+            CompleteTrial();
+            waitingForTrialLogic = false;
+        }
+
+        /// <summary>
+        /// The main automation coroutine that drives the entire trial workflow.
+        /// </summary>
+        private IEnumerator RunAutomatedWorkflow()
+        {
+            Debug.Log("[VERA Trial Workflow] Automated workflow coroutine started.");
+
+            while (automatedMode)
+            {
+                // Check if there are more trials
+                if (!HasMoreTrials && currentTrialState != TrialState.InProgress)
+                {
+                    // If we're past the last trial, we're done
+                    if (currentTrialIndex >= trialWorkflow.Count - 1 && currentTrialState != TrialState.NotStarted)
+                    {
+                        break;
+                    }
+                    // Edge case: currentTrialIndex is at the end with no more
+                    if (currentTrialIndex >= trialWorkflow.Count)
+                    {
+                        break;
+                    }
+                }
+
+                // If waiting for a survey, poll until it's completed
+                if (waitingForSurvey)
+                {
+                    yield return null;
+                    continue;
+                }
+
+                // If waiting for developer trial logic, poll until they call CompleteAutomatedTrial()
+                if (waitingForTrialLogic)
+                {
+                    yield return null;
+                    continue;
+                }
+
+                // Try to start the next trial
+                TrialConfig trial = StartNextTrial();
+
+                if (trial == null)
+                {
+                    // StartNextTrial returned null - either waiting for survey, or no more trials
+                    if (waitingForSurvey)
+                    {
+                        // A survey was triggered (standalone or "before"), wait for it
+                        yield return null;
+                        continue;
+                    }
+
+                    // No more trials
+                    break;
+                }
+
+                // Trial started successfully - notify developer and wait for their logic
+                waitingForTrialLogic = true;
+                OnTrialReady?.Invoke(trial);
+
+                // Wait for developer to call CompleteAutomatedTrial()
+                while (waitingForTrialLogic && automatedMode)
+                {
+                    yield return null;
+                }
+
+                if (!automatedMode)
+                    break;
+
+                // After trial completion, CompleteTrial() may have triggered an "after" survey
+                // Wait for that survey to complete before advancing
+                while (waitingForSurvey && automatedMode)
+                {
+                    yield return null;
+                }
+
+                if (!automatedMode)
+                    break;
+
+                // Small yield to prevent tight loops
+                yield return null;
+            }
+
+            automatedMode = false;
+            waitingForTrialLogic = false;
+            automatedWorkflowCoroutine = null;
+            Debug.Log("[VERA Trial Workflow] Automated workflow completed.");
+            OnWorkflowCompleted?.Invoke();
+        }
+
+        #endregion
+
+
         #region INTERNAL API
 
         private IEnumerator FetchTrialWorkflow()
@@ -1579,6 +1839,8 @@ namespace VERA
                         trialsArray = arr;
                     else if (parsed is JObject obj && obj["trials"] is JArray arr2)
                         trialsArray = arr2;
+                    else if (parsed is JObject obj2 && obj2["executionOrder"] is JArray arr3)
+                        trialsArray = arr3;
                     else
                     {
                         Debug.LogError($"[VERA Trial Workflow] Unexpected response format from server. Received: {jsonResponse.Substring(0, Mathf.Min(200, jsonResponse.Length))}...");
@@ -1760,13 +2022,6 @@ namespace VERA
                         trial.surveyPosition = trialToken.Value<string>("surveyPosition");
                     }
 
-                    // Validate trial configuration
-                    if (!ValidateTrialConfig(trial, out string validationError))
-                    {
-                        Debug.LogError($"[VERA Trial Workflow] Invalid trial configuration: {validationError}. Skipping trial.");
-                        continue;
-                    }
-
                     if (trial.repetitionCount <= 0)
                         trial.repetitionCount = 1;
 
@@ -1818,6 +2073,13 @@ namespace VERA
                             experimentId = instanceObj.Value<string>("experimentId"),
                             activated = instanceObj.Value<bool>("activated")
                         };
+                    }
+
+                    // Validate trial configuration AFTER parsing all fields including childTrials
+                    if (!ValidateTrialConfig(trial, out string validationError))
+                    {
+                        Debug.LogError($"[VERA Trial Workflow] Invalid trial configuration: {validationError}. Skipping trial.");
+                        continue;
                     }
 
                     trials.Add(trial);

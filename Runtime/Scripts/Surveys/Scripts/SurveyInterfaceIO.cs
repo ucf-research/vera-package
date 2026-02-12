@@ -1,6 +1,7 @@
 using Newtonsoft.Json.Linq;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
@@ -18,10 +19,8 @@ namespace VERA
         #region VARIABLES
 
         private SurveyManager surveyManager;
-        private string apiUrl = "https://sreal.ucf.edu/vera-portal";
+        private string apiUrl;
         private string surveyId;
-
-        private bool testingLocally = false;
 
         public bool uploadSuccessful { get; private set; } = false;
         public bool reconnectSuccessful { get; private set; } = false;
@@ -39,12 +38,23 @@ namespace VERA
         private void Awake()
         {
             surveyManager = GetComponent<SurveyManager>();
-            surveyManager.Setup();
 
-            if (testingLocally)
+            // Only call Setup() if SurveyManager exists and is properly configured
+            // This allows SurveyInterfaceIO to work standalone for API-only operations (e.g., mock tests)
+            if (surveyManager != null)
             {
-                apiUrl = "http://localhost:4000/vera-portal";
+                try
+                {
+                    surveyManager.Setup();
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"[VERA Survey] SurveyManager.Setup() failed (UI components may be missing). SurveyInterfaceIO will operate in API-only mode. Error: {e.Message}");
+                }
             }
+
+            // Use the global VERA host URL
+            apiUrl = VERAHost.hostUrl;
         }
 
         #endregion
@@ -253,10 +263,149 @@ namespace VERA
 
         #region OUTPUT
 
+        // Marks the local survey response file as uploaded
+        private void MarkLocalSurveyAsUploaded(string instanceId, string participantId)
+        {
+            try
+            {
+                string directory = Path.Combine(Application.persistentDataPath, "SurveyResponses");
+                if (!Directory.Exists(directory))
+                {
+                    return;
+                }
+
+                // Find the survey response file for this participant and instance
+                string filename = $"survey_responses_{participantId}_{instanceId}.csv";
+                string filepath = Path.Combine(directory, filename);
+
+                if (!File.Exists(filepath))
+                {
+                    Debug.LogWarning($"[VERA Survey] Local survey file not found: {filename}");
+                    return;
+                }
+
+                // Read all lines from the CSV
+                string[] lines = File.ReadAllLines(filepath);
+
+                if (lines.Length < 2) // Need at least header + 1 data row
+                {
+                    Debug.LogWarning($"[VERA Survey] CSV file is empty or invalid: {filename}");
+                    return;
+                }
+
+                // Update the uploaded column (last column) to true for all rows
+                for (int i = 1; i < lines.Length; i++) // Start at 1 to skip header
+                {
+                    if (!string.IsNullOrEmpty(lines[i]))
+                    {
+                        // Replace the last value (uploaded) with true
+                        int lastCommaIndex = lines[i].LastIndexOf(',');
+                        if (lastCommaIndex >= 0)
+                        {
+                            lines[i] = lines[i].Substring(0, lastCommaIndex + 1) + "true";
+                        }
+                    }
+                }
+
+                // Write back to file
+                File.WriteAllLines(filepath, lines);
+
+                Debug.Log($"[VERA Survey] Marked local survey file as uploaded: {filename}");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[VERA Survey] Failed to mark local survey as uploaded: {ex.Message}");
+            }
+        }
+
+        // Saves survey responses to a local CSV file for later upload
+        private void SaveSurveyResponsesLocally(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        {
+            try
+            {
+                string timestamp = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+                string studyId = VERALogger.Instance.experimentUUID;
+                string surveyId = surveyToOutput.surveyId;
+                string surveyName = surveyToOutput.surveyName;
+                string participantId = VERALogger.Instance.activeParticipant.participantUUID;
+
+                // Create a lookup dictionary for question text by question ID
+                Dictionary<string, string> questionTextLookup = new Dictionary<string, string>();
+                if (surveyToOutput.surveyQuestions != null)
+                {
+                    foreach (var question in surveyToOutput.surveyQuestions)
+                    {
+                        if (!string.IsNullOrEmpty(question.questionId))
+                        {
+                            questionTextLookup[question.questionId] = question.questionText ?? "";
+                        }
+                    }
+                }
+
+                // Create filename with participant ID and instance ID
+                string filename = $"survey_responses_{participantId}_{instanceId}.csv";
+                string filepath = Path.Combine(Application.persistentDataPath, "SurveyResponses", filename);
+
+                // Ensure the directory exists
+                string directory = Path.GetDirectoryName(filepath);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                // Create CSV content
+                using (StreamWriter writer = new StreamWriter(filepath))
+                {
+                    // Write header
+                    writer.WriteLine("timestamp,studyId,surveyId,surveyName,participantId,instanceId,questionId,questionText,answer,uploaded");
+
+                    // Write each response as a row
+                    foreach (var response in surveyResults)
+                    {
+                        string questionId = EscapeCsvField(response.Key);
+
+                        // Get question text from lookup, or use empty string if not found
+                        string questionText = "";
+                        if (questionTextLookup.TryGetValue(response.Key, out string text))
+                        {
+                            questionText = EscapeCsvField(text);
+                        }
+
+                        string answer = EscapeCsvField(response.Value);
+                        string surveyNameEscaped = EscapeCsvField(surveyName);
+
+                        writer.WriteLine($"{timestamp},{studyId},{surveyId},{surveyNameEscaped},{participantId},{instanceId},{questionId},{questionText},{answer},false");
+                    }
+                }
+
+                Debug.Log($"[VERA Survey] Saved survey responses locally to: {filepath}");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[VERA Survey] Failed to save survey responses locally: {ex.Message}");
+            }
+        }
+
+        // Escapes CSV fields that contain commas, quotes, or newlines
+        private string EscapeCsvField(string field)
+        {
+            if (string.IsNullOrEmpty(field))
+                return "";
+
+            // If field contains comma, quote, or newline, wrap it in quotes and escape internal quotes
+            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+            {
+                return "\"" + field.Replace("\"", "\"\"") + "\"";
+            }
+
+            return field;
+        }
+
         // Outputs given results of given survey back to the database
         public IEnumerator OutputSurveyResults(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults)
         {
             uploadSuccessful = false;
+            string instanceId = null;
 
             // Create the SurveyInstance based on input
             SurveyInstance surveyInstance = new SurveyInstance();
@@ -282,7 +431,10 @@ namespace VERA
                 // Parse the response to get the ID of the created SurveyInstance
                 string responseText = instanceRequest.downloadHandler.text;
                 JObject jsonResponse = JObject.Parse(responseText);
-                string instanceId = jsonResponse["_id"]?.ToString();
+                instanceId = jsonResponse["_id"]?.ToString();
+
+                // Save responses locally with the instance ID
+                SaveSurveyResponsesLocally(surveyToOutput, surveyResults, instanceId);
 
                 // Create SurveyResponses
                 for (int i = 0; i < surveyResults.Length; i++)
@@ -314,19 +466,36 @@ namespace VERA
                     }
                     else
                     {
-                        Debug.LogError("Error creating SurveyResponse: " + responseRequest.error);
+                        Debug.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
+                        Debug.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
+                        Debug.LogError($"[VERA Survey] Question ID: {surveyResults[i].Key}");
+                        Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/responses");
+                        if (!string.IsNullOrEmpty(responseRequest.downloadHandler?.text))
+                        {
+                            Debug.LogError($"[VERA Survey] Response Body: {responseRequest.downloadHandler.text}");
+                        }
                         yield break;
                     }
                 }
             }
             else
             {
-                Debug.LogError("Error creating SurveyInstance: " + instanceRequest.error);
+                Debug.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
+                Debug.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
+                Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/instances");
+                if (!string.IsNullOrEmpty(instanceRequest.downloadHandler?.text))
+                {
+                    Debug.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
+                }
                 yield break;
             }
 
             Debug.Log("VERA Survey results successfully uploaded.");
             uploadSuccessful = true;
+
+            // Mark the local file as uploaded
+            MarkLocalSurveyAsUploaded(instanceId, VERALogger.Instance.activeParticipant.participantUUID);
+
             yield break;
         }
 

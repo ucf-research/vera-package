@@ -635,7 +635,14 @@ namespace VERA
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to upload existing file \"" + csvFilePath + "\".");
+                Debug.LogError($"[VERA Logger] Failed to upload existing file \"{csvFilePath}\".");
+                Debug.LogError($"[VERA Logger] HTTP Status Code: {request.responseCode}");
+                Debug.LogError($"[VERA Logger] Error: {request.error}");
+                Debug.LogError($"[VERA Logger] URL: {url}");
+                if (!string.IsNullOrEmpty(request.downloadHandler?.text))
+                {
+                    Debug.LogError($"[VERA Logger] Response Body: {request.downloadHandler.text}");
+                }
             }
         }
 
@@ -727,18 +734,28 @@ namespace VERA
         }
 
         // Sets the selected value of an independent variable by name
-        // Sets the LOCAL cached version, then syncs to the server asynchronously
-        public string SetSelectedIVValue(string ivName, string ivValue)
+        // Sets the LOCAL cached version, then optionally syncs to the server asynchronously
+        public string SetSelectedIVValue(string ivName, string ivValue, bool syncToServer = true)
         {
+            // Update existing IV or add new one (for trial-based condition assignment)
             if (conditionsCache.ContainsKey(ivName))
             {
                 conditionsCache[ivName] = ivValue;
-                StartCoroutine(SyncParticipantCondition(ivName));
-                return ivValue;
+            }
+            else
+            {
+                // Add new IV to cache - this happens when trials set conditions for IVs
+                // that weren't initialized at experiment start
+                conditionsCache.Add(ivName, ivValue);
             }
 
-            Debug.LogError("[VERA Logger] No independent variable found with name \"" + ivName + "\"; cannot set selected value.");
-            return null;
+            // Sync to server if requested (not needed for trial-based workflows where execution order defines conditions)
+            if (syncToServer)
+            {
+                StartCoroutine(SyncParticipantCondition(ivName));
+            }
+
+            return ivValue;
         }
 
         // Initializes participant's conditions according to experiment's current values
@@ -776,38 +793,30 @@ namespace VERA
 
             // Initialize the conditions cache with the experiment's conditions
             conditionsCache.Clear();
-            bool ivChanged = false;
             foreach (IVInfo iv in resp.independentVariables)
             {
+                // Only initialize IVs that have a selected condition from the server
+                // For trial-based workflows, conditions will be set when trials start
                 if (iv.selectedCondition != null && iv.selectedCondition.name != null && iv.selectedCondition.name != "")
                 {
                     conditionsCache.Add(iv.ivName, iv.selectedCondition.name);
                 }
                 else
                 {
-                    Debug.LogWarning("[VERA Logger] Independent variable \"" + iv.ivName + "\" has no selected condition value; defaulting to first condition.");
-                    if (iv.conditions != null && iv.conditions.Length > 0 && iv.conditions[0].name != null && iv.conditions[0].name != "")
-                    {
-                        conditionsCache.Add(iv.ivName, iv.conditions[0].name);
-                        ivChanged = true;
-                    }
-                    else
-                    {
-                        Debug.LogError("[VERA Logger] Independent variable \"" + iv.ivName + "\" has no conditions defined; skipping.");
-                    }
+                    // IV has no selected condition - this is expected for trial-based workflows
+                    // Conditions will be set when trials specify them
+                    Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" has no initial condition - will be set by trial workflow.");
                 }
             }
 
-            if (ivChanged)
+            if (conditionsCache.Count > 0)
             {
-                Debug.Log("[VERA Logger] One or more independent variables had no selected condition; syncing updated conditions to server.");
-                foreach (string ivName in conditionsCache.Keys)
-                {
-                    yield return StartCoroutine(SyncParticipantCondition(ivName));
-                }
+                Debug.Log("[VERA Logger] Experiment conditions initialized successfully with " + conditionsCache.Count + " independent variables. Conditions: " + GetExperimentConditions());
             }
-
-            Debug.Log("[VERA Logger] Experiment conditions initialized successfully with " + conditionsCache.Count + " independent variables. Conditions: " + GetExperimentConditions());
+            else
+            {
+                Debug.Log("[VERA Logger] No initial conditions set - conditions will be determined by trial workflow execution order.");
+            }
         }
 
         // Syncs a single independent variable's selected condition to the server
@@ -843,7 +852,7 @@ namespace VERA
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to sync condition for IV \"" + ivName + "\" to server. Error: " + request.error);
+                Debug.LogWarning("[VERA Logger] Could not sync condition for IV \"" + ivName + "\" to server (using local value). Error: " + request.error);
             }
         }
 
@@ -1186,6 +1195,83 @@ namespace VERA
             Debug.Log($"[VERA Logger] Manual between-subjects assignment: group '{betweenSubjectsGroupId}' → condition {conditionIndex}");
         }
 
+
+        /// <summary>
+        /// Starts the automated trial workflow. The workflow will progress through all trials,
+        /// pausing for surveys (OnSurveyRequired) and trial logic (OnTrialReady).
+        ///
+        /// Subscribe to trialWorkflow.OnTrialReady to receive each trial when it's ready.
+        /// Call CompleteAutomatedTrial() when your trial logic finishes.
+        /// Subscribe to trialWorkflow.OnSurveyRequired for survey handling.
+        /// Subscribe to trialWorkflow.OnWorkflowCompleted to know when all trials are done.
+        /// </summary>
+        public void StartAutomatedWorkflow()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+
+            // Subscribe to OnTrialReady so we can auto-set IV values when each trial starts
+            trialWorkflow.OnTrialReady += AutoSetTrialConditions;
+            trialWorkflow.OnWorkflowCompleted += OnAutomatedWorkflowDone;
+            trialWorkflow.StartAutomatedWorkflow();
+        }
+
+        /// <summary>
+        /// Stops the automated workflow. You can resume manual control after stopping.
+        /// </summary>
+        public void StopAutomatedWorkflow()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.OnTrialReady -= AutoSetTrialConditions;
+            trialWorkflow.OnWorkflowCompleted -= OnAutomatedWorkflowDone;
+            trialWorkflow.StopAutomatedWorkflow();
+        }
+
+        private void OnAutomatedWorkflowDone()
+        {
+            if (trialWorkflow != null)
+            {
+                trialWorkflow.OnTrialReady -= AutoSetTrialConditions;
+                trialWorkflow.OnWorkflowCompleted -= OnAutomatedWorkflowDone;
+            }
+        }
+
+        private void AutoSetTrialConditions(TrialConfig trial)
+        {
+            if (trial?.conditions != null)
+            {
+                foreach (var condition in trial.conditions)
+                {
+                    SetSelectedIVValue(condition.Key, condition.Value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Call this from your trial logic to signal the current trial is done (automated mode only).
+        /// This completes the trial and lets the workflow advance to the next item.
+        /// </summary>
+        public void CompleteAutomatedTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.CompleteAutomatedTrial();
+        }
+
+        /// <summary>
+        /// Whether the workflow is currently running in automated mode.
+        /// </summary>
+        public bool IsAutomatedMode => trialWorkflow?.IsAutomatedMode ?? false;
 
         #endregion
 
