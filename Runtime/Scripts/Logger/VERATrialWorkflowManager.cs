@@ -67,12 +67,13 @@ namespace VERA
         private List<TrialConfig> trialWorkflow = new List<TrialConfig>();
         private List<TrialConfig> allTrials = new List<TrialConfig>();
         private int currentTrialIndex = -1;
+        private bool latinSquareApplied = false;
 
         public bool isInitialized { get; private set; } = false;
         public TrialState currentTrialState { get; private set; } = TrialState.NotStarted;
 
         // Survey-related events
-        public event System.Action<string, string, string> OnSurveyRequired; // surveyId, surveyName, position ("before", "after", or "standalone")
+        public event System.Action<string, string, string, string> OnSurveyRequired; // surveyId, surveyName, position ("before", "after", or "standalone"), instanceId (optional)
         public event System.Action<TrialConfig> OnTrialStarting; // Called before trial starts, allows survey check
         public event System.Action<TrialConfig> OnTrialCompleted; // Called after trial completes, allows survey check
 
@@ -379,7 +380,7 @@ namespace VERA
             }
 
             // Check if Latin square is required but not applied
-            if (withinGroupsForLatinSquare.Count > 0 && currentTrialIndex < 0)
+            if (withinGroupsForLatinSquare.Count > 0 && !latinSquareApplied)
             {
                 // This is just a warning, not an error - Latin square is optional
                 Debug.LogWarning("[VERA Trial Workflow] Latin square ordering is available but may not have been applied. Call ApplyLatinSquareOrdering() if needed.");
@@ -572,13 +573,16 @@ namespace VERA
             // Check for standalone survey - must complete before workflow continues
             if (trial.type == "survey")
             {
-                string sid = trial.instanceId ?? trial.surveyId;
+                string sid = trial.surveyId;
                 string sname = trial.surveyName ?? trial.label;
+                string iid = trial.instanceId;
                 Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
                 waitingForSurvey = true;
                 pendingSurveyPosition = "standalone";
-                OnSurveyRequired?.Invoke(sid, sname, "standalone");
-                currentTrialIndex--; // Reset index so we can retry after survey completes
+                currentTrialState = TrialState.InProgress; // Mark trial as in progress (the survey IS the trial)
+                OnSurveyRequired?.Invoke(sid, sname, "standalone", iid);
+                // Don't decrement index - standalone survey IS the trial, not attached to another trial
+                // After MarkSurveyCompleted(), workflow will call StartNextTrial() to advance to next item
                 return null;
             }
 
@@ -588,7 +592,7 @@ namespace VERA
                 Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
                 waitingForSurvey = true;
                 pendingSurveyPosition = "before";
-                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before");
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before", trial.instanceId);
 
                 // Don't start trial yet - waiting for survey completion
                 // Developer should call MarkSurveyCompleted() when survey is done, then call StartNextTrial() again
@@ -709,12 +713,13 @@ namespace VERA
             // Check for standalone survey - must complete before workflow continues
             if (trial.type == "survey")
             {
-                string sid = trial.instanceId ?? trial.surveyId;
+                string sid = trial.surveyId;
                 string sname = trial.surveyName ?? trial.label;
+                string iid = trial.instanceId;
                 Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
                 waitingForSurvey = true;
                 pendingSurveyPosition = "standalone";
-                OnSurveyRequired?.Invoke(sid, sname, "standalone");
+                OnSurveyRequired?.Invoke(sid, sname, "standalone", iid);
                 return false;
             }
 
@@ -724,7 +729,7 @@ namespace VERA
                 Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
                 waitingForSurvey = true;
                 pendingSurveyPosition = "before";
-                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before");
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before", trial.instanceId);
                 return false; // Don't start trial yet
             }
 
@@ -767,7 +772,7 @@ namespace VERA
                 Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show AFTER trial completion.");
                 waitingForSurvey = true;
                 pendingSurveyPosition = "after";
-                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "after");
+                OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "after", trial.instanceId);
 
                 // Don't auto-advance - waiting for survey completion
                 // Developer should call MarkSurveyCompleted() when survey is done
@@ -848,6 +853,7 @@ namespace VERA
             trialStartTime = 0f;
             trialDuration = 0f;
             isInitialized = false;
+            latinSquareApplied = false;
             waitingForSurvey = false;
             pendingSurveyPosition = null;
             automatedMode = false;
@@ -1095,9 +1101,9 @@ namespace VERA
         /// Example usage:
         /// <code>
         /// // Subscribe to survey event - handles standalone, before, and after surveys
-        /// trialManager.OnSurveyRequired += (surveyId, surveyName, position) => {
-        ///     Debug.Log($"Survey required: {surveyName} ({position})");
-        ///     StartCoroutine(ShowSurvey(surveyId, surveyName));
+        /// trialManager.OnSurveyRequired += (surveyId, surveyName, position, instanceId) => {
+        ///     Debug.Log($"Survey required: {surveyName} ({position}), instanceId: {instanceId}");
+        ///     StartCoroutine(ShowSurvey(surveyId, surveyName, instanceId));
         /// };
         ///
         /// // Start trial
@@ -1203,6 +1209,13 @@ namespace VERA
             }
 
             Debug.Log($"[VERA Trial Workflow] Survey marked as completed (position: {pendingSurveyPosition})");
+
+            // For standalone surveys, mark the trial itself as complete
+            if (pendingSurveyPosition == "standalone")
+            {
+                currentTrialState = TrialState.Completed;
+            }
+
             waitingForSurvey = false;
             pendingSurveyPosition = null;
 
@@ -1412,27 +1425,128 @@ namespace VERA
         ///
         /// IMPORTANT: For complete counterbalancing, you need at least N participants for N conditions.
         /// The system will warn if participant assignment may result in incomplete counterbalancing.
+        ///
+        /// NOTE: Consider using ApplyLatinSquareOrdering(participantNumber, totalParticipants) for
+        /// better validation and error handling.
         /// </summary>
         /// <param name="participantNumber">The participant's sequential number (0-indexed).
         /// Use VERALogger.Instance.activeParticipant.participantShortId or your own counter.</param>
         public void ApplyLatinSquareOrdering(int participantNumber)
         {
+            // Delegate to the version without totalParticipants validation
+            ApplyLatinSquareOrderingInternal(participantNumber, -1);
+        }
+
+        /// <summary>
+        /// Applies Latin Square counterbalancing to within-subjects groups in the workflow.
+        /// This overload REQUIRES the total number of participants for proper validation.
+        ///
+        /// IMPORTANT - This method enforces complete counterbalancing:
+        /// - totalParticipants MUST be >= number of conditions (largest within-subjects group)
+        /// - participantNumber must be less than totalParticipants
+        /// - If totalParticipants is less than conditions, returns FALSE (does NOT sort)
+        ///
+        /// Example with within-group of 3 conditions (A, B, C) and totalParticipants=6:
+        ///   Participant 0: A, B, C
+        ///   Participant 1: B, C, A
+        ///   Participant 2: C, A, B
+        ///   Participant 3: A, B, C (second cycle)
+        ///   Participant 4: B, C, A
+        ///   Participant 5: C, A, B
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed). Must be less than totalParticipants.</param>
+        /// <param name="totalParticipants">The total number of participants in the study. Must be >= number of conditions.</param>
+        /// <returns>True if Latin square ordering was applied successfully, false if validation failed (check console for error details).</returns>
+        public bool ApplyLatinSquareOrdering(int participantNumber, int totalParticipants)
+        {
+            // Validate totalParticipants
+            if (totalParticipants <= 0)
+            {
+                Debug.LogError($"[VERA Trial Workflow] Invalid totalParticipants ({totalParticipants}). Must be greater than 0.");
+                return false;
+            }
+
+            // Validate participantNumber is within range
+            if (participantNumber < 0)
+            {
+                Debug.LogError($"[VERA Trial Workflow] Invalid participantNumber ({participantNumber}). Must be 0 or greater.");
+                return false;
+            }
+
+            if (participantNumber >= totalParticipants)
+            {
+                Debug.LogError($"[VERA Trial Workflow] participantNumber ({participantNumber}) must be less than totalParticipants ({totalParticipants}). Participant numbers are 0-indexed.");
+                return false;
+            }
+
+            // Check if trials exceed totalParticipants (incomplete counterbalancing) - this is an ERROR
+            int maxConditionCount = GetMaxConditionCount();
+            if (maxConditionCount > totalParticipants)
+            {
+                Debug.LogError($"[VERA Trial Workflow] INCOMPLETE COUNTERBALANCING: " +
+                    $"You have {maxConditionCount} conditions but only {totalParticipants} total participants. " +
+                    $"For complete Latin square counterbalancing, you need at least {maxConditionCount} participants. " +
+                    $"Cannot apply Latin square ordering - increase totalParticipants to at least {maxConditionCount}.");
+                return false;
+            }
+
+            // Note if totalParticipants is not a perfect multiple (still valid, just not perfectly balanced)
+            if (totalParticipants % maxConditionCount != 0)
+            {
+                int recommendedTotal = ((totalParticipants / maxConditionCount) + 1) * maxConditionCount;
+                Debug.LogWarning($"[VERA Trial Workflow] Note: totalParticipants ({totalParticipants}) is not a multiple of condition count ({maxConditionCount}). " +
+                    $"For perfectly balanced counterbalancing, consider using {recommendedTotal} participants.");
+            }
+
+            return ApplyLatinSquareOrderingInternal(participantNumber, totalParticipants);
+        }
+
+        /// <summary>
+        /// Gets the maximum condition count across all within-subjects groups (or entire workflow if no groups).
+        /// </summary>
+        private int GetMaxConditionCount()
+        {
+            if (withinGroupsForLatinSquare == null || withinGroupsForLatinSquare.Count == 0)
+            {
+                // Legacy mode - entire workflow is one group
+                return trialWorkflow?.Count ?? 0;
+            }
+
+            int maxCount = 0;
+            foreach (var group in withinGroupsForLatinSquare)
+            {
+                if (group.Value != null && group.Value.Count > maxCount)
+                {
+                    maxCount = group.Value.Count;
+                }
+            }
+            return maxCount;
+        }
+
+        /// <summary>
+        /// Internal implementation of Latin square ordering.
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed).</param>
+        /// <param name="totalParticipants">Total participants (-1 if not specified).</param>
+        /// <returns>True if successful, false otherwise.</returns>
+        private bool ApplyLatinSquareOrderingInternal(int participantNumber, int totalParticipants)
+        {
             if (currentTrialIndex >= 0)
             {
                 Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: trials have already started.");
-                return;
+                return false;
             }
 
             if (!isInitialized)
             {
                 Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: workflow not initialized.");
-                return;
+                return false;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
                 Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: no trials in workflow.");
-                return;
+                return false;
             }
 
             if (participantNumber < 0)
@@ -1441,15 +1555,18 @@ namespace VERA
                 participantNumber = 0;
             }
 
-            // Validate counterbalancing requirements
-            ValidateLatinSquareCounterbalancing(participantNumber);
+            // Validate counterbalancing requirements (only if totalParticipants not specified, otherwise already validated)
+            if (totalParticipants < 0)
+            {
+                ValidateLatinSquareCounterbalancing(participantNumber);
+            }
 
             // If no within-groups need Latin square, apply to entire workflow (legacy behavior)
             if (withinGroupsForLatinSquare == null || withinGroupsForLatinSquare.Count == 0)
             {
                 Debug.Log("[VERA Trial Workflow] No within-subjects groups require Latin square. Applying to entire workflow (legacy mode).");
                 ApplyLatinSquareToEntireWorkflow(participantNumber);
-                return;
+                return true;
             }
 
             // Apply Latin square to each within-subjects group separately
@@ -1516,6 +1633,8 @@ namespace VERA
 
             // Rebuild cache after reordering
             BuildGroupMetadataCache();
+            latinSquareApplied = true;
+            return true;
         }
 
         /// <summary>
@@ -1555,6 +1674,7 @@ namespace VERA
 
             // Rebuild cache after reordering
             BuildGroupMetadataCache();
+            latinSquareApplied = true;
         }
 
         /// <summary>
@@ -1623,8 +1743,8 @@ namespace VERA
         ///     // trial.conditions are already set; run your trial logic
         ///     StartCoroutine(RunMyTrialLogic(trial));
         /// };
-        /// workflow.OnSurveyRequired += (surveyId, surveyName, position) => {
-        ///     StartCoroutine(ShowSurveyUI(surveyId, surveyName, () => workflow.MarkSurveyCompleted()));
+        /// workflow.OnSurveyRequired += (surveyId, surveyName, position, instanceId) => {
+        ///     StartCoroutine(ShowSurveyUI(surveyId, surveyName, instanceId, () => workflow.MarkSurveyCompleted()));
         /// };
         /// workflow.OnWorkflowCompleted += () => {
         ///     Debug.Log("All trials done!");
@@ -2071,7 +2191,8 @@ namespace VERA
                         {
                             instanceId = instanceObj.Value<string>("instanceId"),
                             experimentId = instanceObj.Value<string>("experimentId"),
-                            activated = instanceObj.Value<bool>("activated")
+                            activated = instanceObj.Value<bool>("activated"),
+                            requiresCompletion = instanceObj.Value<bool?>("requiresCompletion") ?? true // Default to required
                         };
                     }
 

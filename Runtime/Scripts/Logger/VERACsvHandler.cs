@@ -29,7 +29,7 @@ namespace VERA
         public SerializableVector3 position;
         public SerializableQuaternion rotation;
         public SerializableVector3 localScale;
-        
+
         public SerializableTransform(Transform t)
         {
             position = new SerializableVector3(t.position);
@@ -48,6 +48,12 @@ namespace VERA
 
         public VERAColumnDefinition columnDefinition { get; private set; } // The column definition of this CSV
         public UnityWebRequest activeWebRequest { get; private set; }
+
+        // Returns true if this file type should not be uploaded via the standard file type API
+        public bool ShouldSkipUpload()
+        {
+            return columnDefinition?.fileType?.skipUpload ?? false;
+        }
 
         // Unwritten entries and flushing
         private List<string> unwrittenEntries = new List<string>(); // A cache of unwritten log entries
@@ -118,7 +124,7 @@ namespace VERA
                 writer.WriteLine(string.Join(",", columnNames));
                 writer.Flush();
             }
-            
+
                 Debug.Log("[VERA Logger] CSV File (and partial sync file) for file type \"" + columnDefinition.fileType.name + ".csv\" created and saved at " + fullCsvFilePath);
         }
 
@@ -137,28 +143,34 @@ namespace VERA
                 return;
             }
 
-                        // check baseline data file (omits eventId column)
-                        bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data";
-                        int autoColumnCount = isBaselineTelemetry ? 3 : 4; // 3 for baseline telemetry (no eventId), 4 otherwise
+            bool skipAuto = columnDefinition.skipAutoColumns;
 
-                        if (values.Length != columnDefinition.columns.Count - autoColumnCount)
-                        {
-                                Debug.LogError("[VERA Logger]: You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
-                                    " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
-                                    " columns. Cannot log entry as desired.");
-                                return;
-                        }
+            // check baseline data file (omits eventId column)
+            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data";
+            int autoColumnCount = skipAuto ? 0 : (isBaselineTelemetry ? 3 : 4); // 0 for custom, 3 for baseline telemetry (no eventId), 4 otherwise
+
+            if (values.Length != columnDefinition.columns.Count - autoColumnCount)
+            {
+                    Debug.LogError("[VERA Logger]: You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
+                        " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
+                        " columns. Cannot log entry as desired.");
+                    return;
+            }
 
             List<string> entry = new List<string>();
-            // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
-            entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
-            entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
-            entry.Add(Convert.ToString(Time.realtimeSinceStartup));
-            
-            // Only add eventId for non-baseline telemetry file types
-            if (autoColumnCount == 4)
+
+            if (!skipAuto)
             {
-                entry.Add(Convert.ToString(eventId));
+                // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
+                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
+                entry.Add(Convert.ToString(Time.realtimeSinceStartup));
+
+                // Only add eventId for non-baseline telemetry file types
+                if (autoColumnCount == 4)
+                {
+                    entry.Add(Convert.ToString(eventId));
+                }
             }
 
             for (int i = 0; i < values.Length; i++)
@@ -256,7 +268,7 @@ namespace VERA
                 // Fallback: manual serialization for simple types
                 if (value is string str)
                     return $"\"{str}\"";
-                
+
                 if (value is bool || value is int || value is float || value is double || value is long)
                     return value.ToString();
 
@@ -336,6 +348,15 @@ namespace VERA
 
         public IEnumerator SubmitFileWithRetry(bool finalUpload = false, bool usePartial = false)
         {
+            // Skip upload if configured to do so (e.g., no valid fileTypeId)
+            if (ShouldSkipUpload())
+            {
+                Debug.Log($"[VERA CSV] Skipping upload for {columnDefinition.fileType.name} (skipUpload=true).");
+                if (finalUpload)
+                    OnFinalUploadComplete();
+                yield break;
+            }
+
             // If there is an active web request, skip simple syncs or queue final sync to wait until active request completes
             if (activeWebRequest != null)
             {
@@ -470,6 +491,8 @@ namespace VERA
             string host = VERAHost.hostUrl;
             string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
 
+            Debug.Log($"[VERA CSV] Uploading {columnDefinition.fileType.name}: URL={url}, fileTypeId={fileTypeId}");
+
             // Add mode parameter for partial uploads
             if (partial)
             {
@@ -569,8 +592,8 @@ namespace VERA
                 File.Delete(partialCsvFilePath);
             }
         }
-        
-        
+
+
         // Gets whether the partial file has any unsynced data (rows beyond the header)
         private bool PartialFileHasUnsyncedData()
         {

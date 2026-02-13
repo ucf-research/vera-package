@@ -503,7 +503,8 @@ namespace VERA
                     trial.surveyInstanceData = new SurveyInstanceData
                     {
                         instanceId = instanceObj.Value<string>("instanceId"),
-                        activated = instanceObj.Value<bool>("activated")
+                        activated = instanceObj.Value<bool>("activated"),
+                        requiresCompletion = instanceObj.Value<bool?>("requiresCompletion") ?? true // Default to required
                     };
                 }
 
@@ -544,6 +545,7 @@ namespace VERA
         {
             public string instanceId;
             public bool activated;
+            public bool requiresCompletion;
         }
 
         // Data class for trial workflow items

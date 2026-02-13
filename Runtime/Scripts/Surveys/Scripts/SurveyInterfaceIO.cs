@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
@@ -24,8 +25,12 @@ namespace VERA
 
         public bool uploadSuccessful { get; private set; } = false;
         public bool reconnectSuccessful { get; private set; } = false;
+        private bool fileUploadSuccessful = false;
 
         private SurveyInfo surveyInfo;
+
+        // Track survey instance counts for file naming
+        private static Dictionary<string, int> surveyInstanceCounts = new Dictionary<string, int>();
 
         [SerializeField] private UnityEvent OnSurveyCompleted;
 
@@ -263,208 +268,313 @@ namespace VERA
 
         #region OUTPUT
 
-        // Marks the local survey response file as uploaded
-        private void MarkLocalSurveyAsUploaded(string instanceId, string participantId)
+        // Creates and uploads a CSV file for this specific survey instance
+        private IEnumerator UploadSurveyInstanceFile(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
         {
-            try
+            int pID = VERALogger.Instance.activeParticipant.participantShortId;
+            string ts = Time.realtimeSinceStartup.ToString();
+            string studyId = VERALogger.Instance.experimentUUID;
+            string surveyId = surveyToOutput.surveyId;
+            string surveyName = surveyToOutput.surveyName;
+
+            // Build question text lookup
+            Dictionary<string, string> questionTextLookup = new Dictionary<string, string>();
+            if (surveyToOutput.surveyQuestions != null)
             {
-                string directory = Path.Combine(Application.persistentDataPath, "SurveyResponses");
-                if (!Directory.Exists(directory))
+                foreach (var question in surveyToOutput.surveyQuestions)
                 {
-                    return;
-                }
-
-                // Find the survey response file for this participant and instance
-                string filename = $"survey_responses_{participantId}_{instanceId}.csv";
-                string filepath = Path.Combine(directory, filename);
-
-                if (!File.Exists(filepath))
-                {
-                    Debug.LogWarning($"[VERA Survey] Local survey file not found: {filename}");
-                    return;
-                }
-
-                // Read all lines from the CSV
-                string[] lines = File.ReadAllLines(filepath);
-
-                if (lines.Length < 2) // Need at least header + 1 data row
-                {
-                    Debug.LogWarning($"[VERA Survey] CSV file is empty or invalid: {filename}");
-                    return;
-                }
-
-                // Update the uploaded column (last column) to true for all rows
-                for (int i = 1; i < lines.Length; i++) // Start at 1 to skip header
-                {
-                    if (!string.IsNullOrEmpty(lines[i]))
+                    if (!string.IsNullOrEmpty(question.questionId))
                     {
-                        // Replace the last value (uploaded) with true
-                        int lastCommaIndex = lines[i].LastIndexOf(',');
-                        if (lastCommaIndex >= 0)
-                        {
-                            lines[i] = lines[i].Substring(0, lastCommaIndex + 1) + "true";
-                        }
+                        questionTextLookup[question.questionId] = question.questionText ?? "";
                     }
                 }
+            }
 
-                // Write back to file
-                File.WriteAllLines(filepath, lines);
+            // Get the file type ID from the Survey_Responses handler
+            VERACsvHandler surveyHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
+            if (surveyHandler == null)
+            {
+                Debug.LogError("[VERA Survey] No CSV handler found for Survey_Responses file type. Cannot upload survey instance file.");
+                fileUploadSuccessful = false;
+                yield break;
+            }
 
-                Debug.Log($"[VERA Survey] Marked local survey file as uploaded: {filename}");
+            string fileTypeId = surveyHandler.columnDefinition.fileType.fileTypeId;
+            if (string.IsNullOrEmpty(fileTypeId) || fileTypeId == "survey-responses")
+            {
+                Debug.LogWarning("[VERA Survey] Survey_Responses file type ID not available. Skipping per-instance upload.");
+                // Fall back to recording to the shared CSV (will be uploaded at finalization)
+                RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
+                fileUploadSuccessful = false;
+                yield break;
+            }
+
+            // Build CSV content
+            StringBuilder csvContent = new StringBuilder();
+
+            // Header row
+            csvContent.AppendLine("pID,ts,studyId,surveyId,surveyName,instanceId,questionId,questionText,answer");
+
+            // Data rows
+            foreach (var response in surveyResults)
+            {
+                string questionText = "";
+                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                {
+                    questionText = text;
+                }
+
+                // Escape CSV values
+                string escapedQuestionText = EscapeCsvValue(questionText);
+                string escapedAnswer = EscapeCsvValue(response.Value);
+                string escapedSurveyName = EscapeCsvValue(surveyName);
+
+                csvContent.AppendLine($"{pID},{ts},{studyId},{surveyId},{escapedSurveyName},{instanceId},{response.Key},{escapedQuestionText},{escapedAnswer}");
+            }
+
+            // Create temp file
+            string participantUUID = VERALogger.Instance.activeParticipant.participantUUID;
+            string sanitizedSurveyName = System.Text.RegularExpressions.Regex.Replace(surveyName ?? "Survey", @"[<>:""/\\|?*\s]", "_");
+
+            // Track instance count per survey name (e.g., VRSQ.csv, VRSQ_2.csv, VRSQ_3.csv)
+            // Only increment on success to avoid duplicate filenames on retry
+            if (!surveyInstanceCounts.ContainsKey(sanitizedSurveyName))
+            {
+                surveyInstanceCounts[sanitizedSurveyName] = 0;
+            }
+            // Use pending count (current + 1) for this attempt
+            int instanceCount = surveyInstanceCounts[sanitizedSurveyName] + 1;
+
+            // First instance has no suffix, subsequent instances have _2, _3, etc.
+            string fileName = instanceCount == 1
+                ? $"{sanitizedSurveyName}.csv"
+                : $"{sanitizedSurveyName}_{instanceCount}.csv";
+            string tempFilePath = Path.Combine(Application.temporaryCachePath, fileName);
+
+            try
+            {
+                File.WriteAllText(tempFilePath, csvContent.ToString());
+
+                // Also save a backup copy to the VERA data directory for testing/debugging
+                string dataPath = Path.Combine(Application.dataPath, "VERA", "data");
+                if (!Directory.Exists(dataPath))
+                {
+                    Directory.CreateDirectory(dataPath);
+                }
+                string backupFilePath = Path.Combine(dataPath, fileName);
+                File.WriteAllText(backupFilePath, csvContent.ToString());
+                Debug.Log($"[VERA Survey] Backup saved: {backupFilePath}");
             }
             catch (System.Exception ex)
             {
-                Debug.LogWarning($"[VERA Survey] Failed to mark local survey as uploaded: {ex.Message}");
+                Debug.LogError($"[VERA Survey] Failed to create survey instance CSV file: {ex.Message}");
+                // Fall back to shared CSV
+                RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
+                fileUploadSuccessful = false;
+                yield break;
             }
-        }
 
-        // Saves survey responses to a local CSV file for later upload
-        private void SaveSurveyResponsesLocally(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
-        {
+            // Upload the file
+            string host = VERAHost.hostUrl;
+            string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
+            string apiKey = VERALogger.Instance.apiKey;
+
+            Debug.Log($"[VERA Survey] Uploading survey instance file: {fileName}");
+
+            byte[] fileData = File.ReadAllBytes(tempFilePath);
+
+            WWWForm form = new WWWForm();
+            form.AddField("participant_UUID", participantUUID);
+            form.AddBinaryData("fileUpload", fileData, fileName, "text/csv");
+
+            using (UnityWebRequest request = UnityWebRequest.Post(url, form))
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                yield return request.SendWebRequest();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    Debug.Log($"[VERA Survey] ✓ Successfully uploaded survey instance file: {fileName}");
+                    fileUploadSuccessful = true;
+                    // Commit the instance count increment now that upload succeeded
+                    surveyInstanceCounts[sanitizedSurveyName] = instanceCount;
+                }
+                else
+                {
+                    Debug.LogError($"[VERA Survey] Failed to upload survey instance file: {request.error}");
+                    Debug.LogError($"[VERA Survey] HTTP Status: {request.responseCode}");
+                    fileUploadSuccessful = false;
+                    // Fall back to shared CSV as backup
+                    RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
+                }
+            }
+
+            // Clean up temp file
             try
             {
-                string timestamp = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-                string studyId = VERALogger.Instance.experimentUUID;
-                string surveyId = surveyToOutput.surveyId;
-                string surveyName = surveyToOutput.surveyName;
-                string participantId = VERALogger.Instance.activeParticipant.participantUUID;
-
-                // Create a lookup dictionary for question text by question ID
-                Dictionary<string, string> questionTextLookup = new Dictionary<string, string>();
-                if (surveyToOutput.surveyQuestions != null)
+                if (File.Exists(tempFilePath))
                 {
-                    foreach (var question in surveyToOutput.surveyQuestions)
-                    {
-                        if (!string.IsNullOrEmpty(question.questionId))
-                        {
-                            questionTextLookup[question.questionId] = question.questionText ?? "";
-                        }
-                    }
+                    File.Delete(tempFilePath);
                 }
-
-                // Create filename with participant ID and instance ID
-                string filename = $"survey_responses_{participantId}_{instanceId}.csv";
-                string filepath = Path.Combine(Application.persistentDataPath, "SurveyResponses", filename);
-
-                // Ensure the directory exists
-                string directory = Path.GetDirectoryName(filepath);
-                if (!Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // Create CSV content
-                using (StreamWriter writer = new StreamWriter(filepath))
-                {
-                    // Write header
-                    writer.WriteLine("timestamp,studyId,surveyId,surveyName,participantId,instanceId,questionId,questionText,answer,uploaded");
-
-                    // Write each response as a row
-                    foreach (var response in surveyResults)
-                    {
-                        string questionId = EscapeCsvField(response.Key);
-
-                        // Get question text from lookup, or use empty string if not found
-                        string questionText = "";
-                        if (questionTextLookup.TryGetValue(response.Key, out string text))
-                        {
-                            questionText = EscapeCsvField(text);
-                        }
-
-                        string answer = EscapeCsvField(response.Value);
-                        string surveyNameEscaped = EscapeCsvField(surveyName);
-
-                        writer.WriteLine($"{timestamp},{studyId},{surveyId},{surveyNameEscaped},{participantId},{instanceId},{questionId},{questionText},{answer},false");
-                    }
-                }
-
-                Debug.Log($"[VERA Survey] Saved survey responses locally to: {filepath}");
             }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"[VERA Survey] Failed to save survey responses locally: {ex.Message}");
-            }
+            catch { }
         }
 
-        // Escapes CSV fields that contain commas, quotes, or newlines
-        private string EscapeCsvField(string field)
+        // Records responses to the shared Survey_Responses CSV (backup/fallback)
+        private void RecordToSharedCsv(VERACsvHandler csvHandler, KeyValuePair<string, string>[] surveyResults,
+            int pID, string ts, string studyId, string surveyId, string surveyName, string instanceId,
+            Dictionary<string, string> questionTextLookup)
         {
-            if (string.IsNullOrEmpty(field))
+            foreach (var response in surveyResults)
+            {
+                string questionText = "";
+                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                {
+                    questionText = text;
+                }
+                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
+            }
+            Debug.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to shared Survey_Responses file.");
+        }
+
+        // Escapes a value for CSV format
+        private string EscapeCsvValue(string value)
+        {
+            if (string.IsNullOrEmpty(value))
                 return "";
 
-            // If field contains comma, quote, or newline, wrap it in quotes and escape internal quotes
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+            // If the value contains comma, quote, or newline, wrap in quotes and escape internal quotes
+            if (value.Contains(",") || value.Contains("\"") || value.Contains("\n") || value.Contains("\r"))
             {
-                return "\"" + field.Replace("\"", "\"\"") + "\"";
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            }
+            return value;
+        }
+
+        // Legacy method - records survey responses to the shared Survey_Responses CSV file type via VERACsvHandler
+        private void RecordSurveyResponses(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        {
+            int pID = VERALogger.Instance.activeParticipant.participantShortId;
+            string ts = Time.realtimeSinceStartup.ToString();
+            string studyId = VERALogger.Instance.experimentUUID;
+            string surveyId = surveyToOutput.surveyId;
+            string surveyName = surveyToOutput.surveyName;
+
+            // Build question text lookup
+            Dictionary<string, string> questionTextLookup = new Dictionary<string, string>();
+            if (surveyToOutput.surveyQuestions != null)
+            {
+                foreach (var question in surveyToOutput.surveyQuestions)
+                {
+                    if (!string.IsNullOrEmpty(question.questionId))
+                    {
+                        questionTextLookup[question.questionId] = question.questionText ?? "";
+                    }
+                }
             }
 
-            return field;
+            VERACsvHandler csvHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
+            if (csvHandler == null)
+            {
+                Debug.LogError("[VERA Survey] No CSV handler found for Survey_Responses file type.");
+                return;
+            }
+
+            foreach (var response in surveyResults)
+            {
+                string questionText = "";
+                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                {
+                    questionText = text;
+                }
+
+                // All 9 columns provided explicitly (skipAutoColumns file type)
+                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
+            }
+
+            Debug.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to Survey_Responses file type.");
         }
 
         // Outputs given results of given survey back to the database
+        // Flow: submit responses to the API, then record to the Survey_Responses CSV file type
         public IEnumerator OutputSurveyResults(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults)
         {
             uploadSuccessful = false;
+            fileUploadSuccessful = false;
             string instanceId = null;
+            string participantId = VERALogger.Instance.activeParticipant.participantUUID;
 
-            // Create the SurveyInstance based on input
-            SurveyInstance surveyInstance = new SurveyInstance();
-            surveyInstance.studyId = VERALogger.Instance.experimentUUID;
-            surveyInstance.survey = surveyToOutput.surveyId;
-            surveyInstance.participantId = VERALogger.Instance.activeParticipant.participantUUID;
+            // Always generate a local instance ID so we can save the CSV regardless of API success
+            string localInstanceId = System.Guid.NewGuid().ToString("N");
 
-            // Convert to JSON
-            string instanceJson = JsonUtility.ToJson(surveyInstance);
+            UnityWebRequest instanceRequest = null;
 
-            // Create the request
-            UnityWebRequest instanceRequest = new UnityWebRequest(apiUrl + "/api/surveys/instances", "POST");
-            byte[] instanceBodyRaw = System.Text.Encoding.UTF8.GetBytes(instanceJson);
-            instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
-            instanceRequest.downloadHandler = new DownloadHandlerBuffer();
-            instanceRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Send the request and wait for a response
-            yield return instanceRequest.SendWebRequest();
-
-            if (instanceRequest.result == UnityWebRequest.Result.Success)
+            // Check if survey instance ID is already provided (pre-existing instance)
+            if (!string.IsNullOrEmpty(surveyToOutput.surveyInstanceId))
             {
-                // Parse the response to get the ID of the created SurveyInstance
-                string responseText = instanceRequest.downloadHandler.text;
-                JObject jsonResponse = JObject.Parse(responseText);
-                instanceId = jsonResponse["_id"]?.ToString();
+                // Use existing survey instance ID
+                instanceId = surveyToOutput.surveyInstanceId;
+                Debug.Log($"[VERA Survey] Using existing survey instance ID: {instanceId}");
+            }
+            else
+            {
+                // Create a new SurveyInstance
+                Debug.Log("[VERA Survey] No existing instance ID found. Creating new survey instance.");
 
-                // Save responses locally with the instance ID
-                SaveSurveyResponsesLocally(surveyToOutput, surveyResults, instanceId);
+                SurveyInstance surveyInstance = new SurveyInstance();
+                surveyInstance.studyId = VERALogger.Instance.experimentUUID;
+                surveyInstance.survey = surveyToOutput.surveyId;
+                surveyInstance.participantId = participantId;
 
-                // Create SurveyResponses
+                // Convert to JSON
+                string instanceJson = JsonUtility.ToJson(surveyInstance);
+
+                // Create the request
+                instanceRequest = new UnityWebRequest(apiUrl + "/api/surveys/instances", "POST");
+                byte[] instanceBodyRaw = System.Text.Encoding.UTF8.GetBytes(instanceJson);
+                instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
+                instanceRequest.downloadHandler = new DownloadHandlerBuffer();
+                instanceRequest.SetRequestHeader("Content-Type", "application/json");
+
+                // Send the request and wait for a response
+                yield return instanceRequest.SendWebRequest();
+            }
+
+            if (instanceRequest == null || instanceRequest.result == UnityWebRequest.Result.Success)
+            {
+                // Parse the response to get the ID of the created SurveyInstance (only if we created a new one)
+                if (instanceRequest != null)
+                {
+                    string responseText = instanceRequest.downloadHandler.text;
+                    JObject jsonResponse = JObject.Parse(responseText);
+                    instanceId = jsonResponse["_id"]?.ToString();
+                }
+
+                // Submit individual responses to the response API
+                Debug.Log($"[VERA Survey] Submitting {surveyResults.Length} responses with instanceId={instanceId}, participantId={participantId}");
+
                 for (int i = 0; i < surveyResults.Length; i++)
                 {
-                    // Create the SurveyResponse based on input
                     SurveyResponse surveyResponse = new SurveyResponse
                     {
                         question = surveyResults[i].Key,
                         surveyInstance = instanceId,
-                        answer = surveyResults[i].Value
+                        answer = surveyResults[i].Value,
+                        participantId = participantId
                     };
 
-                    // Convert to JSON
                     string responseJson = JsonUtility.ToJson(surveyResponse);
+                    Debug.Log($"[VERA Survey] Submitting response {i+1}/{surveyResults.Length}: {responseJson}");
 
-                    // Create the request
                     UnityWebRequest responseRequest = new UnityWebRequest(apiUrl + "/api/surveys/responses", "POST");
                     byte[] responseBodyRaw = System.Text.Encoding.UTF8.GetBytes(responseJson);
                     responseRequest.uploadHandler = new UploadHandlerRaw(responseBodyRaw);
                     responseRequest.downloadHandler = new DownloadHandlerBuffer();
                     responseRequest.SetRequestHeader("Content-Type", "application/json");
 
-                    // Send the request and wait for a response
                     yield return responseRequest.SendWebRequest();
 
-                    if (responseRequest.result == UnityWebRequest.Result.Success)
-                    {
-                        continue;
-                    }
-                    else
+                    if (responseRequest.result != UnityWebRequest.Result.Success)
                     {
                         Debug.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
                         Debug.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
@@ -474,29 +584,46 @@ namespace VERA
                         {
                             Debug.LogError($"[VERA Survey] Response Body: {responseRequest.downloadHandler.text}");
                         }
-                        yield break;
+                        Debug.LogError($"[VERA Survey] Request Body: {responseJson}");
+                        break;
+                    }
+                    else
+                    {
+                        Debug.Log($"[VERA Survey] ✓ Response {i+1} submitted successfully");
                     }
                 }
             }
             else
             {
-                Debug.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
-                Debug.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
-                Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/instances");
-                if (!string.IsNullOrEmpty(instanceRequest.downloadHandler?.text))
+                // Only log error if we actually tried to create an instance
+                if (instanceRequest != null)
                 {
-                    Debug.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
+                    Debug.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
+                    Debug.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
+                    Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/instances");
+                    if (!string.IsNullOrEmpty(instanceRequest.downloadHandler?.text))
+                    {
+                        Debug.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
+                    }
                 }
-                yield break;
             }
 
-            Debug.Log("VERA Survey results successfully uploaded.");
-            uploadSuccessful = true;
+            // Upload survey responses as a separate CSV file for this instance
+            string csvInstanceId = instanceId ?? localInstanceId;
+            yield return UploadSurveyInstanceFile(surveyToOutput, surveyResults, csvInstanceId);
 
-            // Mark the local file as uploaded
-            MarkLocalSurveyAsUploaded(instanceId, VERALogger.Instance.activeParticipant.participantUUID);
-
-            yield break;
+            // Survey upload is successful only if the file was uploaded successfully
+            // Instance creation is secondary - the file upload is what we require
+            if (fileUploadSuccessful)
+            {
+                Debug.Log("[VERA Survey] Survey response file successfully uploaded.");
+                uploadSuccessful = true;
+            }
+            else
+            {
+                Debug.LogWarning("[VERA Survey] Survey response file upload failed. Responses saved locally - retry required.");
+                uploadSuccessful = false;
+            }
         }
 
         // Invokes completion of the survey
@@ -566,6 +693,7 @@ namespace VERA
         public string instanceId;
         public string experimentId;
         public bool activated;
+        public bool requiresCompletion;
     }
 
     [System.Serializable]
@@ -574,5 +702,6 @@ namespace VERA
         public string question;
         public string surveyInstance;
         public string answer;
+        public string participantId;
     }
 }

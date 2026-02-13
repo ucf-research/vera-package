@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Networking;
+using Newtonsoft.Json.Linq;
 
 namespace VERA
 {
@@ -92,18 +94,18 @@ namespace VERA
             VERALogger.Instance.CompleteAutomatedTrial();
         }
 
-        private void OnSurveyRequired(string surveyId, string surveyName, string position)
+        private void OnSurveyRequired(string surveyId, string surveyName, string position, string instanceId)
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Survey required: {surveyName} (position: {position})");
+                Debug.Log($"[VERA Mock Test] Survey required: {surveyName} (position: {position}, instanceId: {instanceId})");
             }
 
             // Simulate survey completion
-            StartCoroutine(SimulateSurveyCompletion(surveyId, surveyName, position));
+            StartCoroutine(SimulateSurveyCompletion(surveyId, surveyName, position, instanceId));
         }
 
-        private IEnumerator SimulateSurveyCompletion(string surveyId, string surveyName, string position)
+        private IEnumerator SimulateSurveyCompletion(string surveyId, string surveyName, string position, string instanceId)
         {
             if (verboseLogging)
             {
@@ -113,23 +115,74 @@ namespace VERA
             yield return new WaitForSeconds(surveySimulationDelay);
 
             // Generate mock survey responses and upload them
-            yield return GenerateAndUploadMockSurveyResponses(surveyId, surveyName);
+            yield return GenerateAndUploadMockSurveyResponses(surveyId, surveyName, instanceId);
 
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Survey complete. Marking as done.");
+                Debug.Log($"[VERA Mock Test] Survey complete. Marking as done and continuing workflow.");
             }
 
-            // Mark survey as completed
+            // Always mark survey as completed, even if upload failed
+            // This ensures the workflow can progress
             var workflow = VERALogger.Instance?.trialWorkflow;
-            workflow?.MarkSurveyCompleted();
+            if (workflow != null)
+            {
+                workflow.MarkSurveyCompleted();
+
+                if (verboseLogging)
+                {
+                    Debug.Log($"[VERA Mock Test] Survey marked complete. Workflow should now continue.");
+                }
+            }
+            else
+            {
+                Debug.LogError($"[VERA Mock Test] Cannot mark survey complete - workflow is null!");
+            }
         }
 
-        private IEnumerator GenerateAndUploadMockSurveyResponses(string surveyId, string surveyName)
+        private IEnumerator GenerateAndUploadMockSurveyResponses(string surveyId, string surveyName, string instanceId)
         {
             if (verboseLogging)
             {
                 Debug.Log($"[VERA Mock Test] Generating and uploading mock survey responses...");
+                Debug.Log($"[VERA Mock Test]   surveyId: {surveyId}");
+                Debug.Log($"[VERA Mock Test]   surveyName: {surveyName}");
+                Debug.Log($"[VERA Mock Test]   instanceId: {instanceId}");
+            }
+
+            // Get survey data from the workflow (which already has it embedded)
+            var workflow = VERALogger.Instance?.trialWorkflow;
+            if (workflow == null)
+            {
+                Debug.LogWarning($"[VERA Mock Test] Workflow not available. Falling back to local CSV recording only.");
+                GenerateMockSurveyResponsesLocal(surveyId, surveyName);
+                yield return null; // Always return normally so caller can mark survey complete
+                yield break;
+            }
+
+            Debug.Log($"[VERA Mock Test] AllWorkflowItems count: {workflow.AllWorkflowItems?.Count ?? 0}");
+
+            Survey surveyData = GetSurveyDataFromWorkflow(surveyId);
+            if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
+            {
+                Debug.LogWarning($"[VERA Mock Test] Survey data not found in workflow. Attempting to fetch from API...");
+
+                // Try to fetch survey data from the API
+                yield return FetchSurveyDataFromAPI(surveyId, (fetchedSurvey) => {
+                    surveyData = fetchedSurvey;
+                });
+
+                if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
+                {
+                    Debug.LogWarning($"[VERA Mock Test] Survey data could not be fetched from API. Falling back to local CSV recording only.");
+                    GenerateMockSurveyResponsesLocal(surveyId, surveyName);
+                    yield return null; // Always return normally so caller can mark survey complete
+                    yield break;
+                }
+                else
+                {
+                    Debug.Log($"[VERA Mock Test] ✓ Successfully fetched survey data from API with {surveyData.questions.Count} questions");
+                }
             }
 
             // Find or create SurveyInterfaceIO
@@ -141,47 +194,26 @@ namespace VERA
                     Debug.Log($"[VERA Mock Test] No SurveyInterfaceIO found in scene. Auto-creating one with API URL: {VERAHost.hostUrl}");
                 }
 
-                // Create a new GameObject with SurveyInterfaceIO component
-                // Note: SurveyManager is not required for API-only operations (mock tests)
-                // SurveyInterfaceIO will operate in API-only mode without UI components
                 GameObject surveyIOObject = new GameObject("SurveyInterfaceIO (Auto-Created)");
                 surveyIO = surveyIOObject.AddComponent<SurveyInterfaceIO>();
 
-                // SurveyInterfaceIO.Awake() automatically configures apiUrl from VERAHost.hostUrl
                 if (verboseLogging)
                 {
                     Debug.Log("[VERA Mock Test] SurveyInterfaceIO created and configured successfully.");
                 }
             }
 
-            // Generate mock questions and answers
-            int numQuestions = UnityEngine.Random.Range(3, 8);
+            // Convert Survey to SurveyInfo
+            SurveyInfo surveyInfo = ConvertSurveyToSurveyInfo(surveyData, instanceId);
+            int numQuestions = surveyInfo.surveyQuestions.Count;
 
-            // Create mock SurveyInfo
-            SurveyInfo mockSurvey = ScriptableObject.CreateInstance<SurveyInfo>();
-            mockSurvey.surveyId = surveyId;
-            mockSurvey.surveyName = surveyName;
-            mockSurvey.surveyDescription = "Mock survey for testing";
-            mockSurvey.surveyEndStatement = "Thank you for participating in this mock survey";
-            mockSurvey.surveyQuestions = new List<SurveyQuestionInfo>();
-
-            // Create survey results array
+            // Create survey results array using real question IDs from workflow
             KeyValuePair<string, string>[] surveyResults = new KeyValuePair<string, string>[numQuestions];
 
             for (int i = 0; i < numQuestions; i++)
             {
-                string questionId = $"q{i + 1}_{System.Guid.NewGuid().ToString().Substring(0, 8)}";
-                string questionText = $"Mock Question {i + 1}";
+                string questionId = surveyInfo.surveyQuestions[i].questionId;
                 string answer = GenerateMockAnswer(i);
-
-                // Add to survey info
-                SurveyQuestionInfo questionInfo = new SurveyQuestionInfo();
-                questionInfo.questionId = questionId;
-                questionInfo.questionText = questionText;
-                questionInfo.orderInSurvey = i;
-                mockSurvey.surveyQuestions.Add(questionInfo);
-
-                // Add to results
                 surveyResults[i] = new KeyValuePair<string, string>(questionId, answer);
             }
 
@@ -191,7 +223,10 @@ namespace VERA
             }
 
             // Call the actual upload method
-            yield return surveyIO.OutputSurveyResults(mockSurvey, surveyResults);
+            yield return surveyIO.OutputSurveyResults(surveyInfo, surveyResults);
+
+            // Give the CSV handler time to flush entries to disk
+            yield return new WaitForSeconds(0.5f);
 
             if (verboseLogging)
             {
@@ -201,23 +236,125 @@ namespace VERA
                 }
                 else
                 {
-                    Debug.LogWarning($"[VERA Mock Test] ✗ Failed to upload mock survey responses (CSV file still created locally)");
+                    Debug.LogWarning($"[VERA Mock Test] ✗ Failed to upload mock survey responses to API (CSV file still created locally)");
                 }
             }
         }
+
+        private Survey GetSurveyDataFromWorkflow(string surveyId)
+        {
+            var workflow = VERALogger.Instance?.trialWorkflow;
+            if (workflow == null || workflow.AllWorkflowItems == null)
+            {
+                Debug.LogWarning($"[VERA Mock Test] Workflow or AllWorkflowItems is null");
+                return null;
+            }
+
+            Debug.Log($"[VERA Mock Test] Searching for survey ID '{surveyId}' in {workflow.AllWorkflowItems.Count} workflow items");
+
+            // Search through all trials to find the survey with this ID
+            foreach (var trial in workflow.AllWorkflowItems)
+            {
+                if (trial == null)
+                    continue;
+
+                if (verboseLogging)
+                {
+                    Debug.Log($"[VERA Mock Test]   Checking trial: type='{trial.type}', surveyId='{trial.surveyId}', instanceId='{trial.instanceId}', hasSurveyData={trial.survey != null}");
+                }
+
+                // Check if this is a standalone survey with matching surveyId
+                if (trial.type == "survey" && trial.surveyId == surveyId && trial.survey != null)
+                {
+                    Debug.Log($"[VERA Mock Test] ✓ Found survey data for standalone survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    return trial.survey;
+                }
+
+                // Also check by instanceId (surveys use instanceId as the identifier)
+                if (trial.type == "survey" && trial.instanceId == surveyId && trial.survey != null)
+                {
+                    Debug.Log($"[VERA Mock Test] ✓ Found survey data by instanceId '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    return trial.survey;
+                }
+
+                // Also check attached surveys
+                if (trial.attachedSurveyId == surveyId && trial.survey != null)
+                {
+                    Debug.Log($"[VERA Mock Test] ✓ Found survey data for attached survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    return trial.survey;
+                }
+            }
+
+            Debug.LogWarning($"[VERA Mock Test] Survey data not found for ID '{surveyId}'");
+            return null;
+        }
+
+        private SurveyInfo ConvertSurveyToSurveyInfo(Survey survey, string instanceId)
+        {
+            SurveyInfo surveyInfo = ScriptableObject.CreateInstance<SurveyInfo>();
+            surveyInfo.surveyName = survey.surveyName;
+            surveyInfo.surveyDescription = survey.surveyDescription;
+            surveyInfo.surveyEndStatement = survey.surveyEndStatement;
+            surveyInfo.surveyId = survey._id;
+            surveyInfo.surveyInstanceId = instanceId;
+
+            List<SurveyQuestionInfo> surveyQuestionInfos = new List<SurveyQuestionInfo>();
+
+            foreach (SurveyQuestion question in survey.questions)
+            {
+                SurveyQuestionInfo currentQuestion = new SurveyQuestionInfo();
+                currentQuestion.questionText = question.questionText;
+                currentQuestion.orderInSurvey = question.questionNumberInSurvey;
+                currentQuestion.questionId = question._id;
+
+                switch (question.questionType)
+                {
+                    case "selection":
+                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
+                        currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                        break;
+                    case "multipleChoice":
+                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.MultipleChoice;
+                        currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                        break;
+                    case "slider":
+                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Slider;
+                        currentQuestion.leftSliderText = question.leftSliderText;
+                        currentQuestion.rightSliderText = question.rightSliderText;
+                        break;
+                    case "matrix":
+                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Matrix;
+                        currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
+                        currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
+                        break;
+                }
+
+                surveyQuestionInfos.Add(currentQuestion);
+            }
+
+            surveyInfo.surveyQuestions = surveyQuestionInfos.OrderBy(q => q.orderInSurvey).ToList();
+            return surveyInfo;
+        }
+
 
         private void GenerateMockSurveyResponsesLocal(string surveyId, string surveyName)
         {
             try
             {
-                string timestamp = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+                int pID = VERALogger.Instance.activeParticipant.participantShortId;
+                string ts = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
                 string studyId = VERALogger.Instance.experimentUUID;
-                string participantId = VERALogger.Instance.activeParticipant.participantUUID;
                 string instanceId = System.Guid.NewGuid().ToString();
 
                 // Generate mock questions and answers
                 int numQuestions = UnityEngine.Random.Range(3, 8);
-                List<(string questionId, string questionText, string answer)> responses = new List<(string, string, string)>();
+
+                VERACsvHandler csvHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
+                if (csvHandler == null)
+                {
+                    Debug.LogError("[VERA Mock Test] No CSV handler found for Survey_Responses file type.");
+                    return;
+                }
 
                 for (int i = 0; i < numQuestions; i++)
                 {
@@ -225,47 +362,150 @@ namespace VERA
                     string questionText = $"Mock Question {i + 1}";
                     string answer = GenerateMockAnswer(i);
 
-                    responses.Add((questionId, questionText, answer));
-                }
-
-                // Create filename with participant ID and instance ID
-                string filename = $"survey_responses_{participantId}_{instanceId}.csv";
-                string filepath = System.IO.Path.Combine(UnityEngine.Application.persistentDataPath, "SurveyResponses", filename);
-
-                // Ensure the directory exists
-                string directory = System.IO.Path.GetDirectoryName(filepath);
-                if (!System.IO.Directory.Exists(directory))
-                {
-                    System.IO.Directory.CreateDirectory(directory);
-                }
-
-                // Create CSV content
-                using (System.IO.StreamWriter writer = new System.IO.StreamWriter(filepath))
-                {
-                    // Write header
-                    writer.WriteLine("timestamp,studyId,surveyId,surveyName,participantId,instanceId,questionId,questionText,answer,uploaded");
-
-                    // Write each response as a row
-                    foreach (var response in responses)
-                    {
-                        string questionIdEscaped = EscapeCsvField(response.questionId);
-                        string questionTextEscaped = EscapeCsvField(response.questionText);
-                        string answerEscaped = EscapeCsvField(response.answer);
-                        string surveyNameEscaped = EscapeCsvField(surveyName);
-
-                        writer.WriteLine($"{timestamp},{studyId},{surveyId},{surveyNameEscaped},{participantId},{instanceId},{questionIdEscaped},{questionTextEscaped},{answerEscaped},false");
-                    }
+                    csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, questionId, questionText, answer);
                 }
 
                 if (verboseLogging)
                 {
-                    Debug.Log($"[VERA Mock Test] Generated mock survey responses and saved to: {filepath}");
-                    Debug.Log($"[VERA Mock Test] Created {numQuestions} mock responses for survey '{surveyName}'");
+                    Debug.Log($"[VERA Mock Test] Generated {numQuestions} mock survey responses via Survey_Responses file type.");
                 }
             }
             catch (System.Exception ex)
             {
                 Debug.LogError($"[VERA Mock Test] Failed to generate mock survey responses: {ex.Message}");
+            }
+        }
+
+        private IEnumerator FetchSurveyDataFromAPI(string surveyId, System.Action<Survey> onComplete)
+        {
+            string apiUrl = VERAHost.hostUrl;
+            string url = $"{apiUrl}/api/surveys/{surveyId}";
+
+            if (verboseLogging)
+            {
+                Debug.Log($"[VERA Mock Test] Fetching survey data from API: {url}");
+            }
+
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            {
+                // Note: Survey fetch does not require authentication (matches SurveyInterfaceIO behavior)
+                // Surveys are publicly accessible as they need to work in the VR environment
+
+                yield return request.SendWebRequest();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    string jsonResponse = request.downloadHandler.text;
+
+                    if (verboseLogging)
+                    {
+                        Debug.Log($"[VERA Mock Test] Survey API response (first 500 chars): {jsonResponse.Substring(0, System.Math.Min(500, jsonResponse.Length))}");
+                    }
+
+                    try
+                    {
+                        // Parse the survey JSON using Newtonsoft.Json (same as in workflow parsing)
+                        JObject surveyObj = JObject.Parse(jsonResponse);
+                        Survey survey = ParseSurveyFromJSON(surveyObj);
+
+                        if (survey != null && survey.questions != null && survey.questions.Count > 0)
+                        {
+                            Debug.Log($"[VERA Mock Test] ✓ Fetched survey with {survey.questions.Count} questions from API");
+                            onComplete?.Invoke(survey);
+                        }
+                        else
+                        {
+                            Debug.LogError($"[VERA Mock Test] Survey fetched from API has no questions");
+                            onComplete?.Invoke(null);
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogError($"[VERA Mock Test] Failed to parse survey JSON from API: {ex.Message}");
+                        Debug.LogError($"[VERA Mock Test] Raw response was: {jsonResponse.Substring(0, System.Math.Min(200, jsonResponse.Length))}");
+                        onComplete?.Invoke(null);
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[VERA Mock Test] Failed to fetch survey from API: {request.error} (HTTP {request.responseCode})");
+                    onComplete?.Invoke(null);
+                }
+            }
+        }
+
+        private Survey ParseSurveyFromJSON(JObject surveyObj)
+        {
+            if (surveyObj == null)
+                return null;
+
+            try
+            {
+                var survey = new Survey
+                {
+                    _id = surveyObj["_id"]?.ToString(),
+                    surveyName = surveyObj["surveyName"]?.ToString(),
+                    shortSurveyName = surveyObj["shortSurveyName"]?.ToString(),
+                    surveyDescription = surveyObj["surveyDescription"]?.ToString(),
+                    surveyEndStatement = surveyObj["surveyEndStatement"]?.ToString(),
+                    createdBy = surveyObj["createdBy"]?.ToString(),
+                    experimentId = surveyObj["experimentId"]?.ToString(),
+                    isTemplate = surveyObj["isTemplate"]?.Value<bool>() ?? false
+                };
+
+                // Parse questions
+                var questionsToken = surveyObj["questions"];
+                if (questionsToken != null && questionsToken.Type == JTokenType.Array)
+                {
+                    survey.questions = new List<SurveyQuestion>();
+                    foreach (var qToken in questionsToken)
+                    {
+                        if (qToken.Type == JTokenType.Object)
+                        {
+                            var question = new SurveyQuestion
+                            {
+                                _id = qToken["_id"]?.ToString(),
+                                surveyParent = qToken["surveyParent"]?.ToString(),
+                                questionNumberInSurvey = qToken["questionNumberInSurvey"]?.Value<int>() ?? 0,
+                                questionText = qToken["questionText"]?.ToString(),
+                                questionType = qToken["questionType"]?.ToString(),
+                                leftSliderText = qToken["leftSliderText"]?.ToString(),
+                                rightSliderText = qToken["rightSliderText"]?.ToString()
+                            };
+
+                            // Parse question options
+                            var optionsToken = qToken["questionOptions"];
+                            if (optionsToken != null && optionsToken.Type == JTokenType.Array)
+                            {
+                                question.questionOptions = new List<string>();
+                                foreach (var opt in optionsToken)
+                                    question.questionOptions.Add(opt.ToString());
+                            }
+
+                            // Parse matrix column names
+                            var matrixToken = qToken["matrixColumnNames"];
+                            if (matrixToken != null && matrixToken.Type == JTokenType.Array)
+                            {
+                                question.matrixColumnNames = new List<string>();
+                                foreach (var col in matrixToken)
+                                    question.matrixColumnNames.Add(col.ToString());
+                            }
+
+                            survey.questions.Add(question);
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[VERA Mock Test] Survey has no questions array. Questions token type: {questionsToken?.Type.ToString() ?? "null"}");
+                }
+
+                return survey;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[VERA Mock Test] Error in ParseSurveyFromJSON: {ex.Message}");
+                return null;
             }
         }
 
@@ -305,24 +545,14 @@ namespace VERA
             }
         }
 
-        private string EscapeCsvField(string field)
-        {
-            if (string.IsNullOrEmpty(field))
-                return "";
-
-            // If field contains comma, quote, or newline, wrap it in quotes and escape internal quotes
-            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
-            {
-                return "\"" + field.Replace("\"", "\"\"") + "\"";
-            }
-
-            return field;
-        }
-
         private void OnWorkflowCompleted()
         {
             Debug.Log("[VERA Mock Test] ✓ Automated workflow test completed successfully!");
             Debug.Log($"[VERA Mock Test] All trials and surveys were processed.");
+
+            // Finalize session to upload all files and mark participant as COMPLETE
+            Debug.Log("[VERA Mock Test] Finalizing session and uploading files...");
+            VERASessionManager.FinalizeSession();
         }
 
         private void OnDestroy()

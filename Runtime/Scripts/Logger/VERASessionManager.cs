@@ -315,6 +315,34 @@ namespace VERA
         }
 
         /// <summary>
+        /// Applies Latin Square counterbalancing with total participant count for proper validation.
+        /// This is the RECOMMENDED method for applying Latin square ordering.
+        ///
+        /// IMPORTANT - Enforces complete counterbalancing:
+        /// - totalParticipants MUST be >= number of conditions (returns false otherwise)
+        /// - participantNumber must be less than totalParticipants
+        /// - If validation fails, Latin square is NOT applied (returns false)
+        ///
+        /// Example:
+        ///   // For a study with 30 total participants
+        ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///   bool success = VERASessionManager.ApplyLatinSquareCounterbalancing(participantNum, 30);
+        ///   if (!success) Debug.LogError("Latin square failed - check console!");
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed). Must be less than totalParticipants.</param>
+        /// <param name="totalParticipants">The total number of participants in the study. Must be >= number of conditions.</param>
+        /// <returns>True if Latin square ordering was applied successfully, false if validation failed.</returns>
+        public static bool ApplyLatinSquareCounterbalancing(int participantNumber, int totalParticipants)
+        {
+            if (!initialized)
+            {
+                Debug.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                return false;
+            }
+            return VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantNumber, totalParticipants) ?? false;
+        }
+
+        /// <summary>
         /// Gets the within-subjects independent variables for the current trial.
         /// Returns null if no trial is current or the trial has no within-subjects IVs.
         /// </summary>

@@ -27,6 +27,10 @@ namespace VERA
                 if (columnDef == null || columnDef.fileType == null)
                     continue;
 
+                // Skip validation for file types that define all columns explicitly
+                if (columnDef.skipAutoColumns)
+                    continue;
+
                 string fileTypeName = columnDef.fileType.name;
                 bool isBaseline = columnDef.fileType.fileTypeId == "baseline-data" || fileTypeName == "Experiment_Telemetry";
 
