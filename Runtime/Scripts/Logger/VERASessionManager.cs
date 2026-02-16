@@ -79,6 +79,29 @@ namespace VERA
         }
 
         /// <summary>
+        /// Creates a new row entry to a CSV log file by its file name, without an eventId.
+        /// This overload is used for baseline telemetry and other auto-populated file types that don't use eventId.
+        /// </summary>
+        /// <param name="fileName">The name of the CSV file to which this entry should be added, without the .csv extension.</param>
+        /// <param name="values">The values to be logged in this CSV entry, in the correct order as per the file's configuration.</param>
+        public static void CreateArbitraryCsvEntry(string fileName, params object[] values)
+        {
+            if (!initialized)
+            {
+                VERADebugger.LogWarning("Cannot create CSV entry because VERA is not initialized.", "VERASessionManager");
+                return;
+            }
+
+            if (!collecting)
+            {
+                VERADebugger.LogWarning("Cannot create CSV entry because data collection is not active.", "VERASessionManager");
+                return;
+            }
+
+            VERALogger.Instance.CreateCsvEntry(fileName, values);
+        }
+
+        /// <summary>
         /// Gets the currently selected condition value of the specified independent variable.
         /// It is highly recommended to use the generated VERAIV_[IVGroupName].GetSelectedValue() methods instead of this method,
         /// as those methods provide type safety and ensure correct value handling. Use this function only as a last resort.

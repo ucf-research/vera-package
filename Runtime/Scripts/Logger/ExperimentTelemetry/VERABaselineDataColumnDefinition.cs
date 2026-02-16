@@ -20,7 +20,7 @@ namespace VERA
             columnDefinition.fileType = new VERAColumnDefinition.FileType
             {
                 fileTypeId = "baseline-data",
-                name = "BaselineData",
+                name = "Experiment_Telemetry",
                 description = "Baseline VR tracking and input data"
             };
             
@@ -47,160 +47,154 @@ namespace VERA
                     type = VERAColumnDefinition.DataType.Date
                 },
                 
-                // Custom baseline data columns
+                // VR tracking and input data columns
                 new VERAColumnDefinition.Column
                 {
-                    name = "sampleIndex",
-                    description = "Data sample number in recording session",
-                    type = VERAColumnDefinition.DataType.Number
-                },
-                new VERAColumnDefinition.Column
-                {
-                    name = "headset_detected",
+                    name = "headsetDetected",
                     description = "Whether VR headset is connected and tracking",
-                    type = VERAColumnDefinition.DataType.Number
+                    type = VERAColumnDefinition.DataType.Boolean
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "Headset_Pos_X",
+                    name = "headsetPosX",
                     description = "VR headset horizontal position (left-right)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "Headset_Pos_Y",
+                    name = "headsetPosY",
                     description = "VR headset vertical position (up-down)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "Headset_Pos_Z",
+                    name = "headsetPosZ",
                     description = "VR headset depth position (forward-back)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "headset_rot",
-                    description = "VR headset orientation (how user's head is rotated)",
+                    name = "headsetRot",
+                    description = "VR headset rotation (yaw, pitch, roll)",
                     type = VERAColumnDefinition.DataType.String
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_detected",
+                    name = "leftDetected",
                     description = "Whether left hand controller is connected and tracking",
-                    type = VERAColumnDefinition.DataType.Number
+                    type = VERAColumnDefinition.DataType.Boolean
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "LeftController_Pos_X",
+                    name = "leftControllerPosX",
                     description = "Left hand controller horizontal position (left-right)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "LeftController_Pos_Y",
+                    name = "leftControllerPosY",
                     description = "Left hand controller vertical position (up-down)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "LeftController_Pos_Z",
+                    name = "leftControllerPosZ",
                     description = "Left hand controller depth position (forward-back)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_rot",
-                    description = "Left hand controller orientation (how controller is rotated)",
+                    name = "leftControllerRot",
+                    description = "Left hand controller rotation (yaw, pitch, roll)",
                     type = VERAColumnDefinition.DataType.String
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_trigger",
+                    name = "leftTrigger",
                     description = "Left controller trigger pressure (0=not pressed, 1=fully pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_grip",
+                    name = "leftGrip",
                     description = "Left controller grip pressure (0=not gripped, 1=fully gripped)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_primaryButton",
+                    name = "leftPrimaryButton",
                     description = "Left controller main button (1=pressed, 0=not pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_secondaryButton",
+                    name = "leftSecondaryButton",
                     description = "Left controller secondary button (1=pressed, 0=not pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "left_primary2DAxisClick",
+                    name = "leftPrimary2DAxisClick",
                     description = "Left controller thumbstick click (1=clicked, 0=not clicked)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_detected",
+                    name = "rightDetected",
                     description = "Whether right hand controller is connected and tracking",
-                    type = VERAColumnDefinition.DataType.Number
+                    type = VERAColumnDefinition.DataType.Boolean
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "RightController_Pos_X",
+                    name = "rightControllerPosX",
                     description = "Right hand controller horizontal position (left-right)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "RightController_Pos_Y",
+                    name = "rightControllerPosY",
                     description = "Right hand controller vertical position (up-down)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "RightController_Pos_Z",
+                    name = "rightControllerPosZ",
                     description = "Right hand controller depth position (forward-back)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_rot",
-                    description = "Right hand controller orientation (how controller is rotated)",
+                    name = "rightControllerRot",
+                    description = "Right hand controller rotation (yaw, pitch, roll)",
                     type = VERAColumnDefinition.DataType.String
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_trigger",
+                    name = "rightTrigger",
                     description = "Right controller trigger pressure (0=not pressed, 1=fully pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_grip",
+                    name = "rightGrip",
                     description = "Right controller grip pressure (0=not gripped, 1=fully gripped)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_primaryButton",
+                    name = "rightPrimaryButton",
                     description = "Right controller main button (1=pressed, 0=not pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_secondaryButton",
+                    name = "rightSecondaryButton",
                     description = "Right controller secondary button (1=pressed, 0=not pressed)",
                     type = VERAColumnDefinition.DataType.Number
                 },
                 new VERAColumnDefinition.Column
                 {
-                    name = "right_primary2DAxisClick",
+                    name = "rightPrimary2DAxisClick",
                     description = "Right controller thumbstick click (1=clicked, 0=not clicked)",
                     type = VERAColumnDefinition.DataType.Number
                 }
@@ -221,7 +215,7 @@ namespace VERA
                 AssetDatabase.CreateFolder("Assets", "Resources");
             }
             
-            string assetPath = $"{resourcesPath}/BaselineDataColumnDefinition.asset";
+            string assetPath = $"{resourcesPath}/Experiment_TelemetryColumnDefinition.asset";
             AssetDatabase.CreateAsset(columnDef, assetPath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

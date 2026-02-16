@@ -191,6 +191,12 @@ namespace VERA
         #region ENTRY LOGGING
 
 
+        // Logs an entry to the file without eventId (for baseline telemetry). Doesn't write yet, only writes on flush.
+        public void CreateEntry(params object[] values)
+        {
+            CreateEntry(0, values); // eventId is ignored for baseline telemetry
+        }
+
         // Logs an entry to the file. Doesn't write yet, only writes on flush.
         public void CreateEntry(int eventId, params object[] values)
         {
@@ -241,6 +247,17 @@ namespace VERA
                         else
                         {
                             formattedValue = Convert.ToString(value);
+                        }
+                        break;
+                    case VERAColumnDefinition.DataType.Boolean:
+                        // Convert boolean to lowercase string representation (true/false)
+                        if (value == null)
+                        {
+                            formattedValue = "false";
+                        }
+                        else
+                        {
+                            formattedValue = Convert.ToBoolean(value).ToString().ToLower();
                         }
                         break;
                     case VERAColumnDefinition.DataType.String:

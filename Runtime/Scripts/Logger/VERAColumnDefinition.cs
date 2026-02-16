@@ -30,7 +30,8 @@ namespace VERA
             Number,
             Transform,
             String,
-            JSON
+            JSON,
+            Boolean
         }
 
         public FileType fileType;

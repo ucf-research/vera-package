@@ -444,6 +444,23 @@ namespace VERA
             csvHandler.CreateEntry(eventId, values);
         }
 
+        // Creates a CSV entry for the given file type without an eventId (for baseline telemetry)
+        public void CreateCsvEntry(string fileTypeName, params object[] values)
+        {
+            if (!collecting || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)
+                return;
+
+            VERACsvHandler csvHandler = FindCsvHandlerByFileName(fileTypeName);
+            if (csvHandler == null)
+            {
+                VERADebugger.LogError("No file type could be found associated with provided name \"" +
+                  fileTypeName + "\"; cannot log CSV entry to the file as desired.", "VERA Logger");
+                return;
+            }
+
+            csvHandler.CreateEntry(values);
+        }
+
 
         // Submits all CSVs that are currently being recorded
         public void SubmitAllCSVs(bool usePartialSync = true)
