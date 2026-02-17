@@ -4,7 +4,6 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using static UnityEngine.GraphicsBuffer;
 using VLAT;
 using System;
 
@@ -86,7 +85,7 @@ namespace VERA
         #region SETUP
 
         // Sets up the manager and its various components
-        private void Setup()
+        private void Awake()
         {
             surveyInterfaceIo = GetComponent<SurveyInterfaceIO>();
             managerCanvGroup = managerCanvas.GetComponent<CanvasGroup>();
@@ -139,7 +138,7 @@ namespace VERA
             VERADebugger.Log("Beginning survey: " + surveyToBegin.surveyName, "SurveyManager", DebugPreference.Verbose);
 
             if (!isSetup)
-                Setup();
+                Awake();
 
             surveyStarted = false;
             connectionIssues = false;
@@ -352,18 +351,8 @@ namespace VERA
             // Check for connection issues - surveys are required, so always retry
             if (connectionIssues)
             {
-                if (reconnectFlag)
-                {
-                    StartCoroutine(HideWindow());
-                    return;
-                }
-                else
-                {
-                    // Always retry - surveys are required and cannot be skipped
-                    StopCoroutine(DisplayConnectionIssuesScreen());
-                    StartCoroutine(DisplayConnectionIssuesScreen());
-                    return;
-                }
+                StopCoroutine(DisplayConnectionIssuesScreen());
+                StartCoroutine(DisplayConnectionIssuesScreen());
             }
 
             // Check for start screen
@@ -555,91 +544,6 @@ namespace VERA
         #region CONNECTION ISSUES
 
 
-        // Tries the connection again, notifying on failure or success
-        private IEnumerator TryAgainConnection()
-        {
-            vlatMenuNav.ClearNavigatableItems();
-
-            previousButton.interactable = false;
-            nextButton.interactable = false;
-
-            FadeOutSwipeAnims();
-
-            // Wait for swipe animation to complete, then remove existing options
-            yield return new WaitForSeconds(swipeTime);
-
-            RemoveDisplayedOptions();
-
-            // Set the description
-            TMP_Text newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-            newBlock.text = "\nRetrying connection...";
-            questionText.text = "Survey: Connection issues";
-
-            UpdateQuestionResponseSizes(true);
-
-            FadeInSwipeAnimsNoCount();
-
-            // Wait for IO to finish uploading (and ensure we have waited at least 1.5 seconds overall)
-            float currentTime = Time.time;
-            yield return StartCoroutine(surveyInterfaceIo.TryReconnect());
-            if (currentTime + 1.5f > Time.time)
-            {
-                yield return new WaitForSeconds((currentTime + 1.5f) - Time.time);
-            }
-
-            if (surveyInterfaceIo.reconnectSuccessful)
-            {
-                // Display that reconnection was successful
-                FadeOutSwipeAnims();
-                yield return new WaitForSeconds(swipeTime);
-                RemoveDisplayedOptions();
-
-                newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-                newBlock.text = "\n\nReconnection was successful. You may now begin the survey.";
-                questionText.text = "Survey: reconnect successful";
-
-                UpdateQuestionResponseSizes(true);
-                FadeInSwipeAnimsNoCount();
-
-                // Allow exit
-                TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-                nextText.text = "Begin";
-                nextButton.interactable = true;
-
-                TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
-                prevText.text = "Previous";
-
-                vlatMenuNav.AddNavigatableItem(nextButton.gameObject);
-            }
-            else
-            {
-                // Display that there was an error reconnecting
-                FadeOutSwipeAnims();
-                yield return new WaitForSeconds(swipeTime);
-                RemoveDisplayedOptions();
-
-                newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-                newBlock.text = "\n\nUnable to reconnect. Please check your connection and try again.";
-                questionText.text = "Survey: Connection issues";
-
-                UpdateQuestionResponseSizes(true);
-                FadeInSwipeAnimsNoCount();
-
-                // Both buttons trigger retry - surveys are required
-                TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-                nextText.text = "Retry";
-                nextButton.interactable = true;
-
-                TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
-                prevText.text = "Retry";
-                previousButton.interactable = true;
-
-                vlatMenuNav.AddNavigatableItem(previousButton.gameObject);
-                vlatMenuNav.AddNavigatableItem(nextButton.gameObject);
-            }
-        }
-
-
         // Displays the survey's start screen
         private IEnumerator DisplayConnectionIssuesScreen()
         {
@@ -766,14 +670,14 @@ namespace VERA
 
             switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
             {
-                case SurveyQuestionInfo.SurveyQuestionType.MultipleChoice:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
                     return selectedOption != null;
-                case SurveyQuestionInfo.SurveyQuestionType.Selection:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
                     return selectedOptions != null && selectedOptions.Count > 0;
-                case SurveyQuestionInfo.SurveyQuestionType.Slider:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
                     // Sliders always have a value since they have a default position
                     return true;
-                case SurveyQuestionInfo.SurveyQuestionType.Matrix:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     if (matrixOptions == null) return false;
                     List<int> activeIndexes = matrixOptions.GetActiveIndexes();
                     // For matrix, require all rows to have a selection (no -1 values)

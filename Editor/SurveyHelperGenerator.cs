@@ -150,9 +150,12 @@ namespace VERA
                     switch (question.questionType)
                     {
                         case "selection":
+                        case "multipleSelection":
+                        case "multiple_selection":
                             currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Selection;
                             currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
                             break;
+                        case "multiple_choice":
                         case "multipleChoice":
                             currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice;
                             currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
@@ -186,7 +189,7 @@ namespace VERA
                             }
                             break;
                         default:
-                            VERADebugger.LogWarning($"Unsupported survey question type: {question.questionType}", "SurveyHelperGenerator");
+                            VERADebugger.LogError($"Unsupported survey question type: {question.questionType}. Running this survey may result in unexpected behavior. (Question text is \"" + question.questionText + "\")", "SurveyHelperGenerator");
                             break;
                     }
 

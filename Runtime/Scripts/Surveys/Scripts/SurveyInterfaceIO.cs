@@ -20,14 +20,13 @@ namespace VERA
         #region VARIABLES
 
         private SurveyManager surveyManager;
-        private string apiUrl;
         private string surveyId;
 
         public bool uploadSuccessful { get; private set; } = false;
         public bool reconnectSuccessful { get; private set; } = false;
         private bool fileUploadSuccessful = false;
 
-        private SurveyInfo surveyInfo;
+        private VERASurveyInfo surveyInfo;
 
         // Track survey instance counts for file naming
         private static Dictionary<string, int> surveyInstanceCounts = new Dictionary<string, int>();
@@ -43,225 +42,7 @@ namespace VERA
         private void Awake()
         {
             surveyManager = GetComponent<SurveyManager>();
-
-            // Only call Setup() if SurveyManager exists and is properly configured
-            // This allows SurveyInterfaceIO to work standalone for API-only operations (e.g., mock tests)
-            if (surveyManager != null)
-            {
-                try
-                {
-                    surveyManager.Setup();
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning($"[VERA Survey] SurveyManager.Setup() failed (UI components may be missing). SurveyInterfaceIO will operate in API-only mode. Error: {e.Message}");
-                }
-            }
-
-            // Use the global VERA host URL
-            apiUrl = VERAHost.hostUrl;
         }
-
-        #endregion
-
-
-        #region START SURVEY
-
-        // Starts a survey by a given ID, as found in the database
-        public void StartSurveyById(string surveyId)
-        {
-            this.surveyId = surveyId;
-            StartCoroutine(StartSurveyByIdCoroutine());
-        }
-
-        // Coroutine for above
-        private IEnumerator StartSurveyByIdCoroutine()
-        {
-            using (UnityWebRequest request = UnityWebRequest.Get(apiUrl + "/api/surveys/" + surveyId))
-            {
-                // Send the request and wait for a response
-                yield return request.SendWebRequest();
-
-                if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
-                {
-                    reconnectSuccessful = false;
-                    VERADebugger.LogError("Error fetching survey: " + request.error, "SurveyInterfaceIO");
-                    surveyManager.DisplayConnectionIssue();
-                    yield break;
-                }
-                else
-                {
-                    // Get JSON and parse into Survey
-                    string jsonResponse = request.downloadHandler.text;
-
-                    Survey survey;
-                    try
-                    {
-                        survey = JsonUtility.FromJson<Survey>(jsonResponse);
-                    }
-                    catch
-                    {
-                        reconnectSuccessful = false;
-                        VERADebugger.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse, "SurveyInterfaceIO");
-                        surveyManager.DisplayConnectionIssue();
-                        yield break;
-                    }
-
-                    // SurveyInfo is used for in-Unity survey interface setup
-                    surveyInfo = ScriptableObject.CreateInstance<SurveyInfo>();
-
-                    // Convert general info into SurveyInfo format
-                    surveyInfo.surveyName = survey.surveyName;
-                    surveyInfo.surveyDescription = survey.surveyDescription;
-                    surveyInfo.surveyEndStatement = survey.surveyEndStatement;
-                    surveyInfo.surveyId = survey._id;
-
-                    List<SurveyQuestionInfo> surveyQuestionInfos = new List<SurveyQuestionInfo>();
-
-                    // Convert questions into SurveyInfo format
-                    foreach (SurveyQuestion question in survey.questions)
-                    {
-                        SurveyQuestionInfo currentQuestion = new SurveyQuestionInfo();
-                        currentQuestion.questionText = question.questionText;
-                        currentQuestion.orderInSurvey = question.questionNumberInSurvey;
-                        currentQuestion.questionId = question._id;
-
-                        // Set up question based on its type
-                        switch (question.questionType)
-                        {
-                            case "selection":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
-                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
-                                break;
-                            case "multipleChoice":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.MultipleChoice;
-                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
-                                break;
-                            case "slider":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Slider;
-                                currentQuestion.leftSliderText = question.leftSliderText;
-                                currentQuestion.rightSliderText = question.rightSliderText;
-                                break;
-                            case "matrix":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Matrix;
-                                currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
-                                currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
-                                break;
-                            default:
-                                VERADebugger.LogError("Unsupported survey question type: " + question.questionType, "SurveyInterfaceIO");
-                                break;
-                        }
-
-                        surveyQuestionInfos.Add(currentQuestion);
-                    }
-
-                    // Sort questions based on their order in the survey
-                    surveyQuestionInfos = surveyQuestionInfos.OrderBy(q => q.orderInSurvey).ToList();
-
-                    surveyInfo.surveyQuestions = surveyQuestionInfos;
-
-                    // Begin the survey
-                    surveyManager.BeginSurvey(surveyInfo);
-                }
-            }
-        }
-
-        // Starts survey again from reconnection success
-        public void StartSurveyFromReconnect()
-        {
-            surveyManager.BeginSurvey(surveyInfo);
-        }
-
-        // Tries to reconnect, setting survey info on success
-        public IEnumerator TryReconnect()
-        {
-            reconnectSuccessful = false;
-
-            using (UnityWebRequest request = UnityWebRequest.Get(apiUrl + "/api/surveys/" + surveyId))
-            {
-                // Send the request and wait for a response
-                yield return request.SendWebRequest();
-
-                if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
-                {
-                    VERADebugger.LogError("Error fetching survey: " + request.error, "SurveyInterfaceIO");
-                    yield break;
-                }
-                else
-                {
-                    // Get JSON and parse into Survey
-                    string jsonResponse = request.downloadHandler.text;
-
-                    Survey survey;
-                    try
-                    {
-                        survey = JsonUtility.FromJson<Survey>(jsonResponse);
-                    }
-                    catch
-                    {
-                        VERADebugger.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse, "SurveyInterfaceIO");
-                        yield break;
-                    }
-
-                    // SurveyInfo is used for in-Unity survey interface setup
-                    surveyInfo = ScriptableObject.CreateInstance<SurveyInfo>();
-
-                    // Convert general info into SurveyInfo format
-                    surveyInfo.surveyName = survey.surveyName;
-                    surveyInfo.surveyDescription = survey.surveyDescription;
-                    surveyInfo.surveyEndStatement = survey.surveyEndStatement;
-                    surveyInfo.surveyId = survey._id;
-
-                    List<SurveyQuestionInfo> surveyQuestionInfos = new List<SurveyQuestionInfo>();
-
-                    // Convert questions into SurveyInfo format
-                    foreach (SurveyQuestion question in survey.questions)
-                    {
-                        SurveyQuestionInfo currentQuestion = new SurveyQuestionInfo();
-                        currentQuestion.questionText = question.questionText;
-                        currentQuestion.orderInSurvey = question.questionNumberInSurvey;
-                        currentQuestion.questionId = question._id;
-
-                        // Set up question based on its type
-                        switch (question.questionType)
-                        {
-                            case "selection":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
-                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
-                                break;
-                            case "multipleChoice":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.MultipleChoice;
-                                currentQuestion.selectionOptions = question.questionOptions.ToArray();
-                                break;
-                            case "slider":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Slider;
-                                currentQuestion.leftSliderText = question.leftSliderText;
-                                currentQuestion.rightSliderText = question.rightSliderText;
-                                break;
-                            case "matrix":
-                                currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Matrix;
-                                currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
-                                currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
-                                break;
-                            default:
-                                VERADebugger.LogError("Unsupported survey question type: " + question.questionType, "SurveyInterfaceIO");
-                                break;
-                        }
-
-                        surveyQuestionInfos.Add(currentQuestion);
-                    }
-
-                    // Sort questions based on their order in the survey
-                    surveyQuestionInfos = surveyQuestionInfos.OrderBy(q => q.orderInSurvey).ToList();
-
-                    surveyInfo.surveyQuestions = surveyQuestionInfos;
-                    reconnectSuccessful = true;
-                    yield break;
-                }
-            }
-        }
-
-
 
         #endregion
 
@@ -269,7 +50,7 @@ namespace VERA
         #region OUTPUT
 
         // Creates and uploads a CSV file for this specific survey instance
-        private IEnumerator UploadSurveyInstanceFile(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        private IEnumerator UploadSurveyInstanceFile(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
         {
             int pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
@@ -356,7 +137,7 @@ namespace VERA
                 File.WriteAllText(tempFilePath, csvContent.ToString());
 
                 // Also save a backup copy to the VERA data directory for testing/debugging
-                string dataPath = Path.Combine(Application.dataPath, "VERA", "data");
+                string dataPath = VERALogger.Instance.GetCsvDirectory();
                 if (!Directory.Exists(dataPath))
                 {
                     Directory.CreateDirectory(dataPath);
@@ -452,7 +233,7 @@ namespace VERA
         }
 
         // Legacy method - records survey responses to the shared Survey_Responses CSV file type via VERACsvHandler
-        private void RecordSurveyResponses(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        private void RecordSurveyResponses(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
         {
             int pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
@@ -497,7 +278,7 @@ namespace VERA
 
         // Outputs given results of given survey back to the database
         // Flow: submit responses to the API, then record to the Survey_Responses CSV file type
-        public IEnumerator OutputSurveyResults(SurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults)
+        public IEnumerator OutputSurveyResults(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults)
         {
             uploadSuccessful = false;
             fileUploadSuccessful = false;
@@ -523,6 +304,7 @@ namespace VERA
 
                 SurveyInstance surveyInstance = new SurveyInstance();
                 surveyInstance.studyId = VERALogger.Instance.experimentUUID;
+                surveyInstance.experimentId = VERALogger.Instance.experimentUUID;
                 surveyInstance.survey = surveyToOutput.surveyId;
                 surveyInstance.participantId = participantId;
 
@@ -530,7 +312,7 @@ namespace VERA
                 string instanceJson = JsonUtility.ToJson(surveyInstance);
 
                 // Create the request
-                instanceRequest = new UnityWebRequest(apiUrl + "/api/surveys/instances", "POST");
+                instanceRequest = new UnityWebRequest(VERAHost.hostUrl + "/api/surveys/instances", "POST");
                 byte[] instanceBodyRaw = System.Text.Encoding.UTF8.GetBytes(instanceJson);
                 instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
                 instanceRequest.downloadHandler = new DownloadHandlerBuffer();
@@ -564,9 +346,9 @@ namespace VERA
                     };
 
                     string responseJson = JsonUtility.ToJson(surveyResponse);
-                    Debug.Log($"[VERA Survey] Submitting response {i+1}/{surveyResults.Length}: {responseJson}");
+                    Debug.Log($"[VERA Survey] Submitting response {i + 1}/{surveyResults.Length}: {responseJson}");
 
-                    UnityWebRequest responseRequest = new UnityWebRequest(apiUrl + "/api/surveys/responses", "POST");
+                    UnityWebRequest responseRequest = new UnityWebRequest(VERAHost.hostUrl + "/api/surveys/responses", "POST");
                     byte[] responseBodyRaw = System.Text.Encoding.UTF8.GetBytes(responseJson);
                     responseRequest.uploadHandler = new UploadHandlerRaw(responseBodyRaw);
                     responseRequest.downloadHandler = new DownloadHandlerBuffer();
@@ -579,7 +361,7 @@ namespace VERA
                         Debug.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
                         Debug.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
                         Debug.LogError($"[VERA Survey] Question ID: {surveyResults[i].Key}");
-                        Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/responses");
+                        Debug.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/responses");
                         if (!string.IsNullOrEmpty(responseRequest.downloadHandler?.text))
                         {
                             Debug.LogError($"[VERA Survey] Response Body: {responseRequest.downloadHandler.text}");
@@ -589,7 +371,7 @@ namespace VERA
                     }
                     else
                     {
-                        Debug.Log($"[VERA Survey] ✓ Response {i+1} submitted successfully");
+                        Debug.Log($"[VERA Survey] ✓ Response {i + 1} submitted successfully");
                     }
                 }
             }
@@ -600,7 +382,7 @@ namespace VERA
                 {
                     Debug.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
                     Debug.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
-                    Debug.LogError($"[VERA Survey] URL: {apiUrl}/api/surveys/instances");
+                    Debug.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/instances");
                     if (!string.IsNullOrEmpty(instanceRequest.downloadHandler?.text))
                     {
                         Debug.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
@@ -632,7 +414,7 @@ namespace VERA
 
     // Survey web result JSON parsing classes
     [System.Serializable]
-    public class Survey
+    public class VERASurvey
     {
         public string _id;
         public string surveyName;
@@ -640,8 +422,8 @@ namespace VERA
         public string surveyDescription;
         public string surveyEndStatement;
         public List<string> tags;
-        public List<SurveyCitation> citations;
-        public List<SurveyQuestion> questions;
+        public List<VERASurveyCitation> citations;
+        public List<VERASurveyQuestion> questions;
         public string createdBy;
         public string experimentId;
         public bool isTemplate;
@@ -650,7 +432,7 @@ namespace VERA
     }
 
     [System.Serializable]
-    public class SurveyCitation
+    public class VERASurveyCitation
     {
         public string _id;
         public string title;
@@ -658,7 +440,7 @@ namespace VERA
     }
 
     [System.Serializable]
-    public class SurveyQuestion
+    public class VERASurveyQuestion
     {
         public string _id;
         public string surveyParent;
@@ -683,7 +465,7 @@ namespace VERA
     }
 
     [System.Serializable]
-    public class SurveyInstanceData
+    public class VERASurveyInstanceData
     {
         public string instanceId;
         public string experimentId;

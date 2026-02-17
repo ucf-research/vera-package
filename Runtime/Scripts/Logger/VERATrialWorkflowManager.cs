@@ -37,8 +37,8 @@ namespace VERA
         public string surveyId;
         public string surveyName; // Full survey name (different from label)
         public string instanceId;
-        public Survey survey;
-        public SurveyInstanceData surveyInstanceData;
+        public VERASurvey survey;
+        public VERASurveyInstanceData surveyInstanceData;
         public Dictionary<string, int> perTrialRepetitions;
 
         // Group tracking (set during flattening)
@@ -2003,12 +2003,12 @@ namespace VERA
             }
         }
 
-        private Survey ParseSurveyData(JObject surveyObj)
+        private VERASurvey ParseSurveyData(JObject surveyObj)
         {
             if (surveyObj == null)
                 return null;
 
-            var survey = new Survey
+            var survey = new VERASurvey
             {
                 _id = surveyObj.Value<string>("_id"),
                 surveyName = surveyObj.Value<string>("surveyName"),
@@ -2031,12 +2031,12 @@ namespace VERA
             // Parse citations
             if (surveyObj["citations"] is JArray citationsArray)
             {
-                survey.citations = new List<SurveyCitation>();
+                survey.citations = new List<VERASurveyCitation>();
                 foreach (var citToken in citationsArray)
                 {
                     if (citToken is JObject citObj)
                     {
-                        survey.citations.Add(new SurveyCitation
+                        survey.citations.Add(new VERASurveyCitation
                         {
                             _id = citObj.Value<string>("_id"),
                             title = citObj.Value<string>("title"),
@@ -2049,12 +2049,12 @@ namespace VERA
             // Parse questions
             if (surveyObj["questions"] is JArray questionsArray)
             {
-                survey.questions = new List<SurveyQuestion>();
+                survey.questions = new List<VERASurveyQuestion>();
                 foreach (var qToken in questionsArray)
                 {
                     if (qToken is JObject qObj)
                     {
-                        var question = new SurveyQuestion
+                        var question = new VERASurveyQuestion
                         {
                             _id = qObj.Value<string>("_id"),
                             surveyParent = qObj.Value<string>("surveyParent"),
@@ -2187,7 +2187,7 @@ namespace VERA
                     // Parse survey instance data
                     if (trialToken["surveyInstanceData"] is JObject instanceObj)
                     {
-                        trial.surveyInstanceData = new SurveyInstanceData
+                        trial.surveyInstanceData = new VERASurveyInstanceData
                         {
                             instanceId = instanceObj.Value<string>("instanceId"),
                             experimentId = instanceObj.Value<string>("experimentId"),

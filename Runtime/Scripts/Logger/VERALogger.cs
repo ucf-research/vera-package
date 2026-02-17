@@ -43,6 +43,7 @@ namespace VERA
         public string baseFilePath = "";
         public string dataPath = "";
         public string genericDataPath = "";
+        public string csvDirectoryPath = "";
         public VERABuildAuthInfo buildAuthInfo;
 
         // Experiment management
@@ -390,8 +391,11 @@ namespace VERA
             // For each column definition, set it up as its own CSV handler
             for (int i = 0; i < csvHandlers.Length; i++)
             {
+                // Skip local sync for survey responses since we upload individual responses immediately via API, instead of batch uploading a CSV
+                bool skipLocalSync = allDefinitions[i].fileType.name == "Survey_Responses";
+
                 csvHandlers[i] = gameObject.AddComponent<VERACsvHandler>();
-                csvHandlers[i].Initialize(allDefinitions[i]);
+                csvHandlers[i].Initialize(allDefinitions[i], skipLocalSync);
             }
         }
 
@@ -721,7 +725,6 @@ namespace VERA
             if (!basename.Contains("-") || basename.Split('-').Length < 4)
             {
                 Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - not in standard VERA format (likely a survey backup file).");
-                OnCsvFullyUploaded(csvFilePath);
                 yield break;
             }
 
@@ -750,21 +753,20 @@ namespace VERA
             }
             fileTypeId = string.Join("-", split, 3, split.Length - 3);
 
-                if (split.Length == 4)
-                {
-                    file_participant_UDID = split[2];
-                    fileTypeId = split[3].Split('.')[0];
-                }
-                else
-                {
-                    VERADebugger.LogError("Invalid file name", "VERA Logger");
-                    yield break;
-                }
+            if (split.Length == 4)
+            {
+                file_participant_UDID = split[2];
+                fileTypeId = split[3].Split('.')[0];
+            }
+            else
+            {
+                VERADebugger.LogError("Invalid file name", "VERA Logger");
+                yield break;
+            }
             // Only upload files that match the current experiment
             if (file_experimentUUID != experimentUUID)
             {
                 Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
-                OnCsvFullyUploaded(csvFilePath);
                 yield break;
             }
 
@@ -772,7 +774,6 @@ namespace VERA
             if (fileTypeId == "survey-responses")
             {
                 Debug.Log($"[VERA Logger] Skipping survey-responses file \"{basename}\" - survey responses use dedicated API.");
-                OnCsvFullyUploaded(csvFilePath);
                 yield break;
             }
 
@@ -817,7 +818,6 @@ namespace VERA
                 if (request.responseCode == 403 || request.responseCode == 404)
                 {
                     Debug.LogWarning($"[VERA Logger] Permanent failure (HTTP {request.responseCode}); marking file as uploaded to prevent repeated retries.");
-                    OnCsvFullyUploaded(csvFilePath);
                 }
             }
         }
@@ -1160,9 +1160,10 @@ namespace VERA
 
             surveyStarter.StartSurvey(surveyToStart, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);
         }
-        
-        
+
+
         #endregion
+
 
         #region TRIAL WORKFLOW
 
@@ -1645,6 +1646,67 @@ namespace VERA
             }
 
             callback?.Invoke(fileData);
+        }
+
+
+        public string GetCsvDirectory()
+        {
+            // Build the hierarchical directory path and get the directory for CSV storage
+            if (String.IsNullOrEmpty(csvDirectoryPath))
+            {
+                csvDirectoryPath = BuildHierarchicalDirectoryPath();
+            }
+
+            return csvDirectoryPath;
+        }
+
+        /// <summary>
+        /// Builds the hierarchical directory path based on experiment, site, build version, and participant.
+        /// Creates the directory if it doesn't already exist.
+        /// </summary>
+        private string BuildHierarchicalDirectoryPath()
+        {
+            VERABuildAuthInfo authInfo = buildAuthInfo;
+            string participantShortId = activeParticipant.participantShortId.ToString();
+
+            // Start with the base directory from baseFilePath
+            string baseDirectory = Path.GetDirectoryName(baseFilePath);
+
+            // 1. Experiment folder (replace spaces with dashes)
+            string experimentFolder = authInfo.activeExperimentName.Replace(" ", "-");
+            string path = Path.Combine(baseDirectory, experimentFolder);
+
+            // 2. Site folder (only if multi-site)
+            if (authInfo.isMultiSite)
+            {
+                string siteFolder = "Site-" + authInfo.activeSiteName.Replace(" ", "-");
+                path = Path.Combine(path, siteFolder);
+            }
+
+            // 3. Build version folder
+            string buildVersionFolder;
+            if (authInfo.currentBuildNumber <= 0)
+            {
+                buildVersionFolder = "BuildVersion_PreBuild";
+            }
+            else
+            {
+                buildVersionFolder = "BuildVersion_" + authInfo.currentBuildNumber.ToString();
+            }
+            path = Path.Combine(path, buildVersionFolder);
+
+            // 4. Participant folder
+            string participantFolder = "Participant-" + participantShortId;
+            path = Path.Combine(path, participantFolder);
+
+            // Create directory if it doesn't exist
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+                VERADebugger.Log("Created directory structure: " + path, "VERACsvHandler", DebugPreference.Verbose);
+            }
+
+            return path;
         }
 
 

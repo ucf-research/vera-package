@@ -162,13 +162,14 @@ namespace VERA
 
             Debug.Log($"[VERA Mock Test] AllWorkflowItems count: {workflow.AllWorkflowItems?.Count ?? 0}");
 
-            Survey surveyData = GetSurveyDataFromWorkflow(surveyId);
+            VERASurvey surveyData = GetSurveyDataFromWorkflow(surveyId);
             if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
             {
                 Debug.LogWarning($"[VERA Mock Test] Survey data not found in workflow. Attempting to fetch from API...");
 
                 // Try to fetch survey data from the API
-                yield return FetchSurveyDataFromAPI(surveyId, (fetchedSurvey) => {
+                yield return FetchSurveyDataFromAPI(surveyId, (fetchedSurvey) =>
+                {
                     surveyData = fetchedSurvey;
                 });
 
@@ -204,7 +205,7 @@ namespace VERA
             }
 
             // Convert Survey to SurveyInfo
-            SurveyInfo surveyInfo = ConvertSurveyToSurveyInfo(surveyData, instanceId);
+            VERASurveyInfo surveyInfo = ConvertSurveyToSurveyInfo(surveyData, instanceId);
             int numQuestions = surveyInfo.surveyQuestions.Count;
 
             // Create survey results array using real question IDs from workflow
@@ -241,7 +242,7 @@ namespace VERA
             }
         }
 
-        private Survey GetSurveyDataFromWorkflow(string surveyId)
+        private VERASurvey GetSurveyDataFromWorkflow(string surveyId)
         {
             var workflow = VERALogger.Instance?.trialWorkflow;
             if (workflow == null || workflow.AllWorkflowItems == null)
@@ -289,20 +290,20 @@ namespace VERA
             return null;
         }
 
-        private SurveyInfo ConvertSurveyToSurveyInfo(Survey survey, string instanceId)
+        private VERASurveyInfo ConvertSurveyToSurveyInfo(VERASurvey survey, string instanceId)
         {
-            SurveyInfo surveyInfo = ScriptableObject.CreateInstance<SurveyInfo>();
+            VERASurveyInfo surveyInfo = ScriptableObject.CreateInstance<VERASurveyInfo>();
             surveyInfo.surveyName = survey.surveyName;
             surveyInfo.surveyDescription = survey.surveyDescription;
             surveyInfo.surveyEndStatement = survey.surveyEndStatement;
             surveyInfo.surveyId = survey._id;
             surveyInfo.surveyInstanceId = instanceId;
 
-            List<SurveyQuestionInfo> surveyQuestionInfos = new List<SurveyQuestionInfo>();
+            List<VERASurveyQuestionInfo> surveyQuestionInfos = new List<VERASurveyQuestionInfo>();
 
-            foreach (SurveyQuestion question in survey.questions)
+            foreach (VERASurveyQuestion question in survey.questions)
             {
-                SurveyQuestionInfo currentQuestion = new SurveyQuestionInfo();
+                VERASurveyQuestionInfo currentQuestion = new VERASurveyQuestionInfo();
                 currentQuestion.questionText = question.questionText;
                 currentQuestion.orderInSurvey = question.questionNumberInSurvey;
                 currentQuestion.questionId = question._id;
@@ -310,20 +311,20 @@ namespace VERA
                 switch (question.questionType)
                 {
                     case "selection":
-                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Selection;
+                        currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Selection;
                         currentQuestion.selectionOptions = question.questionOptions.ToArray();
                         break;
                     case "multipleChoice":
-                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.MultipleChoice;
+                        currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice;
                         currentQuestion.selectionOptions = question.questionOptions.ToArray();
                         break;
                     case "slider":
-                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Slider;
+                        currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Slider;
                         currentQuestion.leftSliderText = question.leftSliderText;
                         currentQuestion.rightSliderText = question.rightSliderText;
                         break;
                     case "matrix":
-                        currentQuestion.questionType = SurveyQuestionInfo.SurveyQuestionType.Matrix;
+                        currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix;
                         currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
                         currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
                         break;
@@ -376,7 +377,7 @@ namespace VERA
             }
         }
 
-        private IEnumerator FetchSurveyDataFromAPI(string surveyId, System.Action<Survey> onComplete)
+        private IEnumerator FetchSurveyDataFromAPI(string surveyId, System.Action<VERASurvey> onComplete)
         {
             string apiUrl = VERAHost.hostUrl;
             string url = $"{apiUrl}/api/surveys/{surveyId}";
@@ -406,7 +407,7 @@ namespace VERA
                     {
                         // Parse the survey JSON using Newtonsoft.Json (same as in workflow parsing)
                         JObject surveyObj = JObject.Parse(jsonResponse);
-                        Survey survey = ParseSurveyFromJSON(surveyObj);
+                        VERASurvey survey = ParseSurveyFromJSON(surveyObj);
 
                         if (survey != null && survey.questions != null && survey.questions.Count > 0)
                         {
@@ -434,14 +435,14 @@ namespace VERA
             }
         }
 
-        private Survey ParseSurveyFromJSON(JObject surveyObj)
+        private VERASurvey ParseSurveyFromJSON(JObject surveyObj)
         {
             if (surveyObj == null)
                 return null;
 
             try
             {
-                var survey = new Survey
+                var survey = new VERASurvey
                 {
                     _id = surveyObj["_id"]?.ToString(),
                     surveyName = surveyObj["surveyName"]?.ToString(),
@@ -457,12 +458,12 @@ namespace VERA
                 var questionsToken = surveyObj["questions"];
                 if (questionsToken != null && questionsToken.Type == JTokenType.Array)
                 {
-                    survey.questions = new List<SurveyQuestion>();
+                    survey.questions = new List<VERASurveyQuestion>();
                     foreach (var qToken in questionsToken)
                     {
                         if (qToken.Type == JTokenType.Object)
                         {
-                            var question = new SurveyQuestion
+                            var question = new VERASurveyQuestion
                             {
                                 _id = qToken["_id"]?.ToString(),
                                 surveyParent = qToken["surveyParent"]?.ToString(),
