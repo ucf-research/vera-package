@@ -903,6 +903,11 @@ namespace VERA
                         List<string> definitionsToAdd = new List<string>();
                         for (int i = 0; i < fileTypes.Count; i++)
                         {
+                            // Skip Survey_Responses here - it's handled specially below with the programmatic definition
+                            string normalizedNameCheck = (fileTypes[i].name ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+                            if (normalizedNameCheck == "surveyresponses")
+                                continue;
+
                             if (fileTypes[i].extension == "csv" && fileTypes[i].columnDefinition != null)
                             {
                                 // This file type is a CSV file with an associated column definition.
@@ -983,6 +988,49 @@ namespace VERA
 
                                 // Add define symbol for this column definition
                                 definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
+                            }
+                        }
+
+                        // Special handling for Survey_Responses: create column definition even without server-side columns
+                        // The columns are predefined in Unity since survey responses have a fixed schema
+                        for (int i = 0; i < fileTypes.Count; i++)
+                        {
+                            string normalizedName = (fileTypes[i].name ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+                            if (normalizedName == "surveyresponses" && fileTypes[i].extension == "csv")
+                            {
+                                // Check if we already created this in the loop above
+                                bool alreadyCreated = false;
+                                foreach (var def in columnDefs)
+                                {
+                                    if (def.fileType.fileTypeId == fileTypes[i]._id)
+                                    {
+                                        alreadyCreated = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!alreadyCreated)
+                                {
+                                    // Create Survey_Responses column definition with predefined columns
+                                    var surveyDef = VERASurveyResponseColumnDefinition.Create();
+                                    surveyDef.fileType.fileTypeId = fileTypes[i]._id; // Use server's _id
+
+                                    string columnsPath = GetAbsoluteColumnsFilePath();
+                                    if (!Directory.Exists(columnsPath))
+                                    {
+                                        Directory.CreateDirectory(columnsPath);
+                                        AssetDatabase.Refresh();
+                                    }
+
+                                    string relativePath = GetRelativeColumnsFilePath() + "/VERA_Survey_Responses_ColumnDefinition.asset";
+                                    AssetDatabase.CreateAsset(surveyDef, relativePath);
+                                    EditorUtility.SetDirty(surveyDef);
+                                    AssetDatabase.SaveAssets();
+
+                                    definitionsToAdd.Add("VERAFile_Survey_Responses");
+                                    Debug.Log($"[VERA Authentication] Created Survey_Responses column definition with ID: {fileTypes[i]._id}");
+                                }
+                                break;
                             }
                         }
 

@@ -49,6 +49,12 @@ namespace VERA
         public VERAColumnDefinition columnDefinition { get; private set; } // The column definition of this CSV
         public UnityWebRequest activeWebRequest { get; private set; }
 
+        // Returns true if this file type should not be uploaded via the standard file type API
+        public bool ShouldSkipUpload()
+        {
+            return columnDefinition?.fileType?.skipUpload ?? false;
+        }
+
         // Unwritten entries and flushing
         private List<string> unwrittenEntries = new List<string>(); // A cache of unwritten log entries
         private int unwrittenEntryLimit = 100; // If unwritten entries exceeds this limit, a flush will occur
@@ -199,28 +205,34 @@ namespace VERA
                 return;
             }
 
+            bool skipAuto = columnDefinition.skipAutoColumns;
+
             // check baseline data file (omits eventId column)
             bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data";
-            int autoColumnCount = isBaselineTelemetry ? 3 : 4; // 3 for baseline telemetry (no eventId), 4 otherwise
+            int autoColumnCount = skipAuto ? 0 : (isBaselineTelemetry ? 3 : 4); // 0 for custom, 3 for baseline telemetry (no eventId), 4 otherwise
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
             {
-                VERADebugger.LogError("You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
-                    " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
-                    " columns. Cannot log entry as desired.", "VERACsvHandler");
-                return;
+                    Debug.LogError("[VERA Logger]: You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
+                        " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
+                        " columns. Cannot log entry as desired.");
+                    return;
             }
 
             List<string> entry = new List<string>();
-            // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
-            entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
-            entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
-            entry.Add(Convert.ToString(Time.realtimeSinceStartup));
 
-            // Only add eventId for non-baseline telemetry file types
-            if (autoColumnCount == 4)
+            if (!skipAuto)
             {
-                entry.Add(Convert.ToString(eventId));
+                // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
+                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
+                entry.Add(Convert.ToString(Time.realtimeSinceStartup));
+
+                // Only add eventId for non-baseline telemetry file types
+                if (autoColumnCount == 4)
+                {
+                    entry.Add(Convert.ToString(eventId));
+                }
             }
 
             for (int i = 0; i < values.Length; i++)
@@ -399,7 +411,7 @@ namespace VERA
         public IEnumerator SubmitFileWithRetry(bool finalUpload = false, bool usePartial = false)
         {
             DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
-            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally || ShouldSkipUpload())
             {
                 yield break;
             }
@@ -543,6 +555,8 @@ namespace VERA
 
             string host = VERAHost.hostUrl;
             string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
+
+            Debug.Log($"[VERA CSV] Uploading {columnDefinition.fileType.name}: URL={url}, fileTypeId={fileTypeId}");
 
             // Add mode parameter for partial uploads
             if (partial)

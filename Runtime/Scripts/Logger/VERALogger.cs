@@ -26,8 +26,10 @@ namespace VERA
         public static VERALogger Instance;
 
         public VERAParticipantManager activeParticipant { get; private set; }
+        public VERATrialWorkflowManager trialWorkflow { get; private set; }
         private VERAPeriodicSyncHandler periodicSyncHandler;
         private VERAGenericFileHelper genericFileHelper;
+        private Dictionary<string, int> manualBetweenSubjectsAssignments;
 
         // Keys
         public string apiKey;
@@ -114,6 +116,9 @@ namespace VERA
                 yield break;
             }
 
+            // Setup generic file helper first (needed for uploading existing files)
+            genericFileHelper = gameObject.AddComponent<VERAGenericFileHelper>();
+
             // Upload any existing unuploaded files
             //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedCSVs.txt"), dataPath, ".csv");
             //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedImages.txt"), dataPath, ".png");
@@ -121,16 +126,35 @@ namespace VERA
 
             // Setup any file types, CSV logging, and the generic file helper
             SetupFileTypes();
+
+            // Fetch the Survey_Responses file type ID from server (needed for CSV upload)
+            yield return FetchSurveyResponsesFileTypeId();
+
+            // Initialize experiment conditions BEFORE enabling collection
+            // This ensures conditions are available when baseline logging starts
+            yield return InitializeExperimentConditions();
+
             collecting = true;
 
             // Auto-setup baseline data collection if not already present
             EnsureBaselineDataLoggingSetup();
-
-            genericFileHelper = gameObject.AddComponent<VERAGenericFileHelper>();
             periodicSyncHandler = gameObject.AddComponent<VERAPeriodicSyncHandler>();
             periodicSyncHandler.StartPeriodicSync();
 
-            yield return InitializeExperimentConditions();
+            // Initialize trial workflow manager (pass participant info for between-subjects assignment and checkpointing)
+            trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
+            int participantNum = activeParticipant != null ? activeParticipant.participantShortId : -1;
+            string participantId = activeParticipant != null ? activeParticipant.participantUUID : null;
+
+            // Allow for manual between-subjects assignments (set via SetBetweenSubjectsAssignment before initialization)
+            yield return trialWorkflow.Initialize(experimentUUID, apiKey, participantNum, participantId, manualBetweenSubjectsAssignments);
+
+            // Auto-apply Latin square ordering if required
+            if (trialWorkflow.RequiresLatinSquareOrdering && activeParticipant != null)
+            {
+                trialWorkflow.ApplyLatinSquareOrdering(participantNum);
+                Debug.Log($"[VERA Logger] Auto-applied Latin square ordering for participant {participantNum}.");
+            }
 
             // Short buffer for subscriptions to register
             yield return null;
@@ -321,21 +345,48 @@ namespace VERA
             // Validate and fix column definitions before loading them
             VERAColumnValidator.ValidateAndFixColumnDefinitions();
 
-            // Load column definitions
-            VERAColumnDefinition[] columnDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
-            if (columnDefinitions == null || columnDefinitions.Length == 0)
+            // Load column definitions from Resources
+            VERAColumnDefinition[] resourceDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
+
+            // Add programmatic column definitions (survey responses) only if not already loaded from server
+            var allDefinitions = new List<VERAColumnDefinition>(resourceDefinitions ?? new VERAColumnDefinition[0]);
+
+            // Check if Survey_Responses was already fetched from server (has valid _id, not placeholder)
+            // Match various naming conventions: Survey_Responses, survey-responses, SurveyResponses, etc.
+            bool surveyResponsesExists = false;
+            foreach (var def in allDefinitions)
+            {
+                string name = def?.fileType?.name?.ToLowerInvariant()?.Replace("_", "").Replace("-", "").Replace(" ", "") ?? "";
+                if (name == "surveyresponses" &&
+                    !string.IsNullOrEmpty(def.fileType.fileTypeId) &&
+                    def.fileType.fileTypeId != "survey-responses")
+                {
+                    surveyResponsesExists = true;
+                    Debug.Log($"[VERA Logger] Survey_Responses file type loaded from server with ID: {def.fileType.fileTypeId}");
+                    break;
+                }
+            }
+
+            // Only add hardcoded definition if server-fetched one doesn't exist
+            if (!surveyResponsesExists)
+            {
+                allDefinitions.Add(VERASurveyResponseColumnDefinition.Create());
+                Debug.Log("[VERA Logger] Using programmatic Survey_Responses definition (will fetch ID from server)");
+            }
+
+            if (allDefinitions.Count == 0)
             {
                 VERADebugger.Log("No CSV file types found; continuing assuming no CSV logging will occur.", "VERA Logger", DebugPreference.Informative);
                 return;
             }
 
-            csvHandlers = new VERACsvHandler[columnDefinitions.Length];
+            csvHandlers = new VERACsvHandler[allDefinitions.Count];
 
             // For each column definition, set it up as its own CSV handler
             for (int i = 0; i < csvHandlers.Length; i++)
             {
                 csvHandlers[i] = gameObject.AddComponent<VERACsvHandler>();
-                csvHandlers[i].Initialize(columnDefinitions[i]);
+                csvHandlers[i].Initialize(allDefinitions[i]);
             }
         }
 
@@ -365,8 +416,9 @@ namespace VERA
                 // TODO: RESET
                 // autoSetup.defaultSamplingRate = 30;
 
+                autoSetup.logEveryFrame = true;  // Log every frame for maximum fidelity
                 VERADebugger.Log("Baseline data logging setup created automatically. " +
-                         "VR baseline data will be collected at 30Hz when experiment starts.", "VERA Logger", DebugPreference.Informative);
+                         "VR baseline data will be collected every frame when experiment starts.", "VERA Logger", DebugPreference.Informative);
             }
             else
             {
@@ -407,6 +459,86 @@ namespace VERA
 
             // If no column definition is found, return null
             return null;
+        }
+
+        /// <summary>
+        /// Fetches the Survey_Responses file type ID from the server.
+        /// This ID is needed to upload survey response CSV files via the file type API.
+        /// Endpoint: GET /api/experiments/:experimentId/filetypes/survey-responses
+        /// </summary>
+        private IEnumerator FetchSurveyResponsesFileTypeId()
+        {
+            // Find the Survey_Responses handler directly (collecting flag not set yet)
+            VERACsvHandler surveyHandler = null;
+            if (csvHandlers != null)
+            {
+                foreach (var handler in csvHandlers)
+                {
+                    if (handler?.columnDefinition?.fileType?.name == "Survey_Responses")
+                    {
+                        surveyHandler = handler;
+                        break;
+                    }
+                }
+            }
+
+            if (surveyHandler == null)
+            {
+                Debug.LogWarning("[VERA Logger] Survey_Responses CSV handler not found; skipping file type ID fetch.");
+                yield break;
+            }
+
+            // Skip fetch if already have a valid ID (loaded from server-fetched column definition)
+            string existingId = surveyHandler.columnDefinition.fileType.fileTypeId;
+            if (!string.IsNullOrEmpty(existingId) && existingId != "survey-responses")
+            {
+                Debug.Log($"[VERA Logger] Survey_Responses already has valid file type ID: {existingId}");
+                yield break;
+            }
+
+            string url = $"{VERAHost.hostUrl}/api/experiments/{experimentUUID}/filetypes/survey-responses";
+            Debug.Log($"[VERA Logger] Fetching Survey_Responses file type ID from: {url}");
+
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+
+                yield return request.SendWebRequest();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    try
+                    {
+                        string responseText = request.downloadHandler.text;
+                        var json = Newtonsoft.Json.Linq.JObject.Parse(responseText);
+                        string fileTypeId = json["_id"]?.ToString();
+
+                        if (!string.IsNullOrEmpty(fileTypeId))
+                        {
+                            surveyHandler.columnDefinition.fileType.fileTypeId = fileTypeId;
+                            Debug.Log($"[VERA Logger] Survey_Responses file type ID fetched: {fileTypeId}");
+                        }
+                        else
+                        {
+                            Debug.LogWarning("[VERA Logger] Survey_Responses file type response missing _id field. CSV upload will be skipped.");
+                            surveyHandler.columnDefinition.fileType.skipUpload = true;
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"[VERA Logger] Failed to parse survey-responses file type response: {ex.Message}. CSV upload will be skipped.");
+                        surveyHandler.columnDefinition.fileType.skipUpload = true;
+                    }
+                }
+                else
+                {
+                    // Log detailed error info for debugging
+                    Debug.LogWarning($"[VERA Logger] Failed to fetch Survey_Responses file type (HTTP {request.responseCode}): {request.error}");
+                    Debug.LogWarning($"[VERA Logger] Survey_Responses CSV upload will be disabled. Individual responses are still submitted via /api/surveys/responses.");
+                    // Disable upload for this file type since we don't have a valid ID
+                    surveyHandler.columnDefinition.fileType.skipUpload = true;
+                }
+            }
         }
 
 
@@ -578,10 +710,10 @@ namespace VERA
                             StartCoroutine(SubmitExistingCSVCoroutine(file));
                             break;
                         case ".png":
-                            SubmitImageFile(file);
+                            StartCoroutine(SubmitExistingImageCoroutine(file));
                             break;
                         default:
-                            SubmitGenericFile(file);
+                            StartCoroutine(SubmitExistingGenericFileCoroutine(file));
                             break;
                     }
                 }
@@ -594,15 +726,39 @@ namespace VERA
         {
             var basename = Path.GetFileName(csvFilePath);
 
+            // Skip survey response backup files - these use a different naming format
+            // and are uploaded immediately during survey completion, not via this re-upload mechanism
+            if (!basename.Contains("-") || basename.Split('-').Length < 4)
+            {
+                Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - not in standard VERA format (likely a survey backup file).");
+                OnCsvFullyUploaded(csvFilePath);
+                yield break;
+            }
+
             // Get the IDs associated with this file
             string host = VERAHost.hostUrl;
+            string file_experimentUUID;
+            string file_siteUUID;
             string file_participant_UDID;
             string fileTypeId;
-            if (csvFilePath.Length > 0 && csvFilePath.Contains("-"))
+
+            // Files are in format expId-siteId-partId-fileTypeId.csv
+            // Note: fileTypeId may contain hyphens (e.g., "survey-responses")
+            // So we split by '-' but only take first 3 parts as IDs, join the rest as fileTypeId
+            string[] split = basename.Split('-');
+
+            file_experimentUUID = split[0];
+            file_siteUUID = split[1];
+            file_participant_UDID = split[2];
+
+            // Join remaining parts as fileTypeId (handles hyphens in file type like "survey-responses")
+            // Remove .csv extension from the last part
+            string lastPart = split[split.Length - 1];
+            if (lastPart.EndsWith(".csv"))
             {
-                // Files are in format expId-siteId-partId-fileTypeId.csv
-                // To get participant ID, it will be the third element separated by -'s; fileTypeId will be the fourth.
-                string[] split = basename.Split('-');
+                split[split.Length - 1] = lastPart.Substring(0, lastPart.Length - 4);
+            }
+            fileTypeId = string.Join("-", split, 3, split.Length - 3);
 
                 if (split.Length == 4)
                 {
@@ -614,10 +770,19 @@ namespace VERA
                     VERADebugger.LogError("Invalid file name", "VERA Logger");
                     yield break;
                 }
-            }
-            else
+            // Only upload files that match the current experiment
+            if (file_experimentUUID != experimentUUID)
             {
-                VERADebugger.LogError("Invalid file name", "VERA Logger");
+                Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                OnCsvFullyUploaded(csvFilePath);
+                yield break;
+            }
+
+            // Skip survey-responses files - these use the dedicated survey API, not the file type API
+            if (fileTypeId == "survey-responses")
+            {
+                Debug.Log($"[VERA Logger] Skipping survey-responses file \"{basename}\" - survey responses use dedicated API.");
+                OnCsvFullyUploaded(csvFilePath);
                 yield break;
             }
 
@@ -652,8 +817,76 @@ namespace VERA
             }
             else
             {
-                VERADebugger.LogError("Failed to upload existing file \"" + csvFilePath + "\".", "VERA Logger");
+                Debug.LogWarning($"[VERA Logger] Failed to upload existing file \"{csvFilePath}\". HTTP {request.responseCode}: {request.error}");
+                if (!string.IsNullOrEmpty(request.downloadHandler?.text))
+                {
+                    Debug.LogWarning($"[VERA Logger] Response Body: {request.downloadHandler.text}");
+                }
+
+                // Mark as uploaded for permanent failures so we don't retry every session
+                // 403 = concluded participant, 404 = file type or participant not found
+                if (request.responseCode == 403 || request.responseCode == 404)
+                {
+                    Debug.LogWarning($"[VERA Logger] Permanent failure (HTTP {request.responseCode}); marking file as uploaded to prevent repeated retries.");
+                    OnCsvFullyUploaded(csvFilePath);
+                }
             }
+        }
+
+
+        // Submits an existing image file (from a previous session) based on its file path
+        private IEnumerator SubmitExistingImageCoroutine(string imageFilePath)
+        {
+            var basename = Path.GetFileName(imageFilePath);
+
+            // Check if file belongs to current experiment
+            if (imageFilePath.Length > 0 && imageFilePath.Contains("-"))
+            {
+                string[] split = basename.Split('-');
+                if (split.Length >= 1)
+                {
+                    string file_experimentUUID = split[0];
+
+                    // Only upload files that match the current experiment
+                    if (file_experimentUUID != experimentUUID)
+                    {
+                        Debug.Log($"[VERA Logger] Skipping image file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                        genericFileHelper.OnImageFullyUploaded(imageFilePath);
+                        yield break;
+                    }
+                }
+            }
+
+            // File belongs to current experiment, proceed with upload
+            SubmitImageFile(imageFilePath);
+        }
+
+
+        // Submits an existing generic file (from a previous session) based on its file path
+        private IEnumerator SubmitExistingGenericFileCoroutine(string genericFilePath)
+        {
+            var basename = Path.GetFileName(genericFilePath);
+
+            // Check if file belongs to current experiment
+            if (genericFilePath.Length > 0 && genericFilePath.Contains("-"))
+            {
+                string[] split = basename.Split('-');
+                if (split.Length >= 1)
+                {
+                    string file_experimentUUID = split[0];
+
+                    // Only upload files that match the current experiment
+                    if (file_experimentUUID != experimentUUID)
+                    {
+                        Debug.Log($"[VERA Logger] Skipping generic file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                        genericFileHelper.OnGenericFullyUploaded(genericFilePath);
+                        yield break;
+                    }
+                }
+            }
+
+            // File belongs to current experiment, proceed with upload
+            SubmitGenericFile(genericFilePath);
         }
 
 
@@ -750,14 +983,25 @@ namespace VERA
         }
 
         // Sets the selected value of an independent variable by name
-        // Sets the LOCAL cached version, then syncs to the server asynchronously
-        public string SetSelectedIVValue(string ivName, string ivValue)
+        // Sets the LOCAL cached version, then optionally syncs to the server asynchronously
+        public string SetSelectedIVValue(string ivName, string ivValue, bool syncToServer = true)
         {
+            // Update existing IV or add new one (for trial-based condition assignment)
             if (conditionsCache.ContainsKey(ivName))
             {
                 conditionsCache[ivName] = ivValue;
+            }
+            else
+            {
+                // Add new IV to cache - this happens when trials set conditions for IVs
+                // that weren't initialized at experiment start
+                conditionsCache.Add(ivName, ivValue);
+            }
+
+            // Sync to server if requested (not needed for trial-based workflows where execution order defines conditions)
+            if (syncToServer)
+            {
                 StartCoroutine(SyncParticipantCondition(ivName));
-                return ivValue;
             }
 
             VERADebugger.LogError("No independent variable found with name \"" + ivName + "\"; cannot set selected value.", "VERA Logger");
@@ -798,35 +1042,27 @@ namespace VERA
             }
 
             // Initialize the conditions cache with the experiment's conditions
+            // Always add all IVs to the cache - they'll appear in telemetry immediately
+            // Trials will update the values when they run
             conditionsCache.Clear();
-            bool ivChanged = false;
             foreach (IVInfo iv in resp.independentVariables)
             {
-                if (iv.selectedCondition != null && iv.selectedCondition.name != null && iv.selectedCondition.name != "")
+                if (iv.selectedCondition != null && !string.IsNullOrEmpty(iv.selectedCondition.name))
                 {
+                    // IV has a selected condition from the server
                     conditionsCache.Add(iv.ivName, iv.selectedCondition.name);
+                }
+                else if (iv.conditions != null && iv.conditions.Length > 0 && !string.IsNullOrEmpty(iv.conditions[0].name))
+                {
+                    // No selected condition - use the first available condition value
+                    conditionsCache.Add(iv.ivName, iv.conditions[0].name);
+                    Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" initialized with first condition: {iv.conditions[0].name}");
                 }
                 else
                 {
-                    VERADebugger.LogWarning("Independent variable \"" + iv.ivName + "\" has no selected condition value; defaulting to first condition.", "VERA Logger");
-                    if (iv.conditions != null && iv.conditions.Length > 0 && iv.conditions[0].name != null && iv.conditions[0].name != "")
-                    {
-                        conditionsCache.Add(iv.ivName, iv.conditions[0].name);
-                        ivChanged = true;
-                    }
-                    else
-                    {
-                        VERADebugger.LogError("Independent variable \"" + iv.ivName + "\" has no conditions defined; skipping.", "VERA Logger");
-                    }
-                }
-            }
-
-            if (ivChanged)
-            {
-                VERADebugger.Log("One or more independent variables had no selected condition; syncing updated conditions to server.", "VERA Logger", DebugPreference.Informative);
-                foreach (string ivName in conditionsCache.Keys)
-                {
-                    yield return StartCoroutine(SyncParticipantCondition(ivName));
+                    // No conditions available - initialize with empty value
+                    conditionsCache.Add(iv.ivName, "");
+                    Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" has no conditions - initialized with empty value.");
                 }
             }
 
@@ -874,7 +1110,6 @@ namespace VERA
         // JSON format - lists all IVs and their values
         public string GetExperimentConditions()
         {
-            // Manual JSON serialization for WebGL compatibility (no reflection emit)
             if (conditionsCache == null || conditionsCache.Count == 0)
                 return "{}";
 
@@ -912,6 +1147,410 @@ namespace VERA
             public string encoding;
         }
 
+
+        #endregion
+
+
+        #region TRIAL WORKFLOW
+
+
+        /// <summary>
+        /// Gets the current trial configuration.
+        /// Returns null if no trial is active or workflow is not initialized.
+        /// </summary>
+        public TrialConfig GetCurrentTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return null;
+            }
+            return trialWorkflow.GetCurrentTrial();
+        }
+
+        /// <summary>
+        /// Advances to the next trial and starts it.
+        /// Automatically sets the experiment's condition values based on the trial's conditions.
+        /// Returns the trial that was started, or null if there are no more trials.
+        /// </summary>
+        public TrialConfig StartNextTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return null;
+            }
+
+            TrialConfig trial = trialWorkflow.StartNextTrial();
+
+            // Automatically set condition values from trial data
+            if (trial?.conditions != null)
+            {
+                foreach (var condition in trial.conditions)
+                {
+                    SetSelectedIVValue(condition.Key, condition.Value);
+                }
+            }
+
+            return trial;
+        }
+
+        /// <summary>
+        /// Marks the current trial as completed.
+        /// Returns true if successful.
+        /// </summary>
+        public bool CompleteTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return false;
+            }
+            return trialWorkflow.CompleteTrial();
+        }
+
+        /// <summary>
+        /// Marks the current trial as aborted.
+        /// </summary>
+        /// <param name="reason">Optional reason for aborting</param>
+        public bool AbortTrial(string reason = "")
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return false;
+            }
+            return trialWorkflow.AbortTrial(reason);
+        }
+
+        /// <summary>
+        /// Gets the next trial without starting it (preview).
+        /// </summary>
+        public TrialConfig PeekNextTrial()
+        {
+            return trialWorkflow?.PeekNextTrial();
+        }
+
+        /// <summary>
+        /// Gets a condition value for the current trial.
+        /// </summary>
+        /// <param name="conditionName">The condition/IV name</param>
+        public string GetTrialConditionValue(string conditionName)
+        {
+            return trialWorkflow?.GetConditionValue(conditionName);
+        }
+
+        /// <summary>
+        /// Gets the elapsed time for the current trial in seconds.
+        /// </summary>
+        public float GetTrialElapsedTime()
+        {
+            return trialWorkflow?.GetTrialElapsedTime() ?? 0f;
+        }
+
+        /// <summary>
+        /// Checks if there are more trials remaining.
+        /// </summary>
+        public bool HasMoreTrials => trialWorkflow?.HasMoreTrials ?? false;
+
+        /// <summary>
+        /// Gets the total number of trials in the workflow.
+        /// </summary>
+        public int TotalTrialCount => trialWorkflow?.TotalTrialCount ?? 0;
+
+        /// <summary>
+        /// Gets the current trial index (0-based). Returns -1 if no trial started.
+        /// </summary>
+        public int CurrentTrialIndex => trialWorkflow?.CurrentTrialIndex ?? -1;
+
+        /// <summary>
+        /// Checks if the current trial belongs to a within/between-subjects group.
+        /// </summary>
+        public bool IsCurrentTrialInGroup()
+        {
+            return trialWorkflow?.IsCurrentTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the parent group ID for the current trial (null if standalone).
+        /// </summary>
+        public string GetCurrentGroupId()
+        {
+            return trialWorkflow?.GetCurrentGroupId();
+        }
+
+        /// <summary>
+        /// Gets the parent group type ("within" or "between") for the current trial.
+        /// </summary>
+        public string GetCurrentGroupType()
+        {
+            return trialWorkflow?.GetCurrentGroupType();
+        }
+
+        /// <summary>
+        /// Checks if this is the first trial in its group.
+        /// Useful for showing group instructions/setup.
+        /// </summary>
+        public bool IsFirstTrialInGroup()
+        {
+            return trialWorkflow?.IsFirstTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if this is the last trial in its group.
+        /// Useful for group completion logic.
+        /// </summary>
+        public bool IsLastTrialInGroup()
+        {
+            return trialWorkflow?.IsLastTrialInGroup() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the trial's position within its group (1-indexed, 0 if standalone).
+        /// </summary>
+        public int GetTrialPositionInGroup()
+        {
+            return trialWorkflow?.GetTrialPositionInGroup() ?? 0;
+        }
+
+        /// <summary>
+        /// Gets the total trials in the current trial's group (0 if standalone).
+        /// </summary>
+        public int GetGroupTrialCount()
+        {
+            return trialWorkflow?.GetGroupTrialCount() ?? 0;
+        }
+
+        /// <summary>
+        /// Checks if the current workflow item is a standalone survey.
+        /// </summary>
+        public bool IsCurrentItemSurvey()
+        {
+            return trialWorkflow?.IsCurrentItemSurvey() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if the current trial has an attached survey.
+        /// </summary>
+        public bool CurrentTrialHasSurvey()
+        {
+            return trialWorkflow?.CurrentTrialHasSurvey() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if a survey should be shown BEFORE the current trial.
+        /// </summary>
+        public bool ShouldShowSurveyBefore()
+        {
+            return trialWorkflow?.ShouldShowSurveyBefore() ?? false;
+        }
+
+        /// <summary>
+        /// Checks if a survey should be shown AFTER the current trial.
+        /// </summary>
+        public bool ShouldShowSurveyAfter()
+        {
+            return trialWorkflow?.ShouldShowSurveyAfter() ?? false;
+        }
+
+        /// <summary>
+        /// Gets the survey ID for the current item (standalone or attached).
+        /// </summary>
+        public string GetCurrentSurveyId()
+        {
+            return trialWorkflow?.GetCurrentSurveyId();
+        }
+
+        /// <summary>
+        /// Gets the survey name for the current item.
+        /// </summary>
+        public string GetCurrentSurveyName()
+        {
+            return trialWorkflow?.GetCurrentSurveyName();
+        }
+
+        /// <summary>
+        /// Checks if the workflow requires Latin square ordering.
+        /// If true, call ApplyLatinSquareOrdering() with the participant number before starting trials.
+        /// </summary>
+        public bool RequiresLatinSquareOrdering => trialWorkflow?.RequiresLatinSquareOrdering ?? false;
+
+        /// <summary>
+        /// Applies Latin Square counterbalancing to the trial workflow.
+        /// Call this after initialization but before starting any trials.
+        ///
+        /// Example usage:
+        ///   if (VERALogger.Instance.RequiresLatinSquareOrdering)
+        ///   {
+        ///       int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///       VERALogger.Instance.ApplyLatinSquareOrdering(participantNum);
+        ///   }
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed)</param>
+        public void ApplyLatinSquareOrdering(int participantNumber)
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.ApplyLatinSquareOrdering(participantNumber);
+        }
+
+        /// <summary>
+        /// Applies Latin Square counterbalancing with total participant count for proper validation.
+        /// This is the RECOMMENDED method for applying Latin square ordering.
+        ///
+        /// IMPORTANT - Enforces complete counterbalancing:
+        /// - totalParticipants MUST be >= number of conditions (returns false otherwise)
+        /// - participantNumber must be less than totalParticipants
+        /// - If validation fails, Latin square is NOT applied (returns false)
+        ///
+        /// Example usage:
+        ///   // For a study with 30 total participants
+        ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///   bool success = VERALogger.Instance.ApplyLatinSquareOrdering(participantNum, 30);
+        ///   if (!success) {
+        ///       Debug.LogError("Failed to apply Latin square ordering! Check console for details.");
+        ///   }
+        /// </summary>
+        /// <param name="participantNumber">The participant's sequential number (0-indexed). Must be less than totalParticipants.</param>
+        /// <param name="totalParticipants">The total number of participants in the study. Must be >= number of conditions.</param>
+        /// <returns>True if Latin square ordering was applied successfully, false if validation failed.</returns>
+        public bool ApplyLatinSquareOrdering(int participantNumber, int totalParticipants)
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return false;
+            }
+            return trialWorkflow.ApplyLatinSquareOrdering(participantNumber, totalParticipants);
+        }
+
+        /// <summary>
+        /// Gets the current trial ordering as a debug string.
+        /// Useful for logging/verifying the order.
+        /// </summary>
+        public string GetTrialOrderingDebugString()
+        {
+            return trialWorkflow?.GetTrialOrderingDebugString() ?? "No workflow";
+        }
+
+        /// <summary>
+        /// Gets info about within-subjects groups that need Latin square ordering.
+        /// Returns a dictionary of group ID -> number of trials in that group.
+        /// </summary>
+        public Dictionary<string, int> GetWithinGroupsForLatinSquare()
+        {
+            return trialWorkflow?.GetWithinGroupsForLatinSquare() ?? new Dictionary<string, int>();
+        }
+
+        /// <summary>
+        /// Manually assigns a participant to a specific condition in a between-subjects group.
+        /// Must be called BEFORE the logger initializes the trial workflow.
+        ///
+        /// Usage example (assign based on gender):
+        ///   // Call this in Awake() before logger initialization
+        ///   string gender = GetParticipantGender(); // "male" or "female"
+        ///   int conditionIndex = gender == "male" ? 0 : 1;
+        ///   VERALogger.Instance.SetBetweenSubjectsAssignment("group-id-123", conditionIndex);
+        /// </summary>
+        /// <param name="betweenSubjectsGroupId">The ID of the between-subjects group</param>
+        /// <param name="conditionIndex">The 0-based index of the condition to assign (0 = first condition, 1 = second, etc.)</param>
+        public void SetBetweenSubjectsAssignment(string betweenSubjectsGroupId, int conditionIndex)
+        {
+            if (initialized)
+            {
+                Debug.LogWarning("[VERA Logger] Cannot set between-subjects assignment after initialization. Call this before logger initializes.");
+                return;
+            }
+
+            if (manualBetweenSubjectsAssignments == null)
+            {
+                manualBetweenSubjectsAssignments = new Dictionary<string, int>();
+            }
+
+            manualBetweenSubjectsAssignments[betweenSubjectsGroupId] = conditionIndex;
+            Debug.Log($"[VERA Logger] Manual between-subjects assignment: group '{betweenSubjectsGroupId}' → condition {conditionIndex}");
+        }
+
+
+        /// <summary>
+        /// Starts the automated trial workflow. The workflow will progress through all trials,
+        /// pausing for surveys (OnSurveyRequired) and trial logic (OnTrialReady).
+        ///
+        /// Subscribe to trialWorkflow.OnTrialReady to receive each trial when it's ready.
+        /// Call CompleteAutomatedTrial() when your trial logic finishes.
+        /// Subscribe to trialWorkflow.OnSurveyRequired for survey handling.
+        /// Subscribe to trialWorkflow.OnWorkflowCompleted to know when all trials are done.
+        /// </summary>
+        public void StartAutomatedWorkflow()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+
+            // Subscribe to OnTrialReady so we can auto-set IV values when each trial starts
+            trialWorkflow.OnTrialReady += AutoSetTrialConditions;
+            trialWorkflow.OnWorkflowCompleted += OnAutomatedWorkflowDone;
+            trialWorkflow.StartAutomatedWorkflow();
+        }
+
+        /// <summary>
+        /// Stops the automated workflow. You can resume manual control after stopping.
+        /// </summary>
+        public void StopAutomatedWorkflow()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.OnTrialReady -= AutoSetTrialConditions;
+            trialWorkflow.OnWorkflowCompleted -= OnAutomatedWorkflowDone;
+            trialWorkflow.StopAutomatedWorkflow();
+        }
+
+        private void OnAutomatedWorkflowDone()
+        {
+            if (trialWorkflow != null)
+            {
+                trialWorkflow.OnTrialReady -= AutoSetTrialConditions;
+                trialWorkflow.OnWorkflowCompleted -= OnAutomatedWorkflowDone;
+            }
+        }
+
+        private void AutoSetTrialConditions(TrialConfig trial)
+        {
+            if (trial?.conditions != null)
+            {
+                foreach (var condition in trial.conditions)
+                {
+                    SetSelectedIVValue(condition.Key, condition.Value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Call this from your trial logic to signal the current trial is done (automated mode only).
+        /// This completes the trial and lets the workflow advance to the next item.
+        /// </summary>
+        public void CompleteAutomatedTrial()
+        {
+            if (trialWorkflow == null)
+            {
+                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                return;
+            }
+            trialWorkflow.CompleteAutomatedTrial();
+        }
+
+        /// <summary>
+        /// Whether the workflow is currently running in automated mode.
+        /// </summary>
+        public bool IsAutomatedMode => trialWorkflow?.IsAutomatedMode ?? false;
 
         #endregion
 
