@@ -173,6 +173,7 @@ namespace VERA
 
             vlatMenuNav.StartMenuNavigation();
 
+            RemoveDisplayedOptions();
             NextQuestion();
         }
 
