@@ -41,7 +41,7 @@ namespace VERA
             // Set up the data
             string host = VERAHost.hostUrl;
             string url = $"{host}/api/participants/files/{experimentUUID}/{siteUUID}/{participantUUID}";
-            Debug.Log("[VERA Logger] Submitting generic file \"" + filePath + "\" to the active participant...");
+            VERADebugger.Log("Submitting generic file \"" + filePath + "\" to the active participant...", "VERA Generic File Helper", DebugPreference.Informative);
             if (fileData == null)
             {
                 yield return VERALogger.Instance.ReadBinaryDataFile(filePath, (result) => fileData = result);
@@ -49,7 +49,7 @@ namespace VERA
 
             if (fileData == null)
             {
-                Debug.Log("[VERA Logger] No file data was found to submit.");
+                VERADebugger.Log("No file data was found to submit.", "VERA Generic File Helper", DebugPreference.Informative);
                 yield break;
             }
 
@@ -69,7 +69,7 @@ namespace VERA
             // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Logger] Successfully uploaded the file.");
+                VERADebugger.Log("Successfully uploaded the file.", "VERA Generic File Helper", DebugPreference.Informative);
                 OnGenericFullyUploaded(filePath);
                 if (moveFileToUploadDirectory)
                 {
@@ -78,7 +78,7 @@ namespace VERA
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to upload the file: " + request.error);
+                VERADebugger.LogError("Failed to upload the file: " + request.error, "VERA Generic File Helper");
             }
         }
 
@@ -117,7 +117,7 @@ namespace VERA
             // Set up the data
             string host = VERAHost.hostUrl;
             string url = host + "/api/participants/images/" + experimentUUID + "/" + participantUUID;
-            Debug.Log("[VERA Logger] Submitting image file \"" + imageFilePath + "\" to the active participant...");
+            VERADebugger.Log("Submitting image file \"" + imageFilePath + "\" to the active participant...", "VERA Generic File Helper", DebugPreference.Informative);
             if (imageData == null)
             {
                 yield return VERALogger.Instance.ReadBinaryDataFile(imageFilePath, (result) => imageData = result);
@@ -125,7 +125,7 @@ namespace VERA
 
             if (imageData == null)
             {
-                Debug.Log("[VERA Logger] No file data was found to submit.");
+                VERADebugger.Log("No file data was found to submit.", "VERA Generic File Helper", DebugPreference.Informative);
                 yield break;
             }
 
@@ -144,12 +144,12 @@ namespace VERA
             // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Logger] Successfully uploaded the image.");
+                VERADebugger.Log("Successfully uploaded the image.", "VERA Generic File Helper", DebugPreference.Informative);
                 OnImageFullyUploaded(imageFilePath);
             }
             else
             {
-                Debug.LogError("[VERA Logger] Failed to upload the file: " + request.error);
+                VERADebugger.LogError("Failed to upload the file: " + request.error, "VERA Generic File Helper");
             }
         }
 
@@ -183,7 +183,7 @@ namespace VERA
             // Create the directory if necessary
             if (!Directory.Exists(genericDataPath))
             {
-                Debug.Log($"[VERA Logger] Directory [{genericDataPath}] does not exist, creating it");
+                VERADebugger.Log($"[VERA Logger] Directory [{genericDataPath}] does not exist, creating it", "VERA Generic File Helper", DebugPreference.Informative);
                 Directory.CreateDirectory(genericDataPath);
             }
 

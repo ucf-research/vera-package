@@ -49,7 +49,7 @@ namespace VERA
         public static void MenuGenerateAllFileTypesCsCode()
         {
             GenerateAllFileTypesCsCode();
-            Debug.Log("[VERA FileTypeGenerator] Generated all file type wrapper code.");
+            VERADebugger.Log("Generated all file type wrapper code.", "VERA FileTypeGenerator", DebugPreference.None);
         }
 
         // Generates .cs file for a given column definition
@@ -254,7 +254,7 @@ namespace VERA
             sb.AppendLine("\t\t/// <item><description>Conditions (Experimental conditions the participant was under during this log, in JSON format)</description></item>");
             sb.AppendLine("\t\t/// </list>");
             sb.AppendLine("\t\t/// This function has been set up according to your configuration and preferences for this file type on the VERA portal.");
-            
+
             // Add additional arbitrary columns for this experiment
             sb.AppendLine("\t\t/// Included in your configuration are the following additional columns:");
             sb.AppendLine("\t\t/// <list type=\"bullet\">");

@@ -85,7 +85,7 @@ namespace VERA
                 if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
                 {
                     reconnectSuccessful = false;
-                    Debug.LogError("Error fetching survey: " + request.error);
+                    VERADebugger.LogError("Error fetching survey: " + request.error, "SurveyInterfaceIO");
                     surveyManager.DisplayConnectionIssue();
                     yield break;
                 }
@@ -102,7 +102,7 @@ namespace VERA
                     catch
                     {
                         reconnectSuccessful = false;
-                        Debug.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse);
+                        VERADebugger.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse, "SurveyInterfaceIO");
                         surveyManager.DisplayConnectionIssue();
                         yield break;
                     }
@@ -148,7 +148,7 @@ namespace VERA
                                 currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
                                 break;
                             default:
-                                Debug.LogError("Unsupported survey question type: " + question.questionType);
+                                VERADebugger.LogError("Unsupported survey question type: " + question.questionType, "SurveyInterfaceIO");
                                 break;
                         }
 
@@ -184,7 +184,7 @@ namespace VERA
 
                 if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    Debug.LogError("Error fetching survey: " + request.error);
+                    VERADebugger.LogError("Error fetching survey: " + request.error, "SurveyInterfaceIO");
                     yield break;
                 }
                 else
@@ -199,7 +199,7 @@ namespace VERA
                     }
                     catch
                     {
-                        Debug.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse);
+                        VERADebugger.LogError("Error parsing survey return (may be using the wrong API calls, or wrong host); survey return: " + jsonResponse, "SurveyInterfaceIO");
                         yield break;
                     }
 
@@ -244,7 +244,7 @@ namespace VERA
                                 currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
                                 break;
                             default:
-                                Debug.LogError("Unsupported survey question type: " + question.questionType);
+                                VERADebugger.LogError("Unsupported survey question type: " + question.questionType, "SurveyInterfaceIO");
                                 break;
                         }
 

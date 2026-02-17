@@ -41,13 +41,13 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot finalize session because VERA is not initialized.");
+                VERADebugger.LogWarning("Cannot finalize session because VERA is not initialized.", "VERASessionManager");
                 return;
             }
 
             if (!collecting)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot finalize session because data collection is not active.");
+                VERADebugger.LogWarning("Cannot finalize session because data collection is not active.", "VERASessionManager");
                 return;
             }
 
@@ -66,13 +66,13 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot create CSV entry because VERA is not initialized.");
+                VERADebugger.LogWarning("Cannot create CSV entry because VERA is not initialized.", "VERASessionManager");
                 return;
             }
 
             if (!collecting)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot create CSV entry because data collection is not active.");
+                VERADebugger.LogWarning("Cannot create CSV entry because data collection is not active.", "VERASessionManager");
                 return;
             }
 

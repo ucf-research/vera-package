@@ -40,7 +40,7 @@ namespace VERA
             // If a participant already exists, do not create a new one
             if (!string.IsNullOrEmpty(participantUUID))
             {
-                Debug.LogWarning("[VERA Participant] A participant already exists; not creating a new one.");
+                VERADebugger.LogWarning("A participant already exists; not creating a new one.", "VERA Participant");
                 yield break;
             }
 
@@ -57,35 +57,52 @@ namespace VERA
             // If a participant already exists, do not create a new one
             if (!string.IsNullOrEmpty(participantUUID))
             {
-                Debug.LogWarning("[VERA Participant] A participant already exists; not creating a new one.");
+                VERADebugger.LogWarning("A participant already exists; not creating a new one.", "VERA Participant");
                 yield break;
             }
 
-            // Ensure a participant exists to record data to
-            yield return EnsureParticipant();
-
-            // If after ensuring the participant we don't have a valid short ID, attempt creation retries
-            int attempts = 0;
-            int maxAttempts = 3;
-            while ((participantShortId == 0) && attempts < maxAttempts)
+            // Check data recording type
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            switch (dataRecordingType)
             {
-                attempts++;
-                Debug.LogWarning($"[VERA Participant] participantShortId is {participantShortId} after EnsureParticipant(); attempting creation attempt {attempts}/{maxAttempts}...");
-                yield return CreateParticipantCoroutine();
+                case DataRecordingType.DoNotRecord:
+                    VERADebugger.Log("Data recording type is set to Do Not Record; not creating participant.", "VERA Participant", DebugPreference.Informative);
+                    break;
+                case DataRecordingType.OnlyRecordLocally:
+                    // Recording locally, use generated UID and random short ID
+                    participantUUID = Guid.NewGuid().ToString().Replace("-", "");
+                    participantShortId = UnityEngine.Random.Range(100000, 999999);
+                    VERADebugger.Log("Data recording type is set to Only Record Locally; using generated participant UUID and random short ID for local recording.", "VERA Participant", DebugPreference.Informative);
+                    break;
+                case DataRecordingType.RecordLocallyAndLive:
+                default:
+                    // Ensure a participant exists to record data to
+                    yield return EnsureParticipant();
 
-                if (participantShortId > 0)
-                {
-                    Debug.Log("[VERA Participant] Participant creation succeeded on retry.");
-                    yield break;
-                }
+                    // If after ensuring the participant we don't have a valid short ID, attempt creation retries
+                    int attempts = 0;
+                    int maxAttempts = 3;
+                    while ((participantShortId == 0) && attempts < maxAttempts)
+                    {
+                        attempts++;
+                        VERADebugger.LogWarning($"participantShortId is {participantShortId} after EnsureParticipant(); attempting creation attempt {attempts}/{maxAttempts}...", "VERA Participant");
+                        yield return CreateParticipantCoroutine();
 
-                // small delay before next attempt
-                yield return new WaitForSeconds(1f);
-            }
+                        if (participantShortId > 0)
+                        {
+                            VERADebugger.Log("Participant creation succeeded on retry.", "VERA Participant", DebugPreference.Informative);
+                            yield break;
+                        }
 
-            if (participantShortId == 0)
-            {
-                Debug.LogError("[VERA Participant] Unable to obtain a valid participant short ID after retries. Local recording will continue but uploads may not attach to the correct participant on the server.");
+                        // small delay before next attempt
+                        yield return new WaitForSeconds(1f);
+                    }
+
+                    if (participantShortId == 0)
+                    {
+                        VERADebugger.LogError("Unable to obtain a valid participant short ID after retries. Local recording will continue but uploads may not attach to the correct participant on the server.", "VERA Participant");
+                    }
+                    break;
             }
         }
 
@@ -99,7 +116,7 @@ namespace VERA
 
             string host = VERAHost.hostUrl;
             string url = host + "/api/sites/" + siteId + "/active-participant";
-            Debug.Log("[VERA Participant] Checking for active participant at url " + url);
+            VERADebugger.Log("Checking for active participant at url " + url, "VERA Participant", DebugPreference.Verbose);
 
             UnityWebRequest request = UnityWebRequest.Get(url);
             yield return request.SendWebRequest();
@@ -138,14 +155,14 @@ namespace VERA
                             {
                                 participantUUID = existingUid;
                                 participantShortId = pID;
-                                Debug.Log("[VERA Participant] Active participant found with UUID: " + participantUUID + " (pID=" + participantShortId + ")");
+                                VERADebugger.Log("Active participant found with UUID: " + participantUUID + " (pID=" + participantShortId + ")", "VERA Participant", DebugPreference.Informative);
                                 request.Dispose();
                                 yield break;
                             }
                             // Active participant exists, but no uid found in response, create a uid and push to database
                             else
                             {
-                                Debug.Log("[VERA Participant] Active participant found, but has no associated uid. Pushing a new uid...");
+                                VERADebugger.Log("Active participant found, but has no associated uid. Pushing a new uid...", "VERA Participant", DebugPreference.Informative);
                                 request.Dispose();
                                 yield return PushUidToActiveParticipant(databaseId);
                                 yield break;
@@ -153,12 +170,12 @@ namespace VERA
                         }
                         else
                         {
-                            Debug.LogWarning($"[VERA Participant] Active participant response had invalid pID value: '{response.pID}'. Proceeding to create a new participant.");
+                            VERADebugger.LogWarning($"Active participant response had invalid pID value: '{response.pID}'. Proceeding to create a new participant.", "VERA Participant");
                         }
                     }
                     else
                     {
-                        Debug.LogWarning("[VERA Participant] Failed to parse active participant response or response was null; proceeding to create a new participant.");
+                        VERADebugger.LogWarning("Failed to parse active participant response or response was null; proceeding to create a new participant.", "VERA Participant");
                     }
                 }
             }
@@ -166,14 +183,17 @@ namespace VERA
             // If the request failed to reach the server, log diagnostic details
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[VERA Participant] Active participant lookup request failed: result={request.result}, code={request.responseCode}, error={request.error}");
+                if (request.responseCode != 404)
+                {
+                    VERADebugger.LogWarning($"Active participant lookup request failed: result={request.result}, code={request.responseCode}, error={request.error}", "VERA Participant");
+                }
             }
 
             // Dispose request before continuing
             request.Dispose();
 
             // If we reach here, no active participant was found, create one
-            Debug.Log("[VERA Participant] No active participant found for site; creating a new participant...");
+            VERADebugger.Log("No active participant found for site; creating a new participant...", "VERA Participant", DebugPreference.Informative);
             yield return CreateParticipantCoroutine();
             yield break;
         }
@@ -192,7 +212,7 @@ namespace VERA
 
             participantUUID = Guid.NewGuid().ToString().Replace("-", "");
             string url = host + "/api/participants/" + expId + "/" + siteId;
-            Debug.Log("[VERA Participant] Creating participant at url " + url);
+            VERADebugger.Log("Creating participant at url " + url, "VERA Participant", DebugPreference.Verbose);
 
             WWWForm form = new WWWForm();
             form.AddField("participantId", participantUUID);
@@ -205,7 +225,7 @@ namespace VERA
             // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Participant] Successfully created a new participant; data will be recorded to this participant.");
+                VERADebugger.Log("Successfully created a new participant; data will be recorded to this participant.", "VERA Participant", DebugPreference.Informative);
 
                 // Parse the response to get the participant short ID
                 string responseText = request.downloadHandler.text;
@@ -229,23 +249,23 @@ namespace VERA
                     if (int.TryParse(response.pID, out int pID))
                     {
                         participantShortId = pID;
-                        Debug.Log("[VERA Participant] Assigned participant short ID: " + participantShortId);
+                        VERADebugger.Log("Assigned participant short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
                     }
                     else
                     {
-                        Debug.LogError("[VERA Participant] Failed to parse pID as integer; setting participantShortId=0 to allow local recording.");
+                        VERADebugger.LogError("Failed to parse pID as integer; setting participantShortId=0 to allow local recording.", "VERA Participant");
                         participantShortId = 0;
                     }
                 }
                 else
                 {
-                    Debug.LogError("[VERA Participant] Failed to create a new participant (missing/invalid pID in response); setting participantShortId=0 to allow local recording.");
+                    VERADebugger.LogError("Failed to create a new participant (missing/invalid pID in response); setting participantShortId=0 to allow local recording.", "VERA Participant");
                     participantShortId = 0;
                 }
             }
             else
             {
-                Debug.LogError($"[VERA Participant] Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Setting participantShortId=0 to allow local recording.");
+                VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Setting participantShortId=0 to allow local recording.", "VERA Participant");
                 participantShortId = 0;
             }
 
@@ -256,7 +276,7 @@ namespace VERA
         // Gets an existing participant from the server using the provided override ID
         private IEnumerator GetParticipantFromOverrideId(string overrideParticipantId)
         {
-            Debug.Log("[VERA Participant] Using override participant ID; attempting to retrieve existing participant...");
+            VERADebugger.Log("Using override participant ID; attempting to retrieve existing participant...", "VERA Participant", DebugPreference.Informative);
 
             string expId = VERALogger.Instance.experimentUUID;
             string siteId = VERALogger.Instance.siteUUID;
@@ -300,18 +320,18 @@ namespace VERA
                     {
                         participantUUID = response.unityID;
                     }
-                    Debug.Log("[VERA Participant] Retrieved existing participant with short ID: " + participantShortId);
+                    VERADebugger.Log("Retrieved existing participant with short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
                     getRequest.Dispose();
                     yield break;
                 }
                 else
                 {
-                    Debug.LogError("[VERA Participant] Failed to retrieve existing participant with override ID; proceeding to create a new participant.");
+                    VERADebugger.LogError("Failed to retrieve existing participant with override ID; proceeding to create a new participant.", "VERA Participant");
                 }
             }
             else
             {
-                Debug.LogError("[VERA Participant] Failed to retrieve existing participant with override ID; proceeding to create a new participant.");
+                VERADebugger.LogError("Failed to retrieve existing participant with override ID; proceeding to create a new participant.", "VERA Participant");
             }
 
             getRequest.Dispose();
@@ -329,7 +349,7 @@ namespace VERA
 
             string host = VERAHost.hostUrl;
             string url = host + "/api/participants/" + databaseId + "/uid";
-            Debug.Log("[VERA Participant] Pushing unity ID to active participant at url " + url);
+            VERADebugger.Log("Pushing unity ID to active participant at url " + url, "VERA Participant", DebugPreference.Informative);
 
             // Create JSON payload
             string jsonPayload = "{\"uid\":\"" + participantUUID + "\"}";
@@ -344,11 +364,11 @@ namespace VERA
             // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Participant] Successfully updated active participant with Unity ID; data will be recorded to this participant.");
+                VERADebugger.Log("Successfully updated active participant with Unity ID; data will be recorded to this participant.", "VERA Participant", DebugPreference.Informative);
             }
             else
             {
-                Debug.LogError("[VERA Participant] Failed to update active participant with Unity ID; data will not be recorded. Response: " + request.result + " - " + request.error);
+                VERADebugger.LogError("Failed to update active participant with Unity ID; data will not be recorded. Response: " + request.result + " - " + request.error, "VERA Participant");
             }
 
             request.Dispose();
@@ -372,7 +392,15 @@ namespace VERA
         public IEnumerator RetryableChangeProgress(ParticipantProgressState state)
         {
             currentParticipantProgressState = state;
-            Debug.Log("[VERA Participant] Updating current participant's state to \"" + state.ToString() + "\"...");
+
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord ||
+                dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                yield break;
+            }
+
+            VERADebugger.Log("Updating current participant's state to \"" + state.ToString() + "\"...", "VERA Participant", DebugPreference.Verbose);
 
             // Try multiple times to send the request, in case of failure
             int attempt = 0;
@@ -393,7 +421,7 @@ namespace VERA
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     // On success, notify completion
-                    Debug.Log($"[VERA Participant] Successfully set participant's state to {state}.");
+                    VERADebugger.Log($"Successfully set participant's state to {state}.", "VERA Participant", DebugPreference.Verbose);
 
                     // If the state is COMPLETE, mark the session as finalized
                     if (state == ParticipantProgressState.COMPLETE)
@@ -406,13 +434,13 @@ namespace VERA
                 {
                     // On failure, notify non-completion, wait, and try again
                     attempt++;
-                    Debug.LogWarning($"[VERA Participant] Attempt {attempt}: failed to set participant's state to {state}: {request.error}");
+                    VERADebugger.LogWarning($"Attempt {attempt}: failed to set participant's state to {state}: {request.error}", "VERA Participant");
                     request.Dispose();
                     yield return new WaitForSeconds(1f);
                 }
             }
 
-            Debug.LogError($"[VERA Participant] Failed to set participant's state to {state} after {changeProgressMaxRetries} attempts.");
+            VERADebugger.LogError($"Failed to set participant's state to {state} after {changeProgressMaxRetries} attempts.", "VERA Participant");
         }
 
 

@@ -9,13 +9,13 @@ namespace VERA
 
         public static void ValidateAndFixColumnDefinitions()
         {
-            Debug.Log("[VERA Column Validator] Starting column definition validation...");
+            VERADebugger.Log("Starting column definition validation...", "VERAColumnValidator", DebugPreference.Verbose);
 
             // Load all column definitions
             VERAColumnDefinition[] columnDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
             if (columnDefinitions == null || columnDefinitions.Length == 0)
             {
-                Debug.Log("[VERA Column Validator] No column definitions found, skipping validation.");
+                VERADebugger.Log("No column definitions found, skipping validation.", "VERAColumnValidator", DebugPreference.Verbose);
                 return;
             }
 
@@ -43,37 +43,37 @@ namespace VERA
                     // Attempt to fix the column definition
                     if (FixColumnDefinition(columnDef))
                     {
-                        Debug.Log($"[VERA Column Validator] Fixed column definition for {fileTypeName}");
+                        VERADebugger.Log($"Fixed column definition for {fileTypeName}", "VERAColumnValidator", DebugPreference.Verbose);
                     }
                     else
                     {
-                        Debug.LogError($"[VERA Column Validator] Failed to fix column definition for {fileTypeName}");
+                        VERADebugger.LogError($"Failed to fix column definition for {fileTypeName}", "VERAColumnValidator");
                     }
                 }
             }
 
             if (foundIssues)
             {
-                Debug.LogWarning($"[VERA Column Validator] Found and fixed {issuesFound.Count} column definition issues:");
+                VERADebugger.LogWarning($"Found and fixed {issuesFound.Count} column definition issues:", "VERAColumnValidator");
                 foreach (string issue in issuesFound)
                 {
-                    Debug.LogWarning($"  - {issue}");
+                    VERADebugger.LogWarning($"  - {issue}", "VERAColumnValidator");
                 }
 
                 // Regenerate code files to match fixed column definitions
-                Debug.Log("[VERA Column Validator] Regenerating file type code to match corrected column definitions...");
+                VERADebugger.Log("Regenerating file type code to match corrected column definitions...", "VERAColumnValidator", DebugPreference.Verbose);
 
 #if UNITY_EDITOR
                 FileTypeGenerator.GenerateAllFileTypesCsCode();
-                Debug.Log("[VERA Column Validator] File types regenerated successfully!");
+                VERADebugger.Log("File types regenerated successfully!", "VERAColumnValidator", DebugPreference.Verbose);
 #else
-            Debug.LogWarning("[VERA Column Validator] Code regeneration is only available in the Unity Editor. " +
-                "Please regenerate file types using the VERA menu in the editor.");
+            VERADebugger.LogWarning("Code regeneration is only available in the Unity Editor. " +
+                "Please regenerate file types using the VERA menu in the editor.", "VERAColumnValidator");
 #endif
             }
             else
             {
-                Debug.Log("[VERA Column Validator] All column definitions are valid!");
+                VERADebugger.Log("All column definitions are valid!", "VERAColumnValidator");
             }
         }
 
@@ -205,7 +205,7 @@ namespace VERA
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[VERA Column Validator] Error fixing column definition: {e.Message}");
+                VERADebugger.LogError($"Error fixing column definition: {e.Message}", "VERAColumnValidator");
                 return false;
             }
         }

@@ -44,30 +44,27 @@ namespace VERA
         // Starts the server
         private static void StartUserAuthServer()
         {
-            if (listener == null)
-            {
-                listener = new HttpListener();
-                listener.Prefixes.Add(listenUrl + "/");
-            }
+            Debug.Log("STARTING AUTH SERVER");
+            StopUserAuthServer();
 
-            if (!listener.IsListening)
-            {
-                listener.Start();
-                isRunning = true;
-                listener.BeginGetContext(HandleAuthenticationRequest, listener);
-            }
+            listener = new HttpListener();
+            listener.Prefixes.Add(listenUrl + "/");
+            listener.Start();
+            isRunning = true;
+            listener.BeginGetContext(HandleAuthenticationRequest, listener);
         }
 
         // Stops the server
         private static void StopUserAuthServer()
         {
-            if (listener != null && listener.IsListening)
-            {
-                isRunning = false;
-                listener.Stop();
-                listener.Close();
-                listener = null;
-            }
+            isRunning = false;
+
+            if (listener == null)
+                return;
+
+            listener.Stop();
+            listener.Close();
+            listener = null;
         }
 
         // Handles the authentication request
@@ -75,7 +72,7 @@ namespace VERA
         {
             if (!isRunning) return;
 
-            Debug.Log($"[VERA Authentication] Sending request for authentication to the VERA portal...");
+            EditorApplication.delayCall += () => VERADebugger.Log($"Sending request for authentication to the VERA portal...", "VERA Authentication", DebugPreference.None);
 
             var context = listener.EndGetContext(result);
             var request = context.Request;
@@ -102,13 +99,13 @@ namespace VERA
                     using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
                     {
                         string read = reader.ReadToEnd();
-                        Debug.Log($"[VERA Authentication] Received response from VERA portal...");
+                        EditorApplication.delayCall += () => VERADebugger.Log($"Received response from VERA portal...", "VERA Authentication", DebugPreference.Informative);
 
                         UnityTokenResponse response = JsonUtility.FromJson<UnityTokenResponse>(read);
 
                         if (response == null || response.user == null || string.IsNullOrEmpty(response.token))
                         {
-                            Debug.LogError("[VERA Authentication] Invalid authentication response received");
+                            EditorApplication.delayCall += () => VERADebugger.LogError("Invalid authentication response received", "VERA Authentication");
                             context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                             byte[] errorBytes = Encoding.UTF8.GetBytes("Invalid authentication data");
                             context.Response.ContentLength64 = errorBytes.Length;
@@ -121,7 +118,7 @@ namespace VERA
                         string userId = response.user._id;
                         string userName = response.user.firstName + " " + response.user.lastName;
 
-                        Debug.Log($"[VERA Authentication] Parsed data; name: {userName}. Returning success to VERA portal...");
+                        EditorApplication.delayCall += () => VERADebugger.Log($"Parsed data; name: {userName}. Returning success to VERA portal...", "VERA Authentication", DebugPreference.Informative);
 
                         // Save
                         EditorApplication.delayCall += () =>
@@ -129,11 +126,11 @@ namespace VERA
                             try
                             {
                                 SaveUserAuthentication(token, userId, userName);
-                                Debug.Log("[VERA Connection] You are successfully authenticated and connected to the VERA portal.\n");
+                                VERADebugger.Log("[VERA Connection] You are successfully authenticated and connected to the VERA portal.\n", "VERA Authentication", DebugPreference.Informative);
                             }
                             catch (Exception ex)
                             {
-                                Debug.LogError($"[VERA Authentication] Failed to save authentication: {ex.Message}");
+                                VERADebugger.LogError($"Failed to save authentication: {ex.Message}", "VERA Authentication");
                             }
                         };
                     }
@@ -149,7 +146,7 @@ namespace VERA
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[VERA Authentication] Error processing authentication request: {ex.Message}");
+                    EditorApplication.delayCall += () => VERADebugger.LogError($"Error processing authentication request: {ex.Message}", "VERA Authentication");
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
                     byte[] errorBytes = Encoding.UTF8.GetBytes("Authentication processing failed");
                     context.Response.ContentLength64 = errorBytes.Length;
@@ -180,7 +177,7 @@ namespace VERA
                 // Validate input parameters
                 if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(userName))
                 {
-                    Debug.LogError($"[VERA Authentication] Invalid parameters - Token: {string.IsNullOrEmpty(token)}, UserID: {string.IsNullOrEmpty(userId)}, UserName: {string.IsNullOrEmpty(userName)}");
+                    VERADebugger.LogError($"Invalid parameters - Token: {string.IsNullOrEmpty(token)}, UserID: {string.IsNullOrEmpty(userId)}, UserName: {string.IsNullOrEmpty(userName)}", "VERA Authentication");
                     return;
                 }
 
@@ -198,7 +195,7 @@ namespace VERA
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[VERA Authentication] Error in SaveUserAuthentication: {ex.Message}\nStack trace: {ex.StackTrace}");
+                VERADebugger.LogError($"Error in SaveUserAuthentication: {ex.Message}\nStack trace: {ex.StackTrace}", "VERA Authentication");
             }
         }
 
@@ -246,7 +243,13 @@ namespace VERA
             if (currentBuildInfo != null)
             {
                 buildDeauthInfo.activeExperiment = currentBuildInfo.activeExperiment;
+                buildDeauthInfo.activeExperimentName = currentBuildInfo.activeExperimentName;
                 buildDeauthInfo.activeSite = currentBuildInfo.activeSite;
+                buildDeauthInfo.activeSiteName = currentBuildInfo.activeSiteName;
+                buildDeauthInfo.isMultiSite = currentBuildInfo.isMultiSite;
+                buildDeauthInfo.currentBuildNumber = currentBuildInfo.currentBuildNumber;
+                buildDeauthInfo.dataRecordingType = currentBuildInfo.dataRecordingType;
+                buildDeauthInfo.debugPreference = currentBuildInfo.debugPreference;
             }
 
             SetSavedUserAuthInfo(userDeauthInfo);
@@ -281,6 +284,8 @@ namespace VERA
             PlayerPrefs.SetString("VERA_ActiveExperiment", authInfo.activeExperiment);
             PlayerPrefs.SetString("VERA_ActiveSite", authInfo.activeSite);
             PlayerPrefs.SetInt("VERA_BuildAuthenticated", authInfo.authenticated ? 1 : 0);
+            PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
+            PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
 
             AssetDatabase.Refresh();
             AssetDatabase.SaveAssets();
@@ -316,7 +321,7 @@ namespace VERA
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[VERA Authentication] Failed to save user authentication: {ex.Message}\nStack trace: {ex.StackTrace}");
+                VERADebugger.LogError($"Failed to save user authentication: {ex.Message}\nStack trace: {ex.StackTrace}", "VERA Authentication");
             }
         }
 
@@ -488,8 +493,8 @@ namespace VERA
                     {
                         if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
                         {
-                            Debug.LogError("[VERA Authentication] There was an issue connecting to the VERA portal to get build authentication. " +
-                                "Please check your connection and try again.");
+                            VERADebugger.LogError("There was an issue connecting to the VERA portal to get build authentication. " +
+                                "Please check your connection and try again.", "VERA Authentication");
                         }
 
                         ClearBuildAuthentication();
@@ -514,14 +519,14 @@ namespace VERA
                             }
                             else
                             {
-                                Debug.LogError($"[VERA Authenticator] Failed to parse authentication response: {jsonResponse}");
+                                VERADebugger.LogError($"Failed to parse authentication response: {jsonResponse}", "VERA Authentication");
                                 ClearBuildAuthentication();
                                 onComplete?.Invoke(false);
                             }
                         }
                         catch (Exception e)
                         {
-                            Debug.LogError($"[VERA Authenticator] Failed to parse authentication response: {e.Message}");
+                            VERADebugger.LogError($"Failed to parse authentication response: {e.Message}", "VERA Authentication");
                             ClearBuildAuthentication();
                             onComplete?.Invoke(false);
                         }
@@ -573,13 +578,13 @@ namespace VERA
                     {
                         if (request.result == UnityWebRequest.Result.ConnectionError)
                         {
-                            Debug.LogError("VERA: There was an issue connecting to the VERA portal, and you have been logged out. " +
-                                "Please re-authenticate using the \"VERA -> Settings\" menu item.");
+                            VERADebugger.LogError("There was an issue connecting to the VERA portal, and you have been logged out. " +
+                                "Please re-authenticate using the \"VERA -> Settings\" menu item.", "VERA Authentication");
                         }
                         else if (request.result == UnityWebRequest.Result.ProtocolError)
                         {
-                            Debug.LogError("VERA: You are not authenticated, and will not be able to run experiments. " +
-                                "Use the \"VERA -> Settings\" menu bar item to authenticate.");
+                            VERADebugger.LogError("You are not authenticated, and will not be able to run experiments. " +
+                                "Use the \"VERA -> Settings\" menu bar item to authenticate.", "VERA Authentication");
                         }
 
                         ClearAuthentication();
@@ -612,8 +617,8 @@ namespace VERA
                         }
                         else
                         {
-                            Debug.LogError("VERA: Received an unexpected response from the VERA portal when fetching experiments. " +
-                                "Please try again later.");
+                            VERADebugger.LogError("Received an unexpected response from the VERA portal when fetching experiments. " +
+                                "Please try again later.", "VERA Authentication");
 
                             onComplete?.Invoke(null);
                         }
@@ -626,13 +631,16 @@ namespace VERA
         }
 
         // Changes the currently active experiment
-        public static void ChangeActiveExperiment(string activeExperimentId)
+        public static void ChangeActiveExperiment(string activeExperimentId, string activeExperimentName, bool isMultiSite, int currentBuildNumber)
         {
             // Get current auth info, to not overwrite other existing info
             VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
 
             // Set info
             currentAuthInfo.activeExperiment = activeExperimentId;
+            currentAuthInfo.activeExperimentName = activeExperimentName;
+            currentAuthInfo.isMultiSite = isMultiSite;
+            currentAuthInfo.currentBuildNumber = currentBuildNumber;
 
             // Push to file (updates PlayerPrefs as well)
             SetSavedBuildAuthInfo(currentAuthInfo);
@@ -643,7 +651,7 @@ namespace VERA
             // Update all column definition assets to this new experiment
             UpdateColumnDefs();
 
-            // Generate condition code for the new experiment
+            // Get this experiment's information and generate condition code
             if (!string.IsNullOrEmpty(activeExperimentId))
             {
                 GetUserExperiments((experiments) =>
@@ -653,6 +661,7 @@ namespace VERA
                         var activeExperiment = experiments.Find(e => e._id == activeExperimentId);
                         if (activeExperiment != null)
                         {
+                            // Generate condition code
                             ConditionGenerator.ClearAllConditionCsCode();
                             ConditionGenerator.GenerateAllConditionCsCode(activeExperiment);
                         }
@@ -677,23 +686,76 @@ namespace VERA
             {
                 if (!success)
                 {
-                    Debug.LogError("[VERA Authenticator] Failed to authenticate for experiment. Cannot change active experiment. " +
-                        "Please check your internet connection, refresh experiments, and try again.");
+                    VERADebugger.LogError("Failed to authenticate for experiment. Cannot change active experiment. " +
+                        "Please check your internet connection, refresh experiments, and try again.", "VERA Authentication");
                 }
             });
         }
 
         // Changes the currently active site
-        public static void ChangeActiveSite(string activeSiteId)
+        public static void ChangeActiveSite(string activeSiteId, string activeSiteName)
         {
             // Get current auth info, to not overwrite other existing info
             VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
 
             // Set info
             currentAuthInfo.activeSite = activeSiteId;
+            currentAuthInfo.activeSiteName = activeSiteName;
 
             // Push to file (updates PlayerPrefs as well)
             SetSavedBuildAuthInfo(currentAuthInfo);
+        }
+
+        /// <summary>
+        /// Changes the data recording type setting.
+        /// </summary>
+        /// <param name="recordingType">The new data recording type to set.</param>
+        public static void ChangeDataRecordingType(DataRecordingType recordingType)
+        {
+            // Get current auth info, to not overwrite other existing info
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+
+            // Set info
+            currentAuthInfo.dataRecordingType = recordingType;
+
+            // Push to file (updates PlayerPrefs as well)
+            SetSavedBuildAuthInfo(currentAuthInfo);
+        }
+
+        /// <summary>
+        /// Gets the current data recording type setting.
+        /// </summary>
+        /// <returns>The current data recording type.</returns>
+        public static DataRecordingType GetDataRecordingType()
+        {
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+            return currentAuthInfo.dataRecordingType;
+        }
+
+        /// <summary>
+        /// Changes the debug preference setting.
+        /// </summary>
+        /// <param name="debugPreference">The new debug preference to set.</param>
+        public static void ChangeDebugPreference(DebugPreference debugPreference)
+        {
+            // Get current auth info, to not overwrite other existing info
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+
+            // Set info
+            currentAuthInfo.debugPreference = debugPreference;
+
+            // Push to file (updates PlayerPrefs as well)
+            SetSavedBuildAuthInfo(currentAuthInfo);
+        }
+
+        /// <summary>
+        /// Gets the current debug preference setting.
+        /// </summary>
+        /// <returns>The current debug preference.</returns>
+        public static DebugPreference GetDebugPreference()
+        {
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+            return currentAuthInfo.debugPreference;
         }
 
 
@@ -726,7 +788,7 @@ namespace VERA
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogWarning($"VERA: failed to fetch IV group conditions for {ivName}: {request.error}");
+                    VERADebugger.LogWarning($"Failed to fetch IV group conditions for {ivName}: {request.error}", "VERA Authentication");
                     request.Dispose();
                     onComplete?.Invoke(null);
                     return;
@@ -760,7 +822,7 @@ namespace VERA
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"VERA: Failed parsing IV group conditions for {ivName}: {e.Message}");
+                    VERADebugger.LogWarning($"Failed parsing IV group conditions for {ivName}: {e.Message}", "VERA Authentication");
                     onComplete?.Invoke(null);
                 }
                 finally
@@ -818,8 +880,8 @@ namespace VERA
                     // On error, can't make any column definitions
                     if (request.result != UnityWebRequest.Result.Success)
                     {
-                        Debug.LogError("VERA - Unexpected response from server; could not get column definitions. " +
-                                "Please try refreshing your experiments and trying again.");
+                        VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
+                                "Please try refreshing your experiments and trying again.", "VERA Authentication");
                         return;
                     }
                     else
@@ -830,8 +892,8 @@ namespace VERA
 
                         if (fileTypesResponse == null || !fileTypesResponse.success)
                         {
-                            Debug.LogError("VERA - Unexpected response from server; could not get column definitions. " +
-                                "Please try refreshing your experiments and trying again.");
+                            VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
+                                "Please try refreshing your experiments and trying again.", "VERA Authentication");
                             return;
                         }
 
@@ -872,7 +934,7 @@ namespace VERA
                                 }
                                 catch (System.Exception e)
                                 {
-                                    Debug.LogError($"[VERA Authentication] Failed to create asset at path '{relativePath}': {e.Message}");
+                                    VERADebugger.LogError($"Failed to create asset at path '{relativePath}': {e.Message}", "VERA Authentication");
                                     continue;
                                 }
 
@@ -1000,7 +1062,7 @@ namespace VERA
                     }
                     catch (IOException e)
                     {
-                        Debug.LogError($"IO Exception deleting file: {file}\n{e.Message}");
+                        VERADebugger.LogError($"IO Exception deleting file: {file}\n{e.Message}", "VERA Authentication");
                     }
                 }
             }
@@ -1237,6 +1299,7 @@ namespace VERA
         public List<string> users;
         public List<string> participants;
         public bool isMultiSite;
+        public int webXrBuildNumber;
         public List<Site> sites = new List<Site>();
         public List<IVGroup> conditions = new List<IVGroup>();
     }

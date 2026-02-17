@@ -97,13 +97,75 @@ namespace VERA
         #region INIT
 
 
+        /// <summary>
+        /// Builds the hierarchical directory path based on experiment, site, build version, and participant.
+        /// Creates the directory if it doesn't already exist.
+        /// </summary>
+        private string BuildHierarchicalDirectoryPath()
+        {
+            VERABuildAuthInfo authInfo = VERALogger.Instance.buildAuthInfo;
+            string participantShortId = VERALogger.Instance.activeParticipant.participantShortId.ToString();
+
+            // Start with the base directory from baseFilePath
+            string baseDirectory = Path.GetDirectoryName(VERALogger.Instance.baseFilePath);
+
+            // 1. Experiment folder (replace spaces with dashes)
+            string experimentFolder = authInfo.activeExperimentName.Replace(" ", "-");
+            string path = Path.Combine(baseDirectory, experimentFolder);
+
+            // 2. Site folder (only if multi-site)
+            if (authInfo.isMultiSite)
+            {
+                string siteFolder = "Site-" + authInfo.activeSiteName.Replace(" ", "-");
+                path = Path.Combine(path, siteFolder);
+            }
+
+            // 3. Build version folder
+            string buildVersionFolder;
+            if (authInfo.currentBuildNumber <= 0)
+            {
+                buildVersionFolder = "BuildVersion_PreBuild";
+            }
+            else
+            {
+                buildVersionFolder = "BuildVersion_" + authInfo.currentBuildNumber.ToString();
+            }
+            path = Path.Combine(path, buildVersionFolder);
+
+            // 4. Participant folder
+            string participantFolder = "Participant-" + participantShortId;
+            path = Path.Combine(path, participantFolder);
+
+            // Create directory if it doesn't exist
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+                VERADebugger.Log("Created directory structure: " + path, "VERACsvHandler", DebugPreference.Verbose);
+            }
+
+            return path;
+        }
+
+
         public void Initialize(VERAColumnDefinition columnDef)
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord)
+            {
+                VERADebugger.Log("Data recording is disabled; CSV handler for file type \"" + columnDef.fileType.name + "\" will not be initialized.", "VERACsvHandler", DebugPreference.Informative);
+                return;
+            }
+
             string participantUUID = VERALogger.Instance.activeParticipant.participantUUID;
             columnDefinition = columnDef;
 
-            fullCsvFilePath = VERALogger.Instance.baseFilePath + "-" + participantUUID + "-" + columnDefinition.fileType.fileTypeId + ".csv";
-            partialCsvFilePath = VERALogger.Instance.baseFilePath + "-" + participantUUID + "-" + columnDefinition.fileType.fileTypeId + "-partial.csv";
+            // Build the hierarchical directory path and get the directory for CSV storage
+            string csvDirectory = BuildHierarchicalDirectoryPath();
+
+            // Construct file paths within the hierarchical directory
+            string baseFileName = columnDefinition.fileType.name.Replace(" ", "-");
+            fullCsvFilePath = Path.Combine(csvDirectory, baseFileName + ".csv");
+            partialCsvFilePath = Path.Combine(csvDirectory, baseFileName + "-partial.csv");
 
             // Set up the column names for the header row
             List<string> columnNames = new List<string>();
@@ -125,7 +187,7 @@ namespace VERA
                 writer.Flush();
             }
 
-                Debug.Log("[VERA Logger] CSV File (and partial sync file) for file type \"" + columnDefinition.fileType.name + ".csv\" created and saved at " + fullCsvFilePath);
+            VERADebugger.Log("CSV File (and partial sync file) for file type \"" + columnDefinition.fileType.name + ".csv\" created and saved at " + fullCsvFilePath, "VERACsvHandler", DebugPreference.Verbose);
         }
 
 
@@ -348,12 +410,9 @@ namespace VERA
 
         public IEnumerator SubmitFileWithRetry(bool finalUpload = false, bool usePartial = false)
         {
-            // Skip upload if configured to do so (e.g., no valid fileTypeId)
-            if (ShouldSkipUpload())
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally || ShouldSkipUpload())
             {
-                Debug.Log($"[VERA CSV] Skipping upload for {columnDefinition.fileType.name} (skipUpload=true).");
-                if (finalUpload)
-                    OnFinalUploadComplete();
                 yield break;
             }
 
@@ -362,19 +421,19 @@ namespace VERA
             {
                 if (!finalUpload)
                 {
-                    Debug.Log("[VERA CSV] Attempted non-final upload for file \"" + columnDefinition.fileType.name +
-                        "\", but another upload is already in progress; ignoring this request, as it will be handled when the active one completes.");
+                    VERADebugger.Log("Attempted non-final upload for file \"" + columnDefinition.fileType.name +
+                        "\", but another upload is already in progress; ignoring this request, as it will be handled when the active one completes.", "VERACsvHandler", DebugPreference.Verbose);
                     yield break;
                 }
                 else
                 {
-                    Debug.Log("[VERA CSV] Attempted final upload for file \"" + columnDefinition.fileType.name +
-                        "\", but another upload is already in progress; waiting for it to complete before proceeding.");
+                    VERADebugger.Log("Attempted final upload for file \"" + columnDefinition.fileType.name +
+                        "\", but another upload is already in progress; waiting for it to complete before proceeding.", "VERACsvHandler", DebugPreference.Verbose);
                     while (activeWebRequest != null)
                     {
                         yield return null;
                     }
-                    Debug.Log("[VERA CSV] Previous upload completed; proceeding with final upload for file \"" + columnDefinition.fileType.name + "\".");
+                    VERADebugger.Log("Previous upload completed; proceeding with final upload for file \"" + columnDefinition.fileType.name + "\".", "VERACsvHandler", DebugPreference.Verbose);
                 }
             }
 
@@ -387,12 +446,12 @@ namespace VERA
                 {
                     if (!finalUpload)
                     {
-                        Debug.LogWarning($"[VERA CSV] Session has been finalized, but an attempt to upload a partial file was made; skipping partial upload for {columnDefinition.fileType.name}.");
+                        VERADebugger.LogWarning($"Session has been finalized, but an attempt to upload a partial file was made; skipping partial upload for {columnDefinition.fileType.name}.", "VERACsvHandler");
                         yield break;
                     }
                     else if (finalEntryUploaded)
                     {
-                        Debug.LogWarning($"[VERA CSV] Session finalized and final entry already uploaded, but an attempt to upload a final file was made; skipping additional final upload for {columnDefinition.fileType.name}.");
+                        VERADebugger.LogWarning($"Session finalized and final entry already uploaded, but an attempt to upload a final file was made; skipping additional final upload for {columnDefinition.fileType.name}.", "VERACsvHandler");
                         yield break;
                     }
                 }
@@ -403,7 +462,7 @@ namespace VERA
                 // If this is a partial sync and we are already up-to-date, skip
                 if (usePartial && !PartialFileHasUnsyncedData())
                 {
-                    Debug.Log($"[VERA CSV] No new unsynced data for partial upload of {columnDefinition.fileType.name}; skipping upload.");
+                    VERADebugger.Log($"No new unsynced data for partial upload of {columnDefinition.fileType.name}; skipping upload.", "VERACsvHandler", DebugPreference.Verbose);
                     if (finalUpload)
                         OnFinalUploadComplete();
                     yield break;
@@ -417,36 +476,36 @@ namespace VERA
                 if (activeWebRequest == null || activeWebRequest.result == UnityWebRequest.Result.Success)
                 {
                     // On success, log detailed outcome
-                        string serverResponse = "";
-                        try { serverResponse = activeWebRequest.downloadHandler != null ? activeWebRequest.downloadHandler.text : ""; } catch { serverResponse = "(no response body)"; }
-                        Debug.Log("[VERA Logger] Successful upload of \"" + columnDefinition.fileType.name + "\". Server response: " + serverResponse);
+                    string serverResponse = "";
+                    try { serverResponse = activeWebRequest.downloadHandler != null ? activeWebRequest.downloadHandler.text : ""; } catch { serverResponse = "(no response body)"; }
+                    VERADebugger.Log("Successful upload of \"" + columnDefinition.fileType.name + "\". Server response: " + serverResponse, "VERACsvHandler", DebugPreference.Verbose);
 
-                        // If this was a partial upload and succeeded, clear the partial rows so we don't re-upload them
-                        if (usePartial)
+                    // If this was a partial upload and succeeded, clear the partial rows so we don't re-upload them
+                    if (usePartial)
+                    {
+                        try
                         {
-                            try
-                            {
-                                ClearPartialFileRows();
-                            }
-                            catch (Exception e)
-                            {
-                                Debug.LogWarning("[VERA CSV] Failed to clear partial file rows after successful partial upload: " + e.Message);
-                            }
+                            ClearPartialFileRows();
                         }
+                        catch (Exception e)
+                        {
+                            VERADebugger.LogWarning("Failed to clear partial file rows after successful partial upload: " + e.Message, "VERACsvHandler");
+                        }
+                    }
 
-                        activeWebRequest = null; // Clear the active web request
-                        if (finalUpload)
-                            OnFinalUploadComplete();
-                        yield break;
+                    activeWebRequest = null; // Clear the active web request
+                    if (finalUpload)
+                        OnFinalUploadComplete();
+                    yield break;
                 }
                 else
                 {
                     // failure → log and back off
                     string err = activeWebRequest != null ? activeWebRequest.error : "unknown error";
-                    Debug.LogWarning($"[VERA CSV] Attempt {attempt} failed for {columnDefinition.fileType.name}: {err}");
+                    VERADebugger.LogWarning($"Attempt {attempt} failed for {columnDefinition.fileType.name}: {err}", "VERACsvHandler");
                     if (attempt < maxAttempts)
                     {
-                        Debug.Log($"[VERA CSV] Retrying in {delay}s...");
+                        VERADebugger.Log($"Retrying in {delay}s...", "VERACsvHandler", DebugPreference.Informative);
                         activeWebRequest = null;
                         yield return new WaitForSeconds(delay);
                         delay *= 2f; // exponential backoff
@@ -454,7 +513,7 @@ namespace VERA
                     else
                     {
                         // If all attempts fail, log such
-                        Debug.LogError($"[VERA CSV] All {maxAttempts} attempts failed for {columnDefinition.fileType.name}.");
+                        VERADebugger.LogError($"All {maxAttempts} attempts failed for {columnDefinition.fileType.name}.", "VERACsvHandler");
                         activeWebRequest = null;
                         if (finalUpload)
                             OnFinalUploadComplete();
@@ -469,15 +528,21 @@ namespace VERA
         // Does NOT handle overlapping requests - these should be handled elsewhere and ensure this coroutine only runs one at a time
         private IEnumerator SubmitFileCoroutine(bool partial)
         {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            {
+                yield break;
+            }
+
             if (partial)
             {
-                Debug.Log("[VERA Logger] Submitting to the server all new data entries for file associated with file type \"" +
-                    columnDefinition.fileType.name + "\" (" + fullCsvFilePath + ")");
+                VERADebugger.Log("Submitting to the server all new data entries for file associated with file type \"" +
+                    columnDefinition.fileType.name + "\" (" + fullCsvFilePath + ")", "VERACsvHandler", DebugPreference.Verbose);
             }
             else
             {
-                Debug.Log("[VERA Logger] Submitting full CSV file associated with file type \"" +
-                    columnDefinition.fileType.name + "\" (" + fullCsvFilePath + ")");
+                VERADebugger.Log("Submitting full CSV file associated with file type \"" +
+                    columnDefinition.fileType.name + "\" (" + fullCsvFilePath + ")", "VERACsvHandler", DebugPreference.Verbose);
             }
 
             // Paths, keys, and IDs
@@ -508,8 +573,8 @@ namespace VERA
                 filePath = partialCsvFilePath;
                 if (!PartialFileHasUnsyncedData())
                 {
-                    Debug.Log("[VERA Logger] Attempted to upload partial CSV for file type \"" + columnDefinition.fileType.name +
-                        "\", but there is no new unsynced data to submit. Skipping upload.");
+                    VERADebugger.Log("Attempted to upload partial CSV for file type \"" + columnDefinition.fileType.name +
+                        "\", but there is no new unsynced data to submit. Skipping upload.", "VERACsvHandler", DebugPreference.Verbose);
                     yield break;
                 }
             }
@@ -518,8 +583,8 @@ namespace VERA
             yield return VERALogger.Instance.ReadBinaryDataFile(filePath, (result) => fileData = result);
             if (fileData == null)
             {
-                Debug.Log("[VERA Logger] Attempted to upload CSV for file type \"" + columnDefinition.fileType.name +
-                    "\", but there is no file data to submit.");
+                VERADebugger.Log("Attempted to upload CSV for file type \"" + columnDefinition.fileType.name +
+                    "\", but there is no file data to submit.", "VERACsvHandler", DebugPreference.Verbose);
                 yield break;
             }
 
@@ -541,11 +606,11 @@ namespace VERA
 
             if (activeWebRequest.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("[VERA Logger] Successful upload of \"" + columnDefinition.fileType.name + "\".");
+                VERADebugger.Log("Successful upload of \"" + columnDefinition.fileType.name + "\".", "VERACsvHandler", DebugPreference.Verbose);
             }
             else
             {
-                Debug.LogError($"[VERA Logger] Failed to upload \"{columnDefinition.fileType.name}\". result={activeWebRequest.result}, error={activeWebRequest.error}");
+                VERADebugger.LogError($"Failed to upload \"{columnDefinition.fileType.name}\". result={activeWebRequest.result}, error={activeWebRequest.error}", "VERACsvHandler");
             }
         }
 
