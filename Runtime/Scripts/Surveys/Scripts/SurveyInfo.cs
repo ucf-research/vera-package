@@ -22,6 +22,9 @@ namespace VERA
         [HideInInspector]
         public string surveyId;
 
+        [HideInInspector]
+        public string surveyInstanceId;
+
         #endregion
 
     }

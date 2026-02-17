@@ -131,6 +131,11 @@ namespace VERA
             foreach (var csvHandler in handlers)
             {
                 if (csvHandler == null) continue;
+
+                // Skip file types marked as skipUpload (e.g., survey responses use dedicated API)
+                if (csvHandler.ShouldSkipUpload())
+                    continue;
+
                 yield return StartCoroutine(csvHandler.SubmitFileWithRetry(finalUpload: finalFlag, usePartial: true));
             }
         }
@@ -166,7 +171,11 @@ namespace VERA
             {
                 foreach (VERACsvHandler csvHandler in VERALogger.Instance.csvHandlers)
                 {
-                    yield return csvHandler?.SubmitFileWithRetry(finalUpload: true, usePartial: true);
+                    if (csvHandler == null) continue;
+
+                    // For all handlers (including skipped ones), call SubmitFileWithRetry
+                    // The handler will check ShouldSkipUpload() internally and mark as complete
+                    yield return csvHandler.SubmitFileWithRetry(finalUpload: true, usePartial: true);
                 }
             }
 

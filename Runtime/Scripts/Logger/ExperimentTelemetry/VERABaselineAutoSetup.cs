@@ -19,6 +19,9 @@ namespace VERA
         [Tooltip("Log baseline data every frame (enabled by default for maximum fidelity)")]
         public bool logEveryFrame = true;
 
+        [Tooltip("Default sampling rate in Hz for baseline data logging")]
+        public float defaultSamplingRate = 30f;
+
         [Header("Info")]
         [TextArea(3, 5)]
         public string info = "This component automatically sets up baseline VR data logging tied to VERA experiment lifecycle. " +
@@ -94,7 +97,8 @@ namespace VERA
             logger.autoStartLogging = true;  // Always start when VERA Logger is ready
 
             logger.SetLogEveryFrame(logEveryFrame);
-            
+            logger.SetLogRate(defaultSamplingRate);
+
             createdLogger = logger;
             
             // Try to auto-assign VR components if available
