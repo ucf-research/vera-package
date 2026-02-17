@@ -28,6 +28,7 @@ namespace VERA
         public VERAParticipantManager activeParticipant { get; private set; }
         private VERAPeriodicSyncHandler periodicSyncHandler;
         private VERAGenericFileHelper genericFileHelper;
+        private VERASurveyStarter surveyStarter;
 
         // Keys
         public string apiKey;
@@ -129,6 +130,9 @@ namespace VERA
             genericFileHelper = gameObject.AddComponent<VERAGenericFileHelper>();
             periodicSyncHandler = gameObject.AddComponent<VERAPeriodicSyncHandler>();
             periodicSyncHandler.StartPeriodicSync();
+
+            // Set up survey starter
+            surveyStarter = gameObject.AddComponent<VERASurveyStarter>();
 
             yield return InitializeExperimentConditions();
 
@@ -510,21 +514,6 @@ namespace VERA
         }
 
 
-        // Called when a CSV file is fully uploaded
-        // Append the CSV file's name to the uploaded records so we know to not upload it again
-        public void OnCsvFullyUploaded(string csvFilePath)
-        {
-            // Append the uploaded file name to the "uploadedCSVs.txt" file as a new line
-            string uploadRecordFilePath = Path.Combine(dataPath, "uploadedCSVs.txt");
-            var uploaded = File.ReadAllLines(uploadRecordFilePath);
-            if (!Array.Exists(uploaded, element => element == Path.GetFileName(csvFilePath)))
-            {
-                File.AppendAllText(uploadRecordFilePath,
-                Path.GetFileName(csvFilePath) + Environment.NewLine);
-            }
-        }
-
-
         #endregion
 
 
@@ -648,7 +637,6 @@ namespace VERA
             if (request.result == UnityWebRequest.Result.Success)
             {
                 VERADebugger.Log("Successfully uploaded existing file \"" + csvFilePath + "\".", "VERA Logger", DebugPreference.Informative);
-                OnCsvFullyUploaded(csvFilePath);
             }
             else
             {
@@ -910,6 +898,31 @@ namespace VERA
         {
             public string name;
             public string encoding;
+        }
+
+
+        #endregion
+
+
+        #region SURVEY MANAGEMENT
+
+
+        // Starts a survey for the participant based on the provided survey info
+        public void StartSurvey(VERASurveyInfo surveyToStart, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)
+        {
+            if (surveyStarter == null)
+            {
+                VERADebugger.LogError("No survey starter found; cannot start survey.", "VERA Logger");
+                return;
+            }
+
+            if (surveyToStart == null)
+            {
+                VERADebugger.LogError("No survey info provided; cannot start survey.", "VERA Logger");
+                return;
+            }
+
+            surveyStarter.StartSurvey(surveyToStart, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);
         }
 
 
