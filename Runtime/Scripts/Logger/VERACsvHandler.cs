@@ -206,7 +206,7 @@ namespace VERA
             }
 
             // check baseline data file (omits eventId column)
-            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data";
+            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
             int autoColumnCount = isBaselineTelemetry ? 3 : 4; // 3 for baseline telemetry (no eventId), 4 otherwise
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)

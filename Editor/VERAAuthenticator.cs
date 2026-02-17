@@ -903,6 +903,14 @@ namespace VERA
                         List<string> definitionsToAdd = new List<string>();
                         for (int i = 0; i < fileTypes.Count; i++)
                         {
+                            // Skip Experiment_Telemetry — its column definition is managed by
+                            // VERABaselineDataSetup with hardcoded correct types. We only need
+                            // to update its fileTypeId (handled below this loop).
+                            if (fileTypes[i].name == "Experiment_Telemetry")
+                            {
+                                continue;
+                            }
+
                             if (fileTypes[i].extension == "csv" && fileTypes[i].columnDefinition != null)
                             {
                                 // This file type is a CSV file with an associated column definition.
@@ -960,13 +968,24 @@ namespace VERA
                                         case "JSON":
                                             newCol.type = VERAColumnDefinition.DataType.JSON;
                                             break;
+                                        case "Boolean":
+                                            newCol.type = VERAColumnDefinition.DataType.Boolean;
+                                            break;
                                     }
 
-                                    // Enforce numeric type for known numeric telemetry columns regardless of server dataType
+                                    // Enforce correct types for known telemetry columns regardless of server dataType
                                     string lowerName = (newCol.name ?? "").ToLower();
                                     if (lowerName.Contains("_pos") || lowerName.Contains("trigger") || lowerName.Contains("grip"))
                                     {
                                         newCol.type = VERAColumnDefinition.DataType.Number;
+                                    }
+                                    else if (lowerName.EndsWith("rot"))
+                                    {
+                                        newCol.type = VERAColumnDefinition.DataType.String;
+                                    }
+                                    else if (lowerName.EndsWith("detected"))
+                                    {
+                                        newCol.type = VERAColumnDefinition.DataType.Boolean;
                                     }
 
                                     columnDefs[idx].columns.Add(newCol);
@@ -983,6 +1002,25 @@ namespace VERA
 
                                 // Add define symbol for this column definition
                                 definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
+                            }
+                        }
+
+                        // Update the baseline telemetry column definition's fileTypeId
+                        // The baseline definition is created locally with a placeholder "baseline-data" ID,
+                        // but it needs the real server-assigned ID for uploads to succeed.
+                        for (int i = 0; i < fileTypes.Count; i++)
+                        {
+                            if (fileTypes[i].name == "Experiment_Telemetry")
+                            {
+                                var baselineColumnDef = Resources.Load<VERAColumnDefinition>("Experiment_TelemetryColumnDefinition");
+                                if (baselineColumnDef != null)
+                                {
+                                    baselineColumnDef.fileType.fileTypeId = fileTypes[i]._id;
+                                    EditorUtility.SetDirty(baselineColumnDef);
+                                    AssetDatabase.SaveAssets();
+                                    VERADebugger.Log($"Updated baseline telemetry fileTypeId to \"{fileTypes[i]._id}\".", "VERA Authentication");
+                                }
+                                break;
                             }
                         }
 

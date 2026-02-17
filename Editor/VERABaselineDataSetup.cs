@@ -16,12 +16,13 @@ namespace VERA
 
         static VERABaselineDataSetup()
         {
-            // Check if column definition exists
+            // Check if column definition exists (either from baseline setup or authenticator)
             var columnDef = Resources.Load<VERAColumnDefinition>("Experiment_TelemetryColumnDefinition");
+            var authColumnDef = Resources.Load<VERAColumnDefinition>("VERA_Experiment_Telemetry_ColumnDefinition");
 
-            if (columnDef == null)
+            if (columnDef == null && authColumnDef == null)
             {
-                // Create it automatically
+                // No column definition exists from either source; create the baseline one
                 EditorApplication.delayCall += () =>
                 {
                     CreateBaselineDataColumnDefinition();
@@ -31,7 +32,7 @@ namespace VERA
             }
             else
             {
-                // Ensure scripting define symbol is added
+                // A column definition already exists; ensure scripting define symbol is added
                 EditorApplication.delayCall += () =>
                 {
                     AddScriptingDefineSymbol();
