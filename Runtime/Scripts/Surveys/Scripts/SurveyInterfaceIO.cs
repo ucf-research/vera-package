@@ -626,12 +626,6 @@ namespace VERA
             }
         }
 
-        // Invokes completion of the survey
-        public void InvokeCompletion()
-        {
-            OnSurveyCompleted?.Invoke();
-        }
-
         #endregion
 
     }
@@ -683,6 +677,7 @@ namespace VERA
     internal class SurveyInstance
     {
         public string studyId;
+        public string experimentId;
         public string survey;
         public string participantId;
     }

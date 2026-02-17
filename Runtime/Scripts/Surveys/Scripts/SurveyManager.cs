@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using static UnityEngine.GraphicsBuffer;
 using VLAT;
+using System;
 
 namespace VERA
 {
@@ -17,7 +18,7 @@ namespace VERA
         #region VARIABLES
 
         // Overall survey
-        private SurveyInfo activeSurvey;
+        private VERASurveyInfo activeSurvey;
         private bool surveyStarted = false;
         private bool connectionIssues = false;
         private bool previousConnectionIssues = false;
@@ -25,6 +26,7 @@ namespace VERA
 
         // References
         [Header("References")]
+        [SerializeField] private VERAFocusUI focusUi;
         [SerializeField] private Canvas managerCanvas;
         private CanvasGroup managerCanvGroup;
         [SerializeField] private RectTransform responseAreaParent;
@@ -67,6 +69,7 @@ namespace VERA
 
         // Start and results
         private KeyValuePair<string, string>[] surveyResults;
+        private Action onSurveyCompleteCallback;
 
         // Animations
         private float swipeTime = 0.25f;
@@ -75,13 +78,15 @@ namespace VERA
         private VLAT_MenuNavigator vlatMenuNav;
         private int infLoopDetect = 0;
 
+        private bool isSetup = false;
+
         #endregion
 
 
         #region SETUP
 
         // Sets up the manager and its various components
-        public void Setup()
+        private void Setup()
         {
             surveyInterfaceIo = GetComponent<SurveyInterfaceIO>();
             managerCanvGroup = managerCanvas.GetComponent<CanvasGroup>();
@@ -100,6 +105,8 @@ namespace VERA
 
             managerCanvGroup.alpha = 0f;
             managerCanvas.gameObject.SetActive(false);
+
+            isSetup = true;
         }
 
         #endregion
@@ -127,16 +134,26 @@ namespace VERA
         }
 
         // Begins a survey based on given info
-        public void BeginSurvey(SurveyInfo surveyToBegin)
+        public void BeginSurvey(VERASurveyInfo surveyToBegin, float heightOffset, float distanceOffset, System.Action onSurveyComplete)
         {
+            VERADebugger.Log("Beginning survey: " + surveyToBegin.surveyName, "SurveyManager", DebugPreference.Verbose);
+
+            if (!isSetup)
+                Setup();
+
             surveyStarted = false;
             connectionIssues = false;
+
+            onSurveyCompleteCallback = onSurveyComplete;
 
             managerCanvas.gameObject.SetActive(true);
 
             LeanTween.cancel(managerCanvGroup.gameObject);
             managerCanvGroup.alpha = 0f;
             managerCanvGroup.LeanAlpha(1f, swipeTime);
+
+            focusUi.SetParameters(heightOffset, distanceOffset);
+            focusUi.ResetPositionImmediate();
 
             activeSurvey = surveyToBegin;
 
@@ -170,7 +187,8 @@ namespace VERA
         // Hides the window by fading it out, then deactivating it
         private IEnumerator HideWindow()
         {
-            surveyInterfaceIo.InvokeCompletion();
+            onSurveyCompleteCallback?.Invoke();
+            onSurveyCompleteCallback = null;
 
             vlatMenuNav.StopMenuNavigation();
 
@@ -334,10 +352,9 @@ namespace VERA
             // Check for connection issues - surveys are required, so always retry
             if (connectionIssues)
             {
-                if (surveyInterfaceIo.reconnectSuccessful)
+                if (reconnectFlag)
                 {
-                    surveyInterfaceIo.StartSurveyFromReconnect();
-                    surveyInterfaceIo.StartSurveyFromReconnect();
+                    StartCoroutine(HideWindow());
                     return;
                 }
                 else
@@ -425,14 +442,6 @@ namespace VERA
         // Navigates to the previous question
         public void PreviousQuestion()
         {
-            // Check for connection issues
-            if (connectionIssues)
-            {
-                StopCoroutine(TryAgainConnection());
-                StartCoroutine(TryAgainConnection());
-                return;
-            }
-
             // Check if we are on the final screen
             if (currentQuestionIndex == activeSurvey.surveyQuestions.Count)
             {
@@ -494,16 +503,16 @@ namespace VERA
             // Setup new question based on question type
             switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
             {
-                case SurveyQuestionInfo.SurveyQuestionType.MultipleChoice:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
                     SetupChoiceOrSelection(multipleChoiceOptionPrefab);
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Selection:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
                     SetupChoiceOrSelection(selectionOptionPrefab);
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Slider:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
                     SetupSlider();
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Matrix:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     matrixSeparatorLine.SetActive(true);
                     SetupMatrix();
                     break;
@@ -790,7 +799,7 @@ namespace VERA
             switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
             {
                 // Multiple choice, save selected answer (e.g., "MultipleChoice: A")
-                case SurveyQuestionInfo.SurveyQuestionType.MultipleChoice:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
                     if (selectedOption == null)
                     {
                         saveString += "N/A";
@@ -801,7 +810,7 @@ namespace VERA
                     }
                     break;
                 // Selection, save selected answers (e.g., "Selection: A, B, D")
-                case SurveyQuestionInfo.SurveyQuestionType.Selection:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
                     if (selectedOptions.Count == 0)
                     {
                         saveString += "N/A";
@@ -816,11 +825,11 @@ namespace VERA
                     }
                     break;
                 // Slider, save slider value (as float)
-                case SurveyQuestionInfo.SurveyQuestionType.Slider:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
                     saveString += activeSliderOption.GetSliderValue().ToString();
                     break;
                 // Matrix, save row selection options
-                case SurveyQuestionInfo.SurveyQuestionType.Matrix:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     List<int> activeIndexes = matrixOptions.GetActiveIndexes();
                     if (activeIndexes.Count == 0)
                     {
@@ -987,7 +996,7 @@ namespace VERA
         public void OptionWasClicked(SurveySelectionOption option)
         {
             // Multiple choice, only one option can be active at a time
-            if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == SurveyQuestionInfo.SurveyQuestionType.MultipleChoice)
+            if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice)
             {
                 // Selected new option (off -> on)
                 if (option.isSelected)
@@ -1011,7 +1020,7 @@ namespace VERA
                 }
             }
             // Selection, multiple options can be active at a time
-            else if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == SurveyQuestionInfo.SurveyQuestionType.Selection)
+            else if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == VERASurveyQuestionInfo.VERASurveyQuestionType.Selection)
             {
                 // If we are activating an option, add it to the selected options list if needed
                 if (option.isSelected)

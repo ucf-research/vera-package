@@ -619,8 +619,6 @@ namespace VERA
         {
             finalEntryUploaded = true;
             DeletePartialFile();
-
-            VERALogger.Instance.OnCsvFullyUploaded(csvFilePath: fullCsvFilePath);
         }
 
 

@@ -6,7 +6,7 @@ namespace VERA
 {
     [System.Serializable]
     [CreateAssetMenu(fileName = "SurveyInfo", menuName = "VERA/Survey Info")]
-    internal class SurveyInfo : ScriptableObject
+    public class VERASurveyInfo : ScriptableObject
     {
 
         // SurveyInfo is a data container for defining a single survey
@@ -17,7 +17,7 @@ namespace VERA
         public string surveyName;
         [TextArea] public string surveyDescription;
         [TextArea] public string surveyEndStatement;
-        public List<SurveyQuestionInfo> surveyQuestions;
+        public List<VERASurveyQuestionInfo> surveyQuestions;
 
         [HideInInspector]
         public string surveyId;
@@ -30,7 +30,7 @@ namespace VERA
     }
 
     [System.Serializable]
-    internal class SurveyQuestionInfo
+    public class VERASurveyQuestionInfo
     {
 
         // SurveyQuestionInfo is a data container for defining what a single survey question consists of
@@ -38,7 +38,7 @@ namespace VERA
 
         #region OVERVIEW
 
-        public enum SurveyQuestionType
+        public enum VERASurveyQuestionType
         {
             MultipleChoice,
             Selection,
@@ -51,7 +51,7 @@ namespace VERA
             "Selection - presented with a series of choices, choose as many as you wish; " +
             "Slider - presented with a slider which may be adjusted between a minimum and maximum value; " +
             "Matrix - presented with a matrix table, of which may be populated with options and scale choices")]
-        public SurveyQuestionType questionType;
+        public VERASurveyQuestionType questionType;
         [Tooltip("The question's displayed text, written as should be displayed to the survey taker")]
         [TextArea] public string questionText;
 

@@ -44,7 +44,6 @@ namespace VERA
         // Starts the server
         private static void StartUserAuthServer()
         {
-            Debug.Log("STARTING AUTH SERVER");
             StopUserAuthServer();
 
             listener = new HttpListener();
@@ -327,7 +326,7 @@ namespace VERA
 
 
         // Gets saved build authentication info (file in StreamingAssets)
-        private static VERABuildAuthInfo GetSavedBuildAuthInfo()
+        internal static VERABuildAuthInfo GetSavedBuildAuthInfo()
         {
             // File paths
             string directoryPath = GetBuildAuthPath();
@@ -664,6 +663,9 @@ namespace VERA
                             // Generate condition code
                             ConditionGenerator.ClearAllConditionCsCode();
                             ConditionGenerator.GenerateAllConditionCsCode(activeExperiment);
+
+                            // Generate survey helper code and SurveyInfo assets for this experiment's surveys
+                            SurveyHelperGenerator.FetchAndConvertSurveys();
                         }
                     }
                 });
