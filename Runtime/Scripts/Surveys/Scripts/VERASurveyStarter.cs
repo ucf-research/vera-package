@@ -56,6 +56,9 @@ namespace VERA
                 fadeCanvas.SetupCanvas();
             }
 
+            Transform playerTransform = FindAnyObjectByType<XROrigin>().transform;
+            Vector3 startPosition = playerTransform.position;
+
             // If transporting to a lobby, move the participant to the lobby location before starting the survey
             if (transportToLobby)
             {
@@ -64,7 +67,6 @@ namespace VERA
                 yield return new WaitForSeconds(1f);
 
                 // Transport participant
-                Transform playerTransform = FindAnyObjectByType<XROrigin>().transform;
                 playerTransform.position = new Vector3(0, 0, 1000);
                 yield return new WaitForSeconds(0.5f);
 
@@ -90,7 +92,39 @@ namespace VERA
             }
 
             // Start the survey
-            activeSurveyInterface.BeginSurvey(surveyInfo, heightOffset, distanceOffset, onSurveyComplete);
+            activeSurveyInterface.BeginSurvey(surveyInfo, heightOffset, distanceOffset, onSurveyComplete: () =>
+            {
+                StartCoroutine(CleanupSurveyCoroutine(startPosition, transportToLobby, dimEnvironment, onSurveyComplete));
+            });
+        }
+
+        private IEnumerator CleanupSurveyCoroutine(Vector3 startPosition, bool transportedToLobby, bool dimEnvironment, System.Action onSurveyComplete)
+        {
+            yield return null;
+
+            // If we transported the participant to a lobby, return them to their original position
+            if (transportedToLobby)
+            {
+                // Fade black screen in
+                VERAFadeCanvas.Instance.FadeIn(1f);
+                yield return new WaitForSeconds(1f);
+
+                // Transport participant back to original position
+                Transform playerTransform = FindAnyObjectByType<XROrigin>().transform;
+                playerTransform.position = startPosition;
+                yield return new WaitForSeconds(0.5f);
+
+                // Fade black screen out
+                VERAFadeCanvas.Instance.FadeOut(1f);
+            }
+            else
+            {
+                if (dimEnvironment)
+                    VERAFadeCanvas.Instance.FadeOut(1f);
+            }
+
+            // Invoke the onSurveyComplete callback if it was provided
+            onSurveyComplete?.Invoke();
         }
     }
 }
