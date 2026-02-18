@@ -249,6 +249,12 @@ namespace VERA
             // Generate enum of survey references
             GenerateSurveyReferenceEnum(sb, surveyInfos);
 
+            // Generate survey ID to reference dictionary
+            GenerateSurveyIdToReferenceMap(sb, surveyInfos);
+
+            // Generate GetSurveyReferenceById method
+            GenerateGetSurveyReferenceByIdMethod(sb);
+
             // Generate StartSurvey method
             GenerateStartSurveyMethod(sb, surveyInfos);
 
@@ -295,6 +301,7 @@ namespace VERA
         {
             sb.AppendLine("using UnityEngine;");
             sb.AppendLine("using System;");
+            sb.AppendLine("using System.Collections.Generic;");
             sb.AppendLine();
             sb.AppendLine("namespace VERA");
             sb.AppendLine("{");
@@ -326,6 +333,47 @@ namespace VERA
                 sb.AppendLine($"\t\t\tS_{enumName},");
             }
 
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+        }
+
+        // Generates the survey ID to reference dictionary
+        private static void GenerateSurveyIdToReferenceMap(StringBuilder sb, List<VERASurveyInfo> surveyInfos)
+        {
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Mapping of survey IDs to VERASurveyReference enum values for easy lookup when only the survey ID is known (e.g. in trials)");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\tprivate static Dictionary<string, VERASurveyReference> surveyIdToReferenceMap = new Dictionary<string, VERASurveyReference>");
+            sb.AppendLine("\t\t{");
+
+            foreach (var surveyInfo in surveyInfos)
+            {
+                string enumName = SanitizeForEnum(surveyInfo.surveyName);
+                sb.AppendLine($"\t\t\t{{ \"{surveyInfo.surveyId}\", VERASurveyReference.S_{enumName} }},");
+            }
+
+            sb.AppendLine("\t\t};");
+            sb.AppendLine();
+        }
+
+        // Generates the GetSurveyReferenceById method
+        private static void GenerateGetSurveyReferenceByIdMethod(StringBuilder sb)
+        {
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Gets the VERASurveyReference enum value corresponding to the given survey ID.");
+            sb.AppendLine("\t\t/// <br/><br/>This method can be useful when utilizing trials or other features which reference surveys by their ID.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\t/// <param name=\"surveyId\">The ID of the survey.</param>");
+            sb.AppendLine("\t\t/// <returns>The corresponding VERASurveyReference enum value, or null if not found.</returns>");
+            sb.AppendLine("\t\tpublic static VERASurveyReference? GetSurveyReferenceById(string surveyId)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tif (surveyIdToReferenceMap.TryGetValue(surveyId, out var reference))");
+            sb.AppendLine("\t\t\t{");
+            sb.AppendLine("\t\t\t\treturn reference;");
+            sb.AppendLine("\t\t\t}");
+            sb.AppendLine();
+            sb.AppendLine("\t\t\tDebug.LogWarning($\"[VERASurveyHelper] No survey reference found for survey ID: {surveyId}\");");
+            sb.AppendLine("\t\t\treturn null;");
             sb.AppendLine("\t\t}");
             sb.AppendLine();
         }
