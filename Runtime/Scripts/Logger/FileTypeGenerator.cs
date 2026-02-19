@@ -175,12 +175,12 @@ namespace VERA
             {
                 var col = columnsToInclude[i];
                 string colNameLower = (col.name ?? "").ToLower();
-                // Only ts/timestamp/timestamp_utc should be DateTime, all _pos/trigger/grip are float, rest as per type
+                // Only ts/timestamp/timestamp_utc should be DateTime, all pos/trigger/grip are float, rest as per type
                 if (colNameLower == "ts" || colNameLower == "timestamp" || colNameLower == "timestamp_utc")
                 {
                     functionDefinition += "DateTime ";
                 }
-                else if (colNameLower.Contains("_pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
+                else if (colNameLower.Contains("pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
                 {
                     functionDefinition += "float ";
                 }
@@ -190,6 +190,9 @@ namespace VERA
                     {
                         case VERAColumnDefinition.DataType.Number:
                             functionDefinition += "int ";
+                            break;
+                        case VERAColumnDefinition.DataType.Boolean:
+                            functionDefinition += "bool ";
                             break;
                         case VERAColumnDefinition.DataType.String:
                             functionDefinition += "string ";
@@ -283,7 +286,7 @@ namespace VERA
                 {
                     typeString = "DateTime";
                 }
-                else if (colNameLower.Contains("_pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
+                else if (colNameLower.Contains("pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
                 {
                     typeString = "float";
                 }
@@ -293,6 +296,9 @@ namespace VERA
                     {
                         case VERAColumnDefinition.DataType.Number:
                             typeString = "int";
+                            break;
+                        case VERAColumnDefinition.DataType.Boolean:
+                            typeString = "bool";
                             break;
                         case VERAColumnDefinition.DataType.String:
                             typeString = "string";
@@ -328,7 +334,7 @@ namespace VERA
                 {
                     typeString = "DateTime";
                 }
-                else if (colNameLower.Contains("_pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
+                else if (colNameLower.Contains("pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
                 {
                     typeString = "float";
                 }
@@ -338,6 +344,9 @@ namespace VERA
                     {
                         case VERAColumnDefinition.DataType.Number:
                             typeString = "int";
+                            break;
+                        case VERAColumnDefinition.DataType.Boolean:
+                            typeString = "bool";
                             break;
                         case VERAColumnDefinition.DataType.String:
                             typeString = "string";

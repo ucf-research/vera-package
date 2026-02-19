@@ -8,6 +8,10 @@ using UnityEngine.XR;
 using UnityEngine.InputSystem;
 #endif
 
+#if UNITY_XR_INTERACTION_TOOLKIT
+using UnityEngine.XR.Interaction.Toolkit;
+#endif
+
 namespace VERA
 {
     internal class VERABaselineDataLogger : MonoBehaviour
@@ -15,60 +19,59 @@ namespace VERA
         [Header("Logging Options")]
         [Tooltip("Automatically start logging when VERA Logger is initialized")]
         [SerializeField] public bool autoStartLogging = true;
-        
+
         [Header("Tracking Settings")]
         [Tooltip("Log baseline data every frame for maximum fidelity")]
         [SerializeField] private bool logEveryFrame = true;
-        
+
         [Header("XR Components")]
         [Tooltip("Main camera representing the headset")]
         [SerializeField] private Camera headsetCamera;
-        
+
         [Tooltip("Left controller transform")]
         [SerializeField] private Transform leftController;
-        
+
         [Tooltip("Right controller transform")]
         [SerializeField] private Transform rightController;
-        
-        [Header("Input Actions")]
-        [Tooltip("Input actions for left controller buttons")]
+
+        [Header("Input Actions (Optional)")]
+        [Tooltip("Input actions for left controller buttons - leave empty to auto-detect from ActionBasedController")]
 #if ENABLE_INPUT_SYSTEM
         [SerializeField] private InputActionProperty leftTriggerAction;
         [SerializeField] private InputActionProperty leftGripAction;
         [SerializeField] private InputActionProperty leftPrimaryButtonAction;
         [SerializeField] private InputActionProperty leftSecondaryButtonAction;
         [SerializeField] private InputActionProperty leftPrimary2DAxisClickAction;
-        
-        [Tooltip("Input actions for right controller buttons")]
+
+        [Tooltip("Input actions for right controller buttons - leave empty to auto-detect from ActionBasedController")]
         [SerializeField] private InputActionProperty rightTriggerAction;
         [SerializeField] private InputActionProperty rightGripAction;
         [SerializeField] private InputActionProperty rightPrimaryButtonAction;
         [SerializeField] private InputActionProperty rightSecondaryButtonAction;
         [SerializeField] private InputActionProperty rightPrimary2DAxisClickAction;
 #endif
-        
+
         // Internal variables
         private int currentSampleIndex = 0;
         private bool isLogging = false;
-        private float logRate = 30f; // Default log rate in Hz
-    // Separate timer to refresh device lists at a fixed interval (1s)
-    private float refreshTimer = 0f;
-        
+        // Separate timer to refresh device lists at a fixed interval (1s)
+        private float refreshTimer = 0f;
+
         // XR device tracking
         private List<UnityEngine.XR.InputDevice> leftHandDevices = new List<UnityEngine.XR.InputDevice>();
         private List<UnityEngine.XR.InputDevice> rightHandDevices = new List<UnityEngine.XR.InputDevice>();
         private List<UnityEngine.XR.InputDevice> headDevices = new List<UnityEngine.XR.InputDevice>();
-        
+
         // Device detection cache
         private bool headsetDetected = false;
         private bool leftControllerDetected = false;
         private bool rightControllerDetected = false;
-        
+
         private void Start()
         {
             // Initialize XR device tracking
             RefreshDeviceLists();
-            
+
             // Start logging if VERA Logger is ready and auto-start is enabled
             if (autoStartLogging && VERALogger.Instance != null && VERALogger.Instance.initialized)
             {
@@ -86,97 +89,249 @@ namespace VERA
             {
                 // VERALogger.Instance is null - baseline logging will not work
             }
-            
+
             // Auto-find components if not assigned
             AutoAssignComponents();
         }
-        
+
         private void AutoAssignComponents()
         {
             // Auto-assign headset camera if not set
             if (headsetCamera == null)
             {
-                headsetCamera = Camera.main;
-                if (headsetCamera == null)
-                {
-#if UNITY_2023_1_OR_NEWER
-                    headsetCamera = FindAnyObjectByType<Camera>();
-#else
-                    headsetCamera = FindObjectOfType<Camera>();
-#endif
-                }
+                headsetCamera = FindHeadsetCamera();
             }
-            
-            // Try to find XR controller components
+
+            // Try to find XR controller components using robust XRI-based detection
             if (leftController == null || rightController == null)
             {
-                // Look for any GameObject that might be an XR rig
+                FindControllersUsingXRComponents();
+            }
+
+            // Auto-detect input actions from ActionBasedController components
+            AutoDetectInputActions();
+        }
+
+        private Camera FindHeadsetCamera()
+        {
+            // First try Camera.main
+            Camera cam = Camera.main;
+            if (cam != null)
+                return cam;
+
+#if UNITY_XR_INTERACTION_TOOLKIT
+            // Try to find camera in XR Origin
 #if UNITY_2023_1_OR_NEWER
-                GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            var xrOrigin = FindAnyObjectByType<XROrigin>();
 #else
-                GameObject[] allObjects = FindObjectsOfType<GameObject>();
+            var xrOrigin = FindObjectOfType<XROrigin>();
 #endif
-                Transform xrRig = null;
-                
-                // Look for common XR rig names
-                foreach (GameObject obj in allObjects)
+            if (xrOrigin != null && xrOrigin.Camera != null)
+            {
+                return xrOrigin.Camera;
+            }
+#endif
+
+            // Fallback to any camera
+#if UNITY_2023_1_OR_NEWER
+            return FindAnyObjectByType<Camera>();
+#else
+            return FindObjectOfType<Camera>();
+#endif
+        }
+
+        private void FindControllersUsingXRComponents()
+        {
+#if UNITY_XR_INTERACTION_TOOLKIT
+            // Method 1: Use XRBaseController components (works with both ActionBased and DeviceBased)
+            if (leftController == null || rightController == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                var baseControllers = FindObjectsByType<XRBaseController>(FindObjectsSortMode.None);
+#else
+                var baseControllers = FindObjectsOfType<XRBaseController>();
+#endif
+                foreach (var controller in baseControllers)
                 {
-                    string name = obj.name.ToLower();
-                    if (name.Contains("xr") && (name.Contains("rig") || name.Contains("origin") || name.Contains("player")))
+                    if (controller.controllerNode == XRNode.LeftHand && leftController == null)
                     {
-                        xrRig = obj.transform;
-                        break;
+                        leftController = controller.transform;
+                    }
+                    else if (controller.controllerNode == XRNode.RightHand && rightController == null)
+                    {
+                        rightController = controller.transform;
                     }
                 }
-                
-                if (xrRig != null)
-                {
-                    // Try to find left and right controller transforms
-                    Transform[] allTransforms = xrRig.GetComponentsInChildren<Transform>();
-                    foreach (Transform t in allTransforms)
-                    {
-                        string name = t.name.ToLower();
-                        if (leftController == null && (name.Contains("left") && (name.Contains("controller") || name.Contains("hand"))))
-                        {
-                            leftController = t;
-                        }
-                        else if (rightController == null && (name.Contains("right") && (name.Contains("controller") || name.Contains("hand"))))
-                        {
-                            rightController = t;
-                        }
-                    }
-                }
-                
-                // If still not found, try other common naming patterns
-                if (leftController == null || rightController == null)
-                {
+            }
+
+            // Method 2: Search within XROrigin hierarchy
+            if (leftController == null || rightController == null)
+            {
 #if UNITY_2023_1_OR_NEWER
-                    var allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+                var xrOrigin = FindAnyObjectByType<XROrigin>();
 #else
-                    var allTransforms = FindObjectsOfType<Transform>();
+                var xrOrigin = FindObjectOfType<XROrigin>();
 #endif
-                    foreach (Transform t in allTransforms)
+                if (xrOrigin != null)
+                {
+                    // Look for XRController or similar components in the hierarchy
+                    var controllersInHierarchy = xrOrigin.GetComponentsInChildren<XRBaseController>();
+                    foreach (var controller in controllersInHierarchy)
                     {
-                        string name = t.name.ToLower();
-                        if (leftController == null && 
-                            (name.Contains("left") && 
-                             (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                        if (controller.controllerNode == XRNode.LeftHand && leftController == null)
                         {
-                            leftController = t;
+                            leftController = controller.transform;
                         }
-                        else if (rightController == null && 
-                                 (name.Contains("right") && 
-                                  (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                        else if (controller.controllerNode == XRNode.RightHand && rightController == null)
                         {
-                            rightController = t;
+                            rightController = controller.transform;
                         }
                     }
                 }
             }
-            
-            // Check what was found (removed logging to keep console clean)
+#endif
+
+            // Fallback: Name-based detection
+            if (leftController == null || rightController == null)
+            {
+                FindControllersUsingNameDetection();
+            }
         }
-        
+
+        private void FindControllersUsingNameDetection()
+        {
+            // Look for any GameObject that might be an XR rig
+#if UNITY_2023_1_OR_NEWER
+            GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+#else
+            GameObject[] allObjects = FindObjectsOfType<GameObject>();
+#endif
+            Transform xrRig = null;
+
+            // Look for common XR rig names
+            foreach (GameObject obj in allObjects)
+            {
+                string name = obj.name.ToLower();
+                if (name.Contains("xr") && (name.Contains("rig") || name.Contains("origin") || name.Contains("player")))
+                {
+                    xrRig = obj.transform;
+                    break;
+                }
+            }
+
+            if (xrRig != null)
+            {
+                // Try to find left and right controller transforms
+                Transform[] allTransforms = xrRig.GetComponentsInChildren<Transform>();
+                foreach (Transform t in allTransforms)
+                {
+                    string name = t.name.ToLower();
+                    if (leftController == null && (name.Contains("left") && (name.Contains("controller") || name.Contains("hand"))))
+                    {
+                        leftController = t;
+                    }
+                    else if (rightController == null && (name.Contains("right") && (name.Contains("controller") || name.Contains("hand"))))
+                    {
+                        rightController = t;
+                    }
+                }
+            }
+
+            // If still not found, try other common naming patterns
+            if (leftController == null || rightController == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                var allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+#else
+                var allTransforms = FindObjectsOfType<Transform>();
+#endif
+                foreach (Transform t in allTransforms)
+                {
+                    string name = t.name.ToLower();
+                    if (leftController == null &&
+                        (name.Contains("left") &&
+                         (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                    {
+                        leftController = t;
+                    }
+                    else if (rightController == null &&
+                                (name.Contains("right") &&
+                                (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                    {
+                        rightController = t;
+                    }
+                }
+            }
+        }
+
+        private void AutoDetectInputActions()
+        {
+#if ENABLE_INPUT_SYSTEM && UNITY_XR_INTERACTION_TOOLKIT
+            // Only auto-detect if not manually assigned
+            
+            // Try to find ActionBasedController components
+#if UNITY_2023_1_OR_NEWER
+            var controllers = FindObjectsByType<ActionBasedController>(FindObjectsSortMode.None);
+#else
+            var controllers = FindObjectsOfType<ActionBasedController>();
+#endif
+
+            foreach (var controller in controllers)
+            {
+                // Determine if this is a left or right controller by checking the transform or node
+                bool isLeftController = false;
+                bool isRightController = false;
+
+                // Check by XR node
+                if (controller.controllerNode == XRNode.LeftHand)
+                {
+                    isLeftController = true;
+                }
+                else if (controller.controllerNode == XRNode.RightHand)
+                {
+                    isRightController = true;
+                }
+                else
+                {
+                    // Fallback to name-based detection
+                    string name = controller.gameObject.name.ToLower();
+                    if (name.Contains("left"))
+                    {
+                        isLeftController = true;
+                    }
+                    else if (name.Contains("right"))
+                    {
+                        isRightController = true;
+                    }
+                }
+
+                // Auto-assign left controller input actions if not manually set
+                if (isLeftController)
+                {
+                    if (leftTriggerAction.action == null)
+                        leftTriggerAction = controller.selectAction;
+                    if (leftGripAction.action == null)
+                        leftGripAction = controller.activateAction;
+                    if (leftPrimaryButtonAction.action == null)
+                        leftPrimaryButtonAction = controller.uiPressAction;
+                    // Note: ActionBasedController doesn't have direct references to all buttons
+                    // Secondary button and joystick click would need to be read from the device directly
+                }
+
+                // Auto-assign right controller input actions if not manually set
+                if (isRightController)
+                {
+                    if (rightTriggerAction.action == null)
+                        rightTriggerAction = controller.selectAction;
+                    if (rightGripAction.action == null)
+                        rightGripAction = controller.activateAction;
+                    if (rightPrimaryButtonAction.action == null)
+                        rightPrimaryButtonAction = controller.uiPressAction;
+                }
+            }
+#endif
+        }
+
         private void StartLogging()
         {
             if (!isLogging)
@@ -185,17 +340,17 @@ namespace VERA
                 currentSampleIndex = 0;
             }
         }
-        
+
         public void StopLogging()
         {
             isLogging = false;
         }
-        
+
         public void StartBaselineLogging()
         {
             StartLogging();
         }
-        
+
         private void Update()
         {
             // Check if we should be logging baseline data
@@ -219,173 +374,181 @@ namespace VERA
                 refreshTimer = 0f;
             }
         }
-        
+
         private void RefreshDeviceLists()
         {
             // Refresh device lists
             leftHandDevices.Clear();
             rightHandDevices.Clear();
             headDevices.Clear();
-            
+
             InputDevices.GetDevicesAtXRNode(XRNode.LeftHand, leftHandDevices);
             InputDevices.GetDevicesAtXRNode(XRNode.RightHand, rightHandDevices);
             InputDevices.GetDevicesAtXRNode(XRNode.Head, headDevices);
-            
+
             // Update detection status
             headsetDetected = headDevices.Count > 0;
             leftControllerDetected = leftHandDevices.Count > 0;
             rightControllerDetected = rightHandDevices.Count > 0;
         }
-        
+
         private void LogBaselineData()
         {
             try
             {
                 // Device list refresh is handled by a time-based refreshTimer in Update()
-                
+
                 // Generate unique event ID for this sample
                 string eventId = System.Guid.NewGuid().ToString();
-                
+
                 // Collect all baseline data
                 var baselineData = CollectBaselineData(eventId);
-                
+
                 // Log to VERA CSV system using the baseline data file type
                 LogToVERASystem(eventId, baselineData);
-                
+
                 currentSampleIndex++;
             }
             catch (Exception e)
             {
-                Debug.LogError($"[VERA Baseline Data Logger] Error logging baseline data: {e.Message}");
-                Debug.LogError($"[VERA Baseline Data Logger] Stack trace: {e.StackTrace}");
+                VERADebugger.LogError($"Error logging baseline data: {e.Message}", "VERABaselineDataLogger");
+                VERADebugger.LogError($"Stack trace: {e.StackTrace}", "VERABaselineDataLogger");
             }
         }
-        
+
         private BaselineDataEntry CollectBaselineData(string eventId)
         {
             var data = new BaselineDataEntry
             {
                 ts = DateTime.UtcNow,
-                eventId = eventId,
-                sampleIndex = currentSampleIndex
+                eventId = eventId
             };
-            
+
             // Headset data
             bool isHeadsetPresent = headDevices.Count > 0;
-            if (isHeadsetPresent)
-            {
-                data.headset_detected = 1; // Present
-            }
-            else
-            {
-                // Default/unknown when no XR headset device detected
-                data.headset_detected = -1; // NA/unknown
-            }
+            data.headsetDetected = isHeadsetPresent;
+
             // Only populate position/rotation when an XR device is present and we have a transform
             if (isHeadsetPresent && headsetCamera != null)
             {
-                data.Headset_Pos_X = headsetCamera.transform.position.x;
-                data.Headset_Pos_Y = headsetCamera.transform.position.y;
-                data.Headset_Pos_Z = headsetCamera.transform.position.z;
-                data.headset_rot = FormatQuaternionToCSV(headsetCamera.transform.rotation);
+                data.headsetPosX = headsetCamera.transform.position.x;
+                data.headsetPosY = headsetCamera.transform.position.y;
+                data.headsetPosZ = headsetCamera.transform.position.z;
+                data.headsetRot = FormatQuaternionToCSV(headsetCamera.transform.rotation);
             }
             else
             {
-                data.Headset_Pos_X = 0f;
-                data.Headset_Pos_Y = 0f;
-                data.Headset_Pos_Z = 0f;
-                data.headset_rot = "NA";
+                data.headsetPosX = 0f;
+                data.headsetPosY = 0f;
+                data.headsetPosZ = 0f;
+                data.headsetRot = "NA";
             }
-            
+
             // Left controller data
             bool isLeftPresent = leftHandDevices.Count > 0;
-            if (isLeftPresent)
-            {
-                data.left_detected = 1; // Present
-            }
-            else
-            {
-                // Default/unknown when no XR left-hand device detected
-                data.left_detected = -1; // NA/unknown
-            }
+            data.leftDetected = isLeftPresent;
+
             // Only populate position/rotation when an XR device is present and we have a transform
             if (isLeftPresent && leftController != null)
             {
-                data.LeftController_Pos_X = leftController.position.x;
-                data.LeftController_Pos_Y = leftController.position.y;
-                data.LeftController_Pos_Z = leftController.position.z;
-                data.left_rot = FormatQuaternionToCSV(leftController.rotation);
+                data.leftControllerPosX = leftController.position.x;
+                data.leftControllerPosY = leftController.position.y;
+                data.leftControllerPosZ = leftController.position.z;
+                data.leftControllerRot = FormatQuaternionToCSV(leftController.rotation);
             }
             else
             {
-                data.LeftController_Pos_X = 0f;
-                data.LeftController_Pos_Y = 0f;
-                data.LeftController_Pos_Z = 0f;
-                data.left_rot = "NA";
+                data.leftControllerPosX = 0f;
+                data.leftControllerPosY = 0f;
+                data.leftControllerPosZ = 0f;
+                data.leftControllerRot = "NA";
             }
-            
+
             // Left controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
-            data.left_trigger = GetFloatInputState(leftTriggerAction);
-            data.left_grip = GetFloatInputState(leftGripAction);
-            data.left_primaryButton = GetInputState(leftPrimaryButtonAction);
-            data.left_secondaryButton = GetInputState(leftSecondaryButtonAction);
-            data.left_primary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
+            if (leftTriggerAction != null && leftTriggerAction.action != null)
+                data.leftTrigger = GetFloatInputState(leftTriggerAction);
+            else
+                data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            if (leftGripAction != null && leftGripAction.action != null)
+                data.leftGrip = GetFloatInputState(leftGripAction);
+            else
+                data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
+            if (leftPrimaryButtonAction != null && leftPrimaryButtonAction.action != null)
+                data.leftPrimaryButton = GetInputState(leftPrimaryButtonAction);
+            else
+                data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            if (leftSecondaryButtonAction != null && leftSecondaryButtonAction.action != null)
+                data.leftSecondaryButton = GetInputState(leftSecondaryButtonAction);
+            else
+                data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            if (leftPrimary2DAxisClickAction != null && leftPrimary2DAxisClickAction.action != null)
+                data.leftPrimary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
+            else
+                data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #else
             // Fallback to XR device input
-            data.left_trigger = GetFloatInputStateFromDevice(leftHandDevices, CommonUsages.trigger);
-            data.left_grip = GetFloatInputStateFromDevice(leftHandDevices, CommonUsages.grip);
-            data.left_primaryButton = GetInputStateFromDevice(leftHandDevices, CommonUsages.primaryButton);
-            data.left_secondaryButton = GetInputStateFromDevice(leftHandDevices, CommonUsages.secondaryButton);
-            data.left_primary2DAxisClick = GetInputStateFromDevice(leftHandDevices, CommonUsages.primary2DAxisClick);
+            data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
+            data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #endif
-            
+
             // Right controller data
             bool isRightPresent = rightHandDevices.Count > 0;
-            if (isRightPresent)
-            {
-                data.right_detected = 1; // Present
-            }
-            else
-            {
-                // Default/unknown when no XR right-hand device detected
-                data.right_detected = -1; // NA/unknown
-            }
+            data.rightDetected = isRightPresent;
+
             // Only populate position/rotation when an XR device is present and we have a transform
             if (isRightPresent && rightController != null)
             {
-                data.RightController_Pos_X = rightController.position.x;
-                data.RightController_Pos_Y = rightController.position.y;
-                data.RightController_Pos_Z = rightController.position.z;
-                data.right_rot = FormatQuaternionToCSV(rightController.rotation);
+                data.rightControllerPosX = rightController.position.x;
+                data.rightControllerPosY = rightController.position.y;
+                data.rightControllerPosZ = rightController.position.z;
+                data.rightControllerRot = FormatQuaternionToCSV(rightController.rotation);
             }
             else
             {
-                data.RightController_Pos_X = 0f;
-                data.RightController_Pos_Y = 0f;
-                data.RightController_Pos_Z = 0f;
-                data.right_rot = "NA";
+                data.rightControllerPosX = 0f;
+                data.rightControllerPosY = 0f;
+                data.rightControllerPosZ = 0f;
+                data.rightControllerRot = "NA";
             }
-            
+
             // Right controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
-            data.right_trigger = GetFloatInputState(rightTriggerAction);
-            data.right_grip = GetFloatInputState(rightGripAction);
-            data.right_primaryButton = GetInputState(rightPrimaryButtonAction);
-            data.right_secondaryButton = GetInputState(rightSecondaryButtonAction);
-            data.right_primary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
+            if (rightTriggerAction != null && rightTriggerAction.action != null)
+                data.rightTrigger = GetFloatInputState(rightTriggerAction);
+            else
+                data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            if (rightGripAction != null && rightGripAction.action != null)
+                data.rightGrip = GetFloatInputState(rightGripAction);
+            else
+                data.rightGrip = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
+            if (rightPrimaryButtonAction != null && rightPrimaryButtonAction.action != null)
+                data.rightPrimaryButton = GetInputState(rightPrimaryButtonAction);
+            else
+                data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            if (rightSecondaryButtonAction != null && rightSecondaryButtonAction.action != null)
+                data.rightSecondaryButton = GetInputState(rightSecondaryButtonAction);
+            else
+                data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            if (rightPrimary2DAxisClickAction != null && rightPrimary2DAxisClickAction.action != null)
+                data.rightPrimary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
+            else
+                data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #else
             // Fallback to XR device input
-            data.right_trigger = GetFloatInputStateFromDevice(rightHandDevices, CommonUsages.trigger);
-            data.right_grip = GetInputStateFromDevice(rightHandDevices, CommonUsages.grip);
-            data.right_primaryButton = GetInputStateFromDevice(rightHandDevices, CommonUsages.primaryButton);
-            data.right_secondaryButton = GetInputStateFromDevice(rightHandDevices, CommonUsages.secondaryButton);
-            data.right_primary2DAxisClick = GetInputStateFromDevice(rightHandDevices, CommonUsages.primary2DAxisClick);
+            data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            data.rightGrip = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
+            data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #endif
-            
+
             return data;
         }
-        
+
         private void LogToVERASystem(string eventId, BaselineDataEntry data)
         {
             // Only log to VERA server - no local CSV fallback
@@ -393,73 +556,65 @@ namespace VERA
             {
                 return; // Skip logging if VERA is not collecting
             }
-            
+
             try
             {
-                // For baseline data, we want simple position/rotation strings, not full Transform objects
-                // Convert our string data to the format VERA expects
-                
-                // Convert eventId string to int (hash code for consistent int representation)
-                int eventIdInt = eventId.GetHashCode();
-                
-                // Use the standard VERA Experiment_Telemetry file type - server expects 29 columns total
-#if VERAFile_Experiment_Telemetry
-                VERASessionManager.CreateArbitraryCsvEntry("Experiment_Telemetry",
-                    data.sampleIndex,
-                    data.headset_detected,
-                    data.Headset_Pos_X,
-                    data.Headset_Pos_Y,
-                    data.Headset_Pos_Z,
-                    data.headset_rot,
-                    data.left_detected,
-                    data.LeftController_Pos_X,
-                    data.LeftController_Pos_Y,
-                    data.LeftController_Pos_Z,
-                    data.left_rot,
-                    data.left_trigger,
-                    data.left_grip,
-                    data.left_primaryButton,
-                    data.left_secondaryButton,
-                    data.left_primary2DAxisClick,
-                    data.right_detected,
-                    data.RightController_Pos_X,
-                    data.RightController_Pos_Y,
-                    data.RightController_Pos_Z,
-                    data.right_rot,
-                    data.right_trigger,
-                    data.right_grip,
-                    data.right_primaryButton,
-                    data.right_secondaryButton,
-                    data.right_primary2DAxisClick
+                // Log baseline data directly to VERA
+                VERASessionManager.CreateArbitraryCsvEntry(
+                    "Experiment_Telemetry",
+                    data.headsetDetected,
+                    data.headsetPosX,
+                    data.headsetPosY,
+                    data.headsetPosZ,
+                    data.headsetRot,
+                    data.leftDetected,
+                    data.leftControllerPosX,
+                    data.leftControllerPosY,
+                    data.leftControllerPosZ,
+                    data.leftControllerRot,
+                    data.leftTrigger,
+                    data.leftGrip,
+                    data.leftPrimaryButton,
+                    data.leftSecondaryButton,
+                    data.leftPrimary2DAxisClick,
+                    data.rightDetected,
+                    data.rightControllerPosX,
+                    data.rightControllerPosY,
+                    data.rightControllerPosZ,
+                    data.rightControllerRot,
+                    data.rightTrigger,
+                    data.rightGrip,
+                    data.rightPrimaryButton,
+                    data.rightSecondaryButton,
+                    data.rightPrimary2DAxisClick
                 );
-#endif
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[VERA Baseline Data Logger] Exception in LogToVERASystem: {e.Message}");
-                Debug.LogError($"[VERA Baseline Data Logger] Stack trace: {e.StackTrace}");
+                VERADebugger.LogError($"Exception in LogToVERASystem: {e.Message}", "VERABaselineDataLogger");
+                VERADebugger.LogError($"Stack trace: {e.StackTrace}", "VERABaselineDataLogger");
                 // Server-only logging - no fallback to local CSV
             }
         }
-        
+
         private string FormatVector3ToCSV(Vector3 vector)
         {
             // Format Vector3 as CSV string with precision
             return $"{vector.x:F4},{vector.y:F4},{vector.z:F4}";
         }
-        
+
         private string FormatQuaternionToCSV(Quaternion quaternion)
         {
             // Format Quaternion as CSV string in parentheses
             return $"({quaternion.x:F4},{quaternion.y:F4},{quaternion.z:F4},{quaternion.w:F4})";
         }
-        
+
         private float GetFloatInputState(InputActionProperty actionProperty)
         {
 #if ENABLE_INPUT_SYSTEM
             if (actionProperty.action == null)
                 return -1f; // NA when unknown
-            
+
             try
             {
                 if (actionProperty.action.activeControl?.valueType == typeof(float))
@@ -481,13 +636,13 @@ namespace VERA
             return -1f;
 #endif
         }
-        
+
         private int GetInputState(InputActionProperty actionProperty)
         {
 #if ENABLE_INPUT_SYSTEM
             if (actionProperty.action == null)
                 return -1; // NA when unknown
-            
+
             try
             {
                 if (actionProperty.action.activeControl?.valueType == typeof(float))
@@ -515,12 +670,12 @@ namespace VERA
             return -1;
 #endif
         }
-        
+
         private int GetInputStateFromDevice(List<UnityEngine.XR.InputDevice> devices, InputFeatureUsage<bool> buttonUsage)
         {
             if (devices.Count == 0)
                 return -1; // NA when no device
-                
+
             foreach (var device in devices)
             {
                 if (device.TryGetFeatureValue(buttonUsage, out bool buttonState))
@@ -528,15 +683,15 @@ namespace VERA
                     return buttonState ? 1 : 0;
                 }
             }
-            
+
             return -1; // NA when unable to read
         }
-        
+
         private int GetInputStateFromDevice(List<UnityEngine.XR.InputDevice> devices, InputFeatureUsage<float> floatUsage)
         {
             if (devices.Count == 0)
                 return -1; // NA when no device
-                
+
             foreach (var device in devices)
             {
                 if (device.TryGetFeatureValue(floatUsage, out float value))
@@ -544,15 +699,15 @@ namespace VERA
                     return value > 0.5f ? 1 : 0;
                 }
             }
-            
+
             return -1; // NA when unable to read
         }
-        
+
         private float GetFloatInputStateFromDevice(List<UnityEngine.XR.InputDevice> devices, InputFeatureUsage<float> floatUsage)
         {
             if (devices.Count == 0)
                 return -1f; // NA when no device
-                
+
             foreach (var device in devices)
             {
                 if (device.TryGetFeatureValue(floatUsage, out float value))
@@ -560,88 +715,72 @@ namespace VERA
                     return value;
                 }
             }
-            
+
             return -1f; // NA when unable to read
         }
-        
+
         [System.Serializable]
         public class BaselineDataEntry
         {
             public DateTime ts;              // Timestamp
             public string eventId;           // Unique event identifier
-            public int sampleIndex;          // Sample index within session
-            // Detection flags default to 0 (absent)
-            public int headset_detected = 0;     // 1 = present, 0 = absent, -1 = NA
-            public float Headset_Pos_X;      // Headset position X
-            public float Headset_Pos_Y;      // Headset position Y
-            public float Headset_Pos_Z;      // Headset position Z
-            public string headset_rot;       // Rotation as quaternion string
-            public int left_detected = 0;        // 1 = present, 0 = absent, -1 = NA
-            public float LeftController_Pos_X; // Left controller position X
-            public float LeftController_Pos_Y; // Left controller position Y
-            public float LeftController_Pos_Z; // Left controller position Z
-            public string left_rot;          // Left rotation as quaternion string
-            public float left_trigger;       // Trigger value 0-1
-            public float left_grip;          // Grip value 0-1
-            public int left_primaryButton;   // 1/0/-1 for pressed/released/NA
-            public int left_secondaryButton; // 1/0/-1 for pressed/released/NA
-            public int left_primary2DAxisClick; // 1/0/-1 for pressed/released/NA
-            public int right_detected = 0;       // 1 = present, 0 = absent, -1 = NA
-            public float RightController_Pos_X; // Right controller position X
-            public float RightController_Pos_Y; // Right controller position Y
-            public float RightController_Pos_Z; // Right controller position Z
-            public string right_rot;         // Right rotation as quaternion string
-            public float right_trigger;      // Trigger value 0-1
-            public float right_grip;         // Grip value 0-1
-            public int right_primaryButton;  // 1/0/-1 for pressed/released/NA
-            public int right_secondaryButton; // 1/0/-1 for pressed/released/NA
-            public int right_primary2DAxisClick; // 1/0/-1 for pressed/released/NA
+            // Detection flags
+            public bool headsetDetected = false;     // true = present, false = absent
+            public float headsetPosX;        // Headset position X
+            public float headsetPosY;        // Headset position Y
+            public float headsetPosZ;        // Headset position Z
+            public string headsetRot;        // Rotation as quaternion string
+            public bool leftDetected = false;        // true = present, false = absent
+            public float leftControllerPosX; // Left controller position X
+            public float leftControllerPosY; // Left controller position Y
+            public float leftControllerPosZ; // Left controller position Z
+            public string leftControllerRot; // Left rotation as quaternion string
+            public float leftTrigger;        // Trigger value 0-1
+            public float leftGrip;           // Grip value 0-1
+            public int leftPrimaryButton;    // 1/0/-1 for pressed/released/NA
+            public int leftSecondaryButton;  // 1/0/-1 for pressed/released/NA
+            public int leftPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
+            public bool rightDetected = false;       // true = present, false = absent
+            public float rightControllerPosX; // Right controller position X
+            public float rightControllerPosY; // Right controller position Y
+            public float rightControllerPosZ; // Right controller position Z
+            public string rightControllerRot; // Right rotation as quaternion string
+            public float rightTrigger;       // Trigger value 0-1
+            public float rightGrip;          // Grip value 0-1
+            public int rightPrimaryButton;   // 1/0/-1 for pressed/released/NA
+            public int rightSecondaryButton; // 1/0/-1 for pressed/released/NA
+            public int rightPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
         }
-        
+
         #region Public API
-        
+
         public void SetLogEveryFrame(bool enabled)
         {
             logEveryFrame = enabled;
         }
 
         public bool GetLogEveryFrame() => logEveryFrame;
-        
+
         public int GetCurrentSampleIndex() => currentSampleIndex;
-        
+
         public bool IsLogging() => isLogging;
-
-        public void SetLogRate(float rate)
-        {
-            if (rate > 0)
-            {
-                logRate = rate;
-            }
-            else
-            {
-                Debug.LogWarning($"[VERABaselineDataLogger] Invalid log rate {rate}. Must be greater than 0. Using default 30Hz.");
-                logRate = 30f;
-            }
-        }
-
-        public float GetLogRate() => logRate;
 
         public void SetControllerTransforms(Transform left, Transform right)
         {
             leftController = left;
             rightController = right;
         }
-        
+
         public void SetHeadsetCamera(Camera camera)
         {
             headsetCamera = camera;
         }
-        
+
         private Transform CreateTempTransformFromString(string positionString)
         {
             if (string.IsNullOrEmpty(positionString) || positionString == "NA")
                 return null;
-                
+
             try
             {
                 string[] parts = positionString.Replace("\"", "").Split(',');
@@ -650,7 +789,7 @@ namespace VERA
                     GameObject tempObj = new GameObject("TempTransform");
                     tempObj.transform.position = new Vector3(
                         float.Parse(parts[0]),
-                        float.Parse(parts[1]), 
+                        float.Parse(parts[1]),
                         float.Parse(parts[2])
                     );
                     return tempObj.transform;
@@ -662,12 +801,12 @@ namespace VERA
             }
             return null;
         }
-        
+
         private Transform CreateTempTransformFromRotationString(string rotationString)
         {
             if (string.IsNullOrEmpty(rotationString) || rotationString == "NA")
                 return null;
-                
+
             try
             {
                 string[] parts = rotationString.Replace("\"", "").Split(',');
@@ -676,7 +815,7 @@ namespace VERA
                     GameObject tempObj = new GameObject("TempTransform");
                     tempObj.transform.eulerAngles = new Vector3(
                         float.Parse(parts[0]),
-                        float.Parse(parts[1]), 
+                        float.Parse(parts[1]),
                         float.Parse(parts[2])
                     );
                     return tempObj.transform;
@@ -688,7 +827,7 @@ namespace VERA
             }
             return null;
         }
-        
+
         private void CleanupTempTransform(Transform tempTransform)
         {
             if (tempTransform != null)
@@ -696,7 +835,7 @@ namespace VERA
                 DestroyImmediate(tempTransform.gameObject);
             }
         }
-        
+
         #endregion
     }
 }

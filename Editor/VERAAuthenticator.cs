@@ -905,6 +905,13 @@ namespace VERA
                         List<string> definitionsToAdd = new List<string>();
                         for (int i = 0; i < fileTypes.Count; i++)
                         {
+                            // Skip Experiment_Telemetry — its column definition is managed by
+                            // VERABaselineDataSetup with hardcoded correct types. We only need
+                            // to update its fileTypeId (handled below this loop).
+                            if (fileTypes[i].name == "Experiment_Telemetry")
+                            {
+                                continue;
+                            }
                             // Skip Survey_Responses here - it's handled specially below with the programmatic definition
                             string normalizedNameCheck = (fileTypes[i].name ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
                             if (normalizedNameCheck == "surveyresponses")
@@ -967,13 +974,24 @@ namespace VERA
                                         case "JSON":
                                             newCol.type = VERAColumnDefinition.DataType.JSON;
                                             break;
+                                        case "Boolean":
+                                            newCol.type = VERAColumnDefinition.DataType.Boolean;
+                                            break;
                                     }
 
-                                    // Enforce numeric type for known numeric telemetry columns regardless of server dataType
+                                    // Enforce correct types for known telemetry columns regardless of server dataType
                                     string lowerName = (newCol.name ?? "").ToLower();
                                     if (lowerName.Contains("_pos") || lowerName.Contains("trigger") || lowerName.Contains("grip"))
                                     {
                                         newCol.type = VERAColumnDefinition.DataType.Number;
+                                    }
+                                    else if (lowerName.EndsWith("rot"))
+                                    {
+                                        newCol.type = VERAColumnDefinition.DataType.String;
+                                    }
+                                    else if (lowerName.EndsWith("detected"))
+                                    {
+                                        newCol.type = VERAColumnDefinition.DataType.Boolean;
                                     }
 
                                     columnDefs[idx].columns.Add(newCol);
@@ -993,6 +1011,9 @@ namespace VERA
                             }
                         }
 
+                        // Update the baseline telemetry column definition's fileTypeId
+                        // The baseline definition is created locally with a placeholder "baseline-data" ID,
+                        // but it needs the real server-assigned ID for uploads to succeed.
                         // Special handling for Survey_Responses: create column definition even without server-side columns
                         // The columns are predefined in Unity since survey responses have a fixed schema
                         for (int i = 0; i < fileTypes.Count; i++)
@@ -1032,7 +1053,17 @@ namespace VERA
                                     definitionsToAdd.Add("VERAFile_Survey_Responses");
                                     Debug.Log($"[VERA Authentication] Created Survey_Responses column definition with ID: {fileTypes[i]._id}");
                                 }
-                                break;
+                            }
+                            if (normalizedName == "experimenttelemetry")
+                            {
+                                var baselineColumnDef = Resources.Load<VERAColumnDefinition>("Experiment_TelemetryColumnDefinition");
+                                if (baselineColumnDef != null)
+                                {
+                                    baselineColumnDef.fileType.fileTypeId = fileTypes[i]._id;
+                                    EditorUtility.SetDirty(baselineColumnDef);
+                                    AssetDatabase.SaveAssets();
+                                    VERADebugger.Log($"Updated baseline telemetry fileTypeId to \"{fileTypes[i]._id}\".", "VERA Authentication");
+                                }
                             }
                         }
 

@@ -154,6 +154,12 @@ namespace VERA
         #region ENTRY LOGGING
 
 
+        // Logs an entry to the file without eventId (for baseline telemetry). Doesn't write yet, only writes on flush.
+        public void CreateEntry(params object[] values)
+        {
+            CreateEntry(0, values); // eventId is ignored for baseline telemetry
+        }
+
         // Logs an entry to the file. Doesn't write yet, only writes on flush.
         public void CreateEntry(int eventId, params object[] values)
         {
@@ -165,8 +171,8 @@ namespace VERA
             bool skipAuto = columnDefinition.skipAutoColumns;
 
             // check baseline data file (omits eventId column)
-            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data";
-            int autoColumnCount = skipAuto ? 0 : (isBaselineTelemetry ? 3 : 4); // 0 for custom, 3 for baseline telemetry (no eventId), 4 otherwise
+            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
+            int autoColumnCount = isBaselineTelemetry ? 3 : 4; // 3 for baseline telemetry (no eventId), 4 otherwise
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
             {
@@ -210,6 +216,17 @@ namespace VERA
                         else
                         {
                             formattedValue = Convert.ToString(value);
+                        }
+                        break;
+                    case VERAColumnDefinition.DataType.Boolean:
+                        // Convert boolean to lowercase string representation (true/false)
+                        if (value == null)
+                        {
+                            formattedValue = "false";
+                        }
+                        else
+                        {
+                            formattedValue = Convert.ToBoolean(value).ToString().ToLower();
                         }
                         break;
                     case VERAColumnDefinition.DataType.String:

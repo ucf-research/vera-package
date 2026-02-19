@@ -9,13 +9,13 @@ namespace VERA
         [Header("Auto-Setup Configuration")]
         [Tooltip("Automatically create a baseline logger if none exists in the scene")]
         public bool autoCreateBaselineLogger = true;
-        
+
         [Tooltip("Start logging when experiment begins (IN_EXPERIMENT state)")]
         public bool startOnExperimentBegin = true;
-        
+
         [Tooltip("Also start logging immediately when scene starts (fallback if no experiment state)")]
         public bool fallbackAutoStart = true;
-        
+
         [Tooltip("Log baseline data every frame (enabled by default for maximum fidelity)")]
         public bool logEveryFrame = true;
 
@@ -35,7 +35,7 @@ namespace VERA
         {
             // Validate column definitions early to prevent runtime errors
             VERAColumnValidator.ValidateAndFixColumnDefinitions();
-            
+
             if (autoCreateBaselineLogger)
             {
                 EnsureBaselineLoggerExists();
@@ -48,7 +48,7 @@ namespace VERA
             {
                 StartMonitoringExperiment();
             }
-            
+
             // Always try fallback auto-start as well for immediate testing
             if (fallbackAutoStart)
             {
@@ -64,7 +64,7 @@ namespace VERA
 #else
             VERABaselineDataLogger existingLogger = FindObjectOfType<VERABaselineDataLogger>();
 #endif
-            
+
             if (existingLogger == null)
             {
                 CreateBaselineLogger();
@@ -72,7 +72,7 @@ namespace VERA
             else
             {
                 createdLogger = existingLogger;
-                
+
                 // Configure the existing logger for experiment-driven start
                 if (startOnExperimentBegin)
                 {
@@ -89,18 +89,18 @@ namespace VERA
         {
             // Create a new GameObject for the baseline logger
             GameObject loggerObject = new GameObject("VERA Baseline Data Logger (Auto-Created)");
-            
+
             // Add the baseline data logger component
             VERABaselineDataLogger logger = loggerObject.AddComponent<VERABaselineDataLogger>();
-            
+
             // Configure with sensible defaults - always enable auto-start
             logger.autoStartLogging = true;  // Always start when VERA Logger is ready
 
             logger.SetLogEveryFrame(logEveryFrame);
-            logger.SetLogRate(defaultSamplingRate);
+            //logger.SetLogRate(defaultSamplingRate);
 
             createdLogger = logger;
-            
+
             // Try to auto-assign VR components if available
             AutoAssignVRComponents(logger);
         }
@@ -108,7 +108,7 @@ namespace VERA
         private void StartMonitoringExperiment()
         {
             if (isMonitoringExperiment) return;
-            
+
             // Start monitoring for experiment state changes
             StartCoroutine(MonitorExperimentState());
             isMonitoringExperiment = true;
@@ -129,14 +129,14 @@ namespace VERA
                 if (VERALogger.Instance.activeParticipant != null)
                 {
                     var currentState = VERALogger.Instance.activeParticipant.currentParticipantProgressState;
-                    
+
                     if (currentState == VERAParticipantManager.ParticipantProgressState.IN_EXPERIMENT)
                     {
                         StartBaselineLogging();
                         yield break; // Stop monitoring once we've started
                     }
                 }
-                
+
                 yield return new WaitForSeconds(0.5f); // Check every 500ms
             }
         }
@@ -162,16 +162,16 @@ namespace VERA
         {
             // Wait a frame for all components to initialize
             yield return new WaitForEndOfFrame();
-            
+
             // Wait for VERA Logger to be ready
             while (VERALogger.Instance == null || !VERALogger.Instance.initialized)
             {
                 yield return new WaitForSeconds(1f);
             }
-            
+
             // Check if we should start logging
             bool shouldStart = false;
-            
+
             if (VERALogger.Instance.activeParticipant != null)
             {
                 var currentState = VERALogger.Instance.activeParticipant.currentParticipantProgressState;
@@ -188,7 +188,7 @@ namespace VERA
             {
                 shouldStart = fallbackAutoStart;
             }
-            
+
             if (shouldStart)
             {
                 StartBaselineLogging();
