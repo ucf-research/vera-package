@@ -8,6 +8,10 @@ using UnityEngine.XR;
 using UnityEngine.InputSystem;
 #endif
 
+#if UNITY_XR_INTERACTION_TOOLKIT
+using UnityEngine.XR.Interaction.Toolkit;
+#endif
+
 namespace VERA
 {
     internal class VERABaselineDataLogger : MonoBehaviour
@@ -30,8 +34,8 @@ namespace VERA
         [Tooltip("Right controller transform")]
         [SerializeField] private Transform rightController;
 
-        [Header("Input Actions")]
-        [Tooltip("Input actions for left controller buttons")]
+        [Header("Input Actions (Optional)")]
+        [Tooltip("Input actions for left controller buttons - leave empty to auto-detect from ActionBasedController")]
 #if ENABLE_INPUT_SYSTEM
         [SerializeField] private InputActionProperty leftTriggerAction;
         [SerializeField] private InputActionProperty leftGripAction;
@@ -39,7 +43,7 @@ namespace VERA
         [SerializeField] private InputActionProperty leftSecondaryButtonAction;
         [SerializeField] private InputActionProperty leftPrimary2DAxisClickAction;
 
-        [Tooltip("Input actions for right controller buttons")]
+        [Tooltip("Input actions for right controller buttons - leave empty to auto-detect from ActionBasedController")]
         [SerializeField] private InputActionProperty rightTriggerAction;
         [SerializeField] private InputActionProperty rightGripAction;
         [SerializeField] private InputActionProperty rightPrimaryButtonAction;
@@ -95,85 +99,237 @@ namespace VERA
             // Auto-assign headset camera if not set
             if (headsetCamera == null)
             {
-                headsetCamera = Camera.main;
-                if (headsetCamera == null)
-                {
-#if UNITY_2023_1_OR_NEWER
-                    headsetCamera = FindAnyObjectByType<Camera>();
-#else
-                    headsetCamera = FindObjectOfType<Camera>();
-#endif
-                }
+                headsetCamera = FindHeadsetCamera();
             }
 
-            // Try to find XR controller components
+            // Try to find XR controller components using robust XRI-based detection
             if (leftController == null || rightController == null)
             {
-                // Look for any GameObject that might be an XR rig
+                FindControllersUsingXRComponents();
+            }
+
+            // Auto-detect input actions from ActionBasedController components
+            AutoDetectInputActions();
+        }
+
+        private Camera FindHeadsetCamera()
+        {
+            // First try Camera.main
+            Camera cam = Camera.main;
+            if (cam != null)
+                return cam;
+
+#if UNITY_XR_INTERACTION_TOOLKIT
+            // Try to find camera in XR Origin
 #if UNITY_2023_1_OR_NEWER
-                GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            var xrOrigin = FindAnyObjectByType<XROrigin>();
 #else
-                GameObject[] allObjects = FindObjectsOfType<GameObject>();
+            var xrOrigin = FindObjectOfType<XROrigin>();
 #endif
-                Transform xrRig = null;
+            if (xrOrigin != null && xrOrigin.Camera != null)
+            {
+                return xrOrigin.Camera;
+            }
+#endif
 
-                // Look for common XR rig names
-                foreach (GameObject obj in allObjects)
-                {
-                    string name = obj.name.ToLower();
-                    if (name.Contains("xr") && (name.Contains("rig") || name.Contains("origin") || name.Contains("player")))
-                    {
-                        xrRig = obj.transform;
-                        break;
-                    }
-                }
-
-                if (xrRig != null)
-                {
-                    // Try to find left and right controller transforms
-                    Transform[] allTransforms = xrRig.GetComponentsInChildren<Transform>();
-                    foreach (Transform t in allTransforms)
-                    {
-                        string name = t.name.ToLower();
-                        if (leftController == null && (name.Contains("left") && (name.Contains("controller") || name.Contains("hand"))))
-                        {
-                            leftController = t;
-                        }
-                        else if (rightController == null && (name.Contains("right") && (name.Contains("controller") || name.Contains("hand"))))
-                        {
-                            rightController = t;
-                        }
-                    }
-                }
-
-                // If still not found, try other common naming patterns
-                if (leftController == null || rightController == null)
-                {
+            // Fallback to any camera
 #if UNITY_2023_1_OR_NEWER
-                    var allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+            return FindAnyObjectByType<Camera>();
 #else
-                    var allTransforms = FindObjectsOfType<Transform>();
+            return FindObjectOfType<Camera>();
 #endif
-                    foreach (Transform t in allTransforms)
+        }
+
+        private void FindControllersUsingXRComponents()
+        {
+#if UNITY_XR_INTERACTION_TOOLKIT
+            // Method 1: Use XRBaseController components (works with both ActionBased and DeviceBased)
+            if (leftController == null || rightController == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                var baseControllers = FindObjectsByType<XRBaseController>(FindObjectsSortMode.None);
+#else
+                var baseControllers = FindObjectsOfType<XRBaseController>();
+#endif
+                foreach (var controller in baseControllers)
+                {
+                    if (controller.controllerNode == XRNode.LeftHand && leftController == null)
                     {
-                        string name = t.name.ToLower();
-                        if (leftController == null &&
-                            (name.Contains("left") &&
-                             (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
-                        {
-                            leftController = t;
-                        }
-                        else if (rightController == null &&
-                                 (name.Contains("right") &&
-                                  (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
-                        {
-                            rightController = t;
-                        }
+                        leftController = controller.transform;
+                    }
+                    else if (controller.controllerNode == XRNode.RightHand && rightController == null)
+                    {
+                        rightController = controller.transform;
                     }
                 }
             }
 
-            // Check what was found (removed logging to keep console clean)
+            // Method 2: Search within XROrigin hierarchy
+            if (leftController == null || rightController == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                var xrOrigin = FindAnyObjectByType<XROrigin>();
+#else
+                var xrOrigin = FindObjectOfType<XROrigin>();
+#endif
+                if (xrOrigin != null)
+                {
+                    // Look for XRController or similar components in the hierarchy
+                    var controllersInHierarchy = xrOrigin.GetComponentsInChildren<XRBaseController>();
+                    foreach (var controller in controllersInHierarchy)
+                    {
+                        if (controller.controllerNode == XRNode.LeftHand && leftController == null)
+                        {
+                            leftController = controller.transform;
+                        }
+                        else if (controller.controllerNode == XRNode.RightHand && rightController == null)
+                        {
+                            rightController = controller.transform;
+                        }
+                    }
+                }
+            }
+#endif
+
+            // Fallback: Name-based detection
+            if (leftController == null || rightController == null)
+            {
+                FindControllersUsingNameDetection();
+            }
+        }
+
+        private void FindControllersUsingNameDetection()
+        {
+            // Look for any GameObject that might be an XR rig
+#if UNITY_2023_1_OR_NEWER
+            GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+#else
+            GameObject[] allObjects = FindObjectsOfType<GameObject>();
+#endif
+            Transform xrRig = null;
+
+            // Look for common XR rig names
+            foreach (GameObject obj in allObjects)
+            {
+                string name = obj.name.ToLower();
+                if (name.Contains("xr") && (name.Contains("rig") || name.Contains("origin") || name.Contains("player")))
+                {
+                    xrRig = obj.transform;
+                    break;
+                }
+            }
+
+            if (xrRig != null)
+            {
+                // Try to find left and right controller transforms
+                Transform[] allTransforms = xrRig.GetComponentsInChildren<Transform>();
+                foreach (Transform t in allTransforms)
+                {
+                    string name = t.name.ToLower();
+                    if (leftController == null && (name.Contains("left") && (name.Contains("controller") || name.Contains("hand"))))
+                    {
+                        leftController = t;
+                    }
+                    else if (rightController == null && (name.Contains("right") && (name.Contains("controller") || name.Contains("hand"))))
+                    {
+                        rightController = t;
+                    }
+                }
+            }
+
+            // If still not found, try other common naming patterns
+            if (leftController == null || rightController == null)
+            {
+#if UNITY_2023_1_OR_NEWER
+                var allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+#else
+                var allTransforms = FindObjectsOfType<Transform>();
+#endif
+                foreach (Transform t in allTransforms)
+                {
+                    string name = t.name.ToLower();
+                    if (leftController == null &&
+                        (name.Contains("left") &&
+                         (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                    {
+                        leftController = t;
+                    }
+                    else if (rightController == null &&
+                                (name.Contains("right") &&
+                                (name.Contains("controller") || name.Contains("hand") || name.Contains("grip"))))
+                    {
+                        rightController = t;
+                    }
+                }
+            }
+        }
+
+        private void AutoDetectInputActions()
+        {
+#if ENABLE_INPUT_SYSTEM && UNITY_XR_INTERACTION_TOOLKIT
+            // Only auto-detect if not manually assigned
+            
+            // Try to find ActionBasedController components
+#if UNITY_2023_1_OR_NEWER
+            var controllers = FindObjectsByType<ActionBasedController>(FindObjectsSortMode.None);
+#else
+            var controllers = FindObjectsOfType<ActionBasedController>();
+#endif
+
+            foreach (var controller in controllers)
+            {
+                // Determine if this is a left or right controller by checking the transform or node
+                bool isLeftController = false;
+                bool isRightController = false;
+
+                // Check by XR node
+                if (controller.controllerNode == XRNode.LeftHand)
+                {
+                    isLeftController = true;
+                }
+                else if (controller.controllerNode == XRNode.RightHand)
+                {
+                    isRightController = true;
+                }
+                else
+                {
+                    // Fallback to name-based detection
+                    string name = controller.gameObject.name.ToLower();
+                    if (name.Contains("left"))
+                    {
+                        isLeftController = true;
+                    }
+                    else if (name.Contains("right"))
+                    {
+                        isRightController = true;
+                    }
+                }
+
+                // Auto-assign left controller input actions if not manually set
+                if (isLeftController)
+                {
+                    if (leftTriggerAction.action == null)
+                        leftTriggerAction = controller.selectAction;
+                    if (leftGripAction.action == null)
+                        leftGripAction = controller.activateAction;
+                    if (leftPrimaryButtonAction.action == null)
+                        leftPrimaryButtonAction = controller.uiPressAction;
+                    // Note: ActionBasedController doesn't have direct references to all buttons
+                    // Secondary button and joystick click would need to be read from the device directly
+                }
+
+                // Auto-assign right controller input actions if not manually set
+                if (isRightController)
+                {
+                    if (rightTriggerAction.action == null)
+                        rightTriggerAction = controller.selectAction;
+                    if (rightGripAction.action == null)
+                        rightGripAction = controller.activateAction;
+                    if (rightPrimaryButtonAction.action == null)
+                        rightPrimaryButtonAction = controller.uiPressAction;
+                }
+            }
+#endif
         }
 
         private void StartLogging()
@@ -310,18 +466,33 @@ namespace VERA
 
             // Left controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
-            data.leftTrigger = GetFloatInputState(leftTriggerAction);
-            data.leftGrip = GetFloatInputState(leftGripAction);
-            data.leftPrimaryButton = GetInputState(leftPrimaryButtonAction);
-            data.leftSecondaryButton = GetInputState(leftSecondaryButtonAction);
-            data.leftPrimary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
+            if (leftTriggerAction != null && leftTriggerAction.action != null)
+                data.leftTrigger = GetFloatInputState(leftTriggerAction);
+            else
+                data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            if (leftGripAction != null && leftGripAction.action != null)
+                data.leftGrip = GetFloatInputState(leftGripAction);
+            else
+                data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
+            if (leftPrimaryButtonAction != null && leftPrimaryButtonAction.action != null)
+                data.leftPrimaryButton = GetInputState(leftPrimaryButtonAction);
+            else
+                data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            if (leftSecondaryButtonAction != null && leftSecondaryButtonAction.action != null)
+                data.leftSecondaryButton = GetInputState(leftSecondaryButtonAction);
+            else
+                data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            if (leftPrimary2DAxisClickAction != null && leftPrimary2DAxisClickAction.action != null)
+                data.leftPrimary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
+            else
+                data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #else
             // Fallback to XR device input
-            data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, CommonUsages.trigger);
-            data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, CommonUsages.grip);
-            data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, CommonUsages.primaryButton);
-            data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, CommonUsages.secondaryButton);
-            data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, CommonUsages.primary2DAxisClick);
+            data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
+            data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #endif
 
             // Right controller data
@@ -346,18 +517,33 @@ namespace VERA
 
             // Right controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
-            data.rightTrigger = GetFloatInputState(rightTriggerAction);
-            data.rightGrip = GetFloatInputState(rightGripAction);
-            data.rightPrimaryButton = GetInputState(rightPrimaryButtonAction);
-            data.rightSecondaryButton = GetInputState(rightSecondaryButtonAction);
-            data.rightPrimary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
+            if (rightTriggerAction != null && rightTriggerAction.action != null)
+                data.rightTrigger = GetFloatInputState(rightTriggerAction);
+            else
+                data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            if (rightGripAction != null && rightGripAction.action != null)
+                data.rightGrip = GetFloatInputState(rightGripAction);
+            else
+                data.rightGrip = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
+            if (rightPrimaryButtonAction != null && rightPrimaryButtonAction.action != null)
+                data.rightPrimaryButton = GetInputState(rightPrimaryButtonAction);
+            else
+                data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            if (rightSecondaryButtonAction != null && rightSecondaryButtonAction.action != null)
+                data.rightSecondaryButton = GetInputState(rightSecondaryButtonAction);
+            else
+                data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            if (rightPrimary2DAxisClickAction != null && rightPrimary2DAxisClickAction.action != null)
+                data.rightPrimary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
+            else
+                data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #else
             // Fallback to XR device input
-            data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, CommonUsages.trigger);
-            data.rightGrip = GetInputStateFromDevice(rightHandDevices, CommonUsages.grip);
-            data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, CommonUsages.primaryButton);
-            data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, CommonUsages.secondaryButton);
-            data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, CommonUsages.primary2DAxisClick);
+            data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
+            data.rightGrip = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
+            data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
+            data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
+            data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
 #endif
 
             return data;
