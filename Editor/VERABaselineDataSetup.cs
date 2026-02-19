@@ -67,7 +67,7 @@ namespace VERA
             AddScriptingDefineSymbol();
 
             VERADebugger.Log("✓ VERA Baseline Data setup complete!", "VERABaselineDataSetup");
-            VERADebugger.Log($"  - Column definition: Assets/Resources/Experiment_TelemetryColumnDefinition.asset", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Column definition: Assets/VERA/Resources/Experiment_TelemetryColumnDefinition.asset", "VERABaselineDataSetup");
             VERADebugger.Log($"  - Generated code: {generatedCodePath}/VERAFile_Experiment_Telemetry.cs", "VERABaselineDataSetup");
             VERADebugger.Log($"  - Scripting symbol: {TELEMETRY_SYMBOL}", "VERABaselineDataSetup");
             VERADebugger.Log("Unity will now recompile. Please wait...", "VERABaselineDataSetup");
