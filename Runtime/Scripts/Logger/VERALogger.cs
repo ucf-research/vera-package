@@ -159,7 +159,7 @@ namespace VERA
             if (trialWorkflow.RequiresLatinSquareOrdering && activeParticipant != null)
             {
                 trialWorkflow.ApplyLatinSquareOrdering(participantNum);
-                Debug.Log($"[VERA Logger] Auto-applied Latin square ordering for participant {participantNum}.");
+                VERADebugger.Log($"Auto-applied Latin square ordering for participant {participantNum}.", "VERA Logger", DebugPreference.Informative);
             }
 
             // Short buffer for subscriptions to register
@@ -368,7 +368,7 @@ namespace VERA
                     def.fileType.fileTypeId != "survey-responses")
                 {
                     surveyResponsesExists = true;
-                    Debug.Log($"[VERA Logger] Survey_Responses file type loaded from server with ID: {def.fileType.fileTypeId}");
+                    VERADebugger.Log($"Survey_Responses file type loaded from server with ID: {def.fileType.fileTypeId}", "VERA Logger");
                     break;
                 }
             }
@@ -377,7 +377,7 @@ namespace VERA
             if (!surveyResponsesExists)
             {
                 allDefinitions.Add(VERASurveyResponseColumnDefinition.Create());
-                Debug.Log("[VERA Logger] Using programmatic Survey_Responses definition (will fetch ID from server)");
+                VERADebugger.Log("Using programmatic Survey_Responses definition (will fetch ID from server)", "VERA Logger");
             }
 
             if (allDefinitions.Count == 0)
@@ -493,7 +493,7 @@ namespace VERA
 
             if (surveyHandler == null)
             {
-                Debug.LogWarning("[VERA Logger] Survey_Responses CSV handler not found; skipping file type ID fetch.");
+                VERADebugger.LogWarning("Survey_Responses CSV handler not found; skipping file type ID fetch.", "VERA Logger");
                 yield break;
             }
 
@@ -501,12 +501,12 @@ namespace VERA
             string existingId = surveyHandler.columnDefinition.fileType.fileTypeId;
             if (!string.IsNullOrEmpty(existingId) && existingId != "survey-responses")
             {
-                Debug.Log($"[VERA Logger] Survey_Responses already has valid file type ID: {existingId}");
+                VERADebugger.Log($"Survey_Responses already has valid file type ID: {existingId}", "VERA Logger");
                 yield break;
             }
 
             string url = $"{VERAHost.hostUrl}/api/experiments/{experimentUUID}/filetypes/survey-responses";
-            Debug.Log($"[VERA Logger] Fetching Survey_Responses file type ID from: {url}");
+            VERADebugger.Log($"Fetching Survey_Responses file type ID from: {url}", "VERA Logger");
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
@@ -525,25 +525,25 @@ namespace VERA
                         if (!string.IsNullOrEmpty(fileTypeId))
                         {
                             surveyHandler.columnDefinition.fileType.fileTypeId = fileTypeId;
-                            Debug.Log($"[VERA Logger] Survey_Responses file type ID fetched: {fileTypeId}");
+                            VERADebugger.Log($"Survey_Responses file type ID fetched: {fileTypeId}", "VERA Logger");
                         }
                         else
                         {
-                            Debug.LogWarning("[VERA Logger] Survey_Responses file type response missing _id field. CSV upload will be skipped.");
+                            VERADebugger.LogWarning("Survey_Responses file type response missing _id field. CSV upload will be skipped.", "VERA Logger");
                             surveyHandler.columnDefinition.fileType.skipUpload = true;
                         }
                     }
                     catch (System.Exception ex)
                     {
-                        Debug.LogWarning($"[VERA Logger] Failed to parse survey-responses file type response: {ex.Message}. CSV upload will be skipped.");
+                        VERADebugger.LogWarning($"Failed to parse survey-responses file type response: {ex.Message}. CSV upload will be skipped.", "VERA Logger");
                         surveyHandler.columnDefinition.fileType.skipUpload = true;
                     }
                 }
                 else
                 {
                     // Log detailed error info for debugging
-                    Debug.LogWarning($"[VERA Logger] Failed to fetch Survey_Responses file type (HTTP {request.responseCode}): {request.error}");
-                    Debug.LogWarning($"[VERA Logger] Survey_Responses CSV upload will be disabled. Individual responses are still submitted via /api/surveys/responses.");
+                    VERADebugger.LogWarning($"Failed to fetch Survey_Responses file type (HTTP {request.responseCode}): {request.error}", "VERA Logger");
+                    VERADebugger.LogWarning($"Survey_Responses CSV upload will be disabled. Individual responses are still submitted via /api/surveys/responses.", "VERA Logger");
                     // Disable upload for this file type since we don't have a valid ID
                     surveyHandler.columnDefinition.fileType.skipUpload = true;
                 }
@@ -741,7 +741,7 @@ namespace VERA
             // and are uploaded immediately during survey completion, not via this re-upload mechanism
             if (!basename.Contains("-") || basename.Split('-').Length < 4)
             {
-                Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - not in standard VERA format (likely a survey backup file).");
+                VERADebugger.Log($"Skipping file \"{basename}\" - not in standard VERA format (likely a survey backup file).", "VERA Logger");
                 yield break;
             }
 
@@ -783,14 +783,14 @@ namespace VERA
             // Only upload files that match the current experiment
             if (file_experimentUUID != experimentUUID)
             {
-                Debug.Log($"[VERA Logger] Skipping file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                VERADebugger.Log($"Skipping file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})", "VERA Logger");
                 yield break;
             }
 
             // Skip survey-responses files - these use the dedicated survey API, not the file type API
             if (fileTypeId == "survey-responses")
             {
-                Debug.Log($"[VERA Logger] Skipping survey-responses file \"{basename}\" - survey responses use dedicated API.");
+                VERADebugger.Log($"Skipping survey-responses file \"{basename}\" - survey responses use dedicated API.", "VERA Logger");
                 yield break;
             }
 
@@ -824,17 +824,17 @@ namespace VERA
             }
             else
             {
-                Debug.LogWarning($"[VERA Logger] Failed to upload existing file \"{csvFilePath}\". HTTP {request.responseCode}: {request.error}");
+                VERADebugger.LogWarning($"Failed to upload existing file \"{csvFilePath}\". HTTP {request.responseCode}: {request.error}", "VERA Logger");
                 if (!string.IsNullOrEmpty(request.downloadHandler?.text))
                 {
-                    Debug.LogWarning($"[VERA Logger] Response Body: {request.downloadHandler.text}");
+                    VERADebugger.LogWarning($"Response Body: {request.downloadHandler.text}", "VERA Logger");
                 }
 
                 // Mark as uploaded for permanent failures so we don't retry every session
                 // 403 = concluded participant, 404 = file type or participant not found
                 if (request.responseCode == 403 || request.responseCode == 404)
                 {
-                    Debug.LogWarning($"[VERA Logger] Permanent failure (HTTP {request.responseCode}); marking file as uploaded to prevent repeated retries.");
+                    VERADebugger.LogWarning($"Permanent failure (HTTP {request.responseCode}); marking file as uploaded to prevent repeated retries.", "VERA Logger");
                 }
             }
         }
@@ -856,7 +856,7 @@ namespace VERA
                     // Only upload files that match the current experiment
                     if (file_experimentUUID != experimentUUID)
                     {
-                        Debug.Log($"[VERA Logger] Skipping image file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                        VERADebugger.Log($"Skipping image file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})", "VERA Logger");
                         genericFileHelper.OnImageFullyUploaded(imageFilePath);
                         yield break;
                     }
@@ -884,7 +884,7 @@ namespace VERA
                     // Only upload files that match the current experiment
                     if (file_experimentUUID != experimentUUID)
                     {
-                        Debug.Log($"[VERA Logger] Skipping generic file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})");
+                        VERADebugger.Log($"Skipping generic file \"{basename}\" - belongs to different experiment ({file_experimentUUID} vs current {experimentUUID})", "VERA Logger");
                         genericFileHelper.OnGenericFullyUploaded(genericFilePath);
                         yield break;
                     }
@@ -1062,13 +1062,13 @@ namespace VERA
                 {
                     // No selected condition - use the first available condition value
                     conditionsCache.Add(iv.ivName, iv.conditions[0].name);
-                    Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" initialized with first condition: {iv.conditions[0].name}");
+                    VERADebugger.Log($"Independent variable \"{iv.ivName}\" initialized with first condition: {iv.conditions[0].name}", "VERA Logger", DebugPreference.Informative);
                 }
                 else
                 {
                     // No conditions available - initialize with empty value
                     conditionsCache.Add(iv.ivName, "");
-                    Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" has no conditions - initialized with empty value.");
+                    VERADebugger.Log($"Independent variable \"{iv.ivName}\" has no conditions - initialized with empty value.", "VERA Logger", DebugPreference.Informative);
                 }
             }
 
@@ -1193,7 +1193,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return null;
             }
             return trialWorkflow.GetCurrentTrial();
@@ -1208,7 +1208,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return null;
             }
 
@@ -1234,7 +1234,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return false;
             }
             return trialWorkflow.CompleteTrial();
@@ -1248,7 +1248,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return false;
             }
             return trialWorkflow.AbortTrial(reason);
@@ -1422,7 +1422,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return;
             }
             trialWorkflow.ApplyLatinSquareOrdering(participantNumber);
@@ -1442,7 +1442,7 @@ namespace VERA
         ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
         ///   bool success = VERALogger.Instance.ApplyLatinSquareOrdering(participantNum, 30);
         ///   if (!success) {
-        ///       Debug.LogError("Failed to apply Latin square ordering! Check console for details.");
+        ///       VERADebugger.LogError("Failed to apply Latin square ordering! Check console for details.", "VERA Logger");
         ///   }
         /// </summary>
         /// <param name="participantNumber">The participant's sequential number (0-indexed). Must be less than totalParticipants.</param>
@@ -1452,7 +1452,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return false;
             }
             return trialWorkflow.ApplyLatinSquareOrdering(participantNumber, totalParticipants);
@@ -1492,7 +1492,7 @@ namespace VERA
         {
             if (initialized)
             {
-                Debug.LogWarning("[VERA Logger] Cannot set between-subjects assignment after initialization. Call this before logger initializes.");
+                VERADebugger.LogWarning("Cannot set between-subjects assignment after initialization. Call this before logger initializes.", "VERA Logger");
                 return;
             }
 
@@ -1502,7 +1502,7 @@ namespace VERA
             }
 
             manualBetweenSubjectsAssignments[betweenSubjectsGroupId] = conditionIndex;
-            Debug.Log($"[VERA Logger] Manual between-subjects assignment: group '{betweenSubjectsGroupId}' → condition {conditionIndex}");
+            VERADebugger.Log($"Manual between-subjects assignment: group '{betweenSubjectsGroupId}' → condition {conditionIndex}", "VERA Logger", DebugPreference.Informative);
         }
 
 
@@ -1519,7 +1519,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return;
             }
 
@@ -1536,7 +1536,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return;
             }
             trialWorkflow.OnTrialReady -= AutoSetTrialConditions;
@@ -1572,7 +1572,7 @@ namespace VERA
         {
             if (trialWorkflow == null)
             {
-                Debug.LogWarning("[VERA Logger] Trial workflow not initialized.");
+                VERADebugger.LogWarning("Trial workflow not initialized.", "VERA Logger");
                 return;
             }
             trialWorkflow.CompleteAutomatedTrial();

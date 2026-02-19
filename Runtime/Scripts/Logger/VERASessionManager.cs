@@ -177,7 +177,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get current trial because VERA is not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get current trial because VERA is not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.CurrentTrial;
@@ -192,7 +192,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot get next trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot get next trial because VERA is not initialized.");
                 return null;
             }
             return VERALogger.Instance?.trialWorkflow?.GetNextTrial();
@@ -232,7 +232,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot reset trial workflow because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot reset trial workflow because VERA is not initialized.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.ResetWorkflow();
@@ -248,7 +248,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot start trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot start trial because VERA is not initialized.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.StartTrial() ?? false;
@@ -263,7 +263,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot complete trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot complete trial because VERA is not initialized.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.CompleteTrial() ?? false;
@@ -279,7 +279,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot abort trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot abort trial because VERA is not initialized.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.AbortTrial(reason) ?? false;
@@ -328,7 +328,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWorkflow();
@@ -343,7 +343,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
                 return;
             }
             int participantId = VERALogger.Instance.activeParticipant.participantShortId;
@@ -360,7 +360,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantNumber);
@@ -379,7 +379,7 @@ namespace VERA
         ///   // For a study with 30 total participants
         ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
         ///   bool success = VERASessionManager.ApplyLatinSquareCounterbalancing(participantNum, 30);
-        ///   if (!success) Debug.LogError("Latin square failed - check console!");
+        ///   if (!success) VERADebugger.LogError("Latin square failed - check console!");
         /// </summary>
         /// <param name="participantNumber">The participant's sequential number (0-indexed). Must be less than totalParticipants.</param>
         /// <param name="totalParticipants">The total number of participants in the study. Must be >= number of conditions.</param>
@@ -388,7 +388,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantNumber, totalParticipants) ?? false;
@@ -404,7 +404,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get within-subjects IVs: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get within-subjects IVs: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialWithinSubjectsIVs();
@@ -421,7 +421,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get between-subjects IVs: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get between-subjects IVs: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialBetweenSubjectsIVs();
@@ -438,7 +438,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get randomization type: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get randomization type: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialRandomizationType();
@@ -455,7 +455,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get trial ordering: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ordering: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialOrdering();
@@ -473,7 +473,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get trial distributions: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial distributions: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialDistributions();
@@ -490,7 +490,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get trial ID: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ID: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialId();
@@ -507,7 +507,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get trial type: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial type: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialType();
@@ -524,7 +524,7 @@ namespace VERA
             {
                 if (!initialized)
                 {
-                    Debug.LogWarning("[VERASessionManager] Cannot get trial conditions: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial conditions: VERA not initialized.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialConditions();
@@ -541,7 +541,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot randomize blocks: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize blocks: VERA not initialized.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWithinBlocks(blockSize);
@@ -557,7 +557,7 @@ namespace VERA
         {
             if (!initialized)
             {
-                Debug.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWithSeed(seed);

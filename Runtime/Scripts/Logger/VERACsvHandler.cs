@@ -176,9 +176,9 @@ namespace VERA
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
             {
-                Debug.LogError("[VERA Logger]: You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
+                VERADebugger.LogError("You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
                     " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
-                    " columns. Cannot log entry as desired.");
+                    " columns. Cannot log entry as desired.", "VERA Logger");
                 return;
             }
 
@@ -530,7 +530,7 @@ namespace VERA
             string host = VERAHost.hostUrl;
             string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
 
-            Debug.Log($"[VERA CSV] Uploading {columnDefinition.fileType.name}: URL={url}, fileTypeId={fileTypeId}");
+            VERADebugger.Log($"Uploading {columnDefinition.fileType.name}: URL={url}, fileTypeId={fileTypeId}", "VERACsvHandler");
 
             // Add mode parameter for partial uploads
             if (partial)

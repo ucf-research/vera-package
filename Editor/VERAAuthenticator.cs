@@ -1051,7 +1051,7 @@ namespace VERA
                                     AssetDatabase.SaveAssets();
 
                                     definitionsToAdd.Add("VERAFile_Survey_Responses");
-                                    Debug.Log($"[VERA Authentication] Created Survey_Responses column definition with ID: {fileTypes[i]._id}");
+                                    VERADebugger.Log($"Created Survey_Responses column definition with ID: {fileTypes[i]._id}", "VERA Authentication");
                                 }
                             }
                             if (normalizedName == "experimenttelemetry")

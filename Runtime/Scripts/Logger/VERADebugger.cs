@@ -21,7 +21,23 @@ namespace VERA
                 return;
             }
 
+            if (string.IsNullOrEmpty(callerName))
+            {
+                Debug.Log(message);
+                return;
+            }
+
             Debug.Log("[" + callerName + "] " + message);
+        }
+
+        /// <summary>
+        /// Logs a message to the Unity console with the caller's name.
+        /// Only logs according to preferences (i.e. suppresses certain logs if not enabled).
+        /// </summary>
+        /// <param name="message">Corresponding message log (for example, "Participant started session")</param>
+        internal static void Log(string message)
+        {
+            Log(message, "", DebugPreference.Verbose);
         }
 
         /// <summary>
@@ -39,7 +55,23 @@ namespace VERA
                 return;
             }
 
+            if (string.IsNullOrEmpty(callerName))
+            {
+                Debug.LogWarning(message);
+                return;
+            }
+
             Debug.LogWarning("[" + callerName + "] " + message);
+        }
+
+        /// <summary>
+        /// Logs a warning to the Unity console with the caller's name.
+        /// Only logs according to preferences (i.e. suppresses warnings if not enabled).
+        /// </summary>
+        /// <param name="message">Corresponding warning log (for example, "Participant took headset off")</param>
+        internal static void LogWarning(string message)
+        {
+            LogWarning(message, "");
         }
 
         /// <summary>
@@ -57,7 +89,23 @@ namespace VERA
                 return;
             }
 
+            if (string.IsNullOrEmpty(callerName))
+            {
+                Debug.LogError(message);
+                return;
+            }
+
             Debug.LogError("[" + callerName + "] " + message);
+        }
+
+        /// <summary>
+        /// Logs an error to the Unity console with the caller's name.
+        /// Only logs according to preferences (i.e. suppresses errors if not enabled).
+        /// </summary>
+        /// <param name="message">Corresponding message log (for example, "Participant is null")</param>
+        internal static void LogError(string message)
+        {
+            LogError(message, "");
         }
 
         private static DebugPreference GetDebugPref()

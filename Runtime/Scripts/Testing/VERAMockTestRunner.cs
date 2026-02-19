@@ -31,7 +31,7 @@ namespace VERA
 
             if (verboseLogging)
             {
-                Debug.Log("[VERA Mock Test] Waiting for VERA to initialize...");
+                VERADebugger.Log("[VERA Mock Test] Waiting for VERA to initialize...");
             }
         }
 
@@ -39,13 +39,13 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log("[VERA Mock Test] VERA initialized. Starting automated workflow test...");
+                VERADebugger.Log("[VERA Mock Test] VERA initialized. Starting automated workflow test...");
             }
 
             var workflow = VERALogger.Instance?.trialWorkflow;
             if (workflow == null)
             {
-                Debug.LogError("[VERA Mock Test] Could not access trial workflow.");
+                VERADebugger.LogError("[VERA Mock Test] Could not access trial workflow.");
                 return;
             }
 
@@ -62,12 +62,12 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Trial ready: {trial.label}");
+                VERADebugger.Log($"[VERA Mock Test] Trial ready: {trial.label}");
                 if (trial.conditions != null && trial.conditions.Count > 0)
                 {
                     foreach (var condition in trial.conditions)
                     {
-                        Debug.Log($"[VERA Mock Test]   - {condition.Key} = {condition.Value}");
+                        VERADebugger.Log($"[VERA Mock Test]   - {condition.Key} = {condition.Value}");
                     }
                 }
             }
@@ -80,14 +80,14 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Simulating trial logic for {trialSimulationDelay}s...");
+                VERADebugger.Log($"[VERA Mock Test] Simulating trial logic for {trialSimulationDelay}s...");
             }
 
             yield return new WaitForSeconds(trialSimulationDelay);
 
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Trial logic complete. Marking trial as done.");
+                VERADebugger.Log($"[VERA Mock Test] Trial logic complete. Marking trial as done.");
             }
 
             // Complete the trial
@@ -98,7 +98,7 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Survey required: {surveyName} (position: {position}, instanceId: {instanceId})");
+                VERADebugger.Log($"[VERA Mock Test] Survey required: {surveyName} (position: {position}, instanceId: {instanceId})");
             }
 
             // Simulate survey completion
@@ -109,7 +109,7 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Simulating survey completion for {surveySimulationDelay}s...");
+                VERADebugger.Log($"[VERA Mock Test] Simulating survey completion for {surveySimulationDelay}s...");
             }
 
             yield return new WaitForSeconds(surveySimulationDelay);
@@ -119,7 +119,7 @@ namespace VERA
 
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Survey complete. Marking as done and continuing workflow.");
+                VERADebugger.Log($"[VERA Mock Test] Survey complete. Marking as done and continuing workflow.");
             }
 
             // Always mark survey as completed, even if upload failed
@@ -131,12 +131,12 @@ namespace VERA
 
                 if (verboseLogging)
                 {
-                    Debug.Log($"[VERA Mock Test] Survey marked complete. Workflow should now continue.");
+                    VERADebugger.Log($"[VERA Mock Test] Survey marked complete. Workflow should now continue.");
                 }
             }
             else
             {
-                Debug.LogError($"[VERA Mock Test] Cannot mark survey complete - workflow is null!");
+                VERADebugger.LogError($"[VERA Mock Test] Cannot mark survey complete - workflow is null!");
             }
         }
 
@@ -144,28 +144,28 @@ namespace VERA
         {
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Generating and uploading mock survey responses...");
-                Debug.Log($"[VERA Mock Test]   surveyId: {surveyId}");
-                Debug.Log($"[VERA Mock Test]   surveyName: {surveyName}");
-                Debug.Log($"[VERA Mock Test]   instanceId: {instanceId}");
+                VERADebugger.Log($"[VERA Mock Test] Generating and uploading mock survey responses...");
+                VERADebugger.Log($"[VERA Mock Test]   surveyId: {surveyId}");
+                VERADebugger.Log($"[VERA Mock Test]   surveyName: {surveyName}");
+                VERADebugger.Log($"[VERA Mock Test]   instanceId: {instanceId}");
             }
 
             // Get survey data from the workflow (which already has it embedded)
             var workflow = VERALogger.Instance?.trialWorkflow;
             if (workflow == null)
             {
-                Debug.LogWarning($"[VERA Mock Test] Workflow not available. Falling back to local CSV recording only.");
+                VERADebugger.LogWarning($"[VERA Mock Test] Workflow not available. Falling back to local CSV recording only.");
                 GenerateMockSurveyResponsesLocal(surveyId, surveyName);
                 yield return null; // Always return normally so caller can mark survey complete
                 yield break;
             }
 
-            Debug.Log($"[VERA Mock Test] AllWorkflowItems count: {workflow.AllWorkflowItems?.Count ?? 0}");
+            VERADebugger.Log($"[VERA Mock Test] AllWorkflowItems count: {workflow.AllWorkflowItems?.Count ?? 0}");
 
             VERASurvey surveyData = GetSurveyDataFromWorkflow(surveyId);
             if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
             {
-                Debug.LogWarning($"[VERA Mock Test] Survey data not found in workflow. Attempting to fetch from API...");
+                VERADebugger.LogWarning($"[VERA Mock Test] Survey data not found in workflow. Attempting to fetch from API...");
 
                 // Try to fetch survey data from the API
                 yield return FetchSurveyDataFromAPI(surveyId, (fetchedSurvey) =>
@@ -175,14 +175,14 @@ namespace VERA
 
                 if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
                 {
-                    Debug.LogWarning($"[VERA Mock Test] Survey data could not be fetched from API. Falling back to local CSV recording only.");
+                    VERADebugger.LogWarning($"[VERA Mock Test] Survey data could not be fetched from API. Falling back to local CSV recording only.");
                     GenerateMockSurveyResponsesLocal(surveyId, surveyName);
                     yield return null; // Always return normally so caller can mark survey complete
                     yield break;
                 }
                 else
                 {
-                    Debug.Log($"[VERA Mock Test] ✓ Successfully fetched survey data from API with {surveyData.questions.Count} questions");
+                    VERADebugger.Log($"[VERA Mock Test] ✓ Successfully fetched survey data from API with {surveyData.questions.Count} questions");
                 }
             }
 
@@ -192,7 +192,7 @@ namespace VERA
             {
                 if (verboseLogging)
                 {
-                    Debug.Log($"[VERA Mock Test] No SurveyInterfaceIO found in scene. Auto-creating one with API URL: {VERAHost.hostUrl}");
+                    VERADebugger.Log($"[VERA Mock Test] No SurveyInterfaceIO found in scene. Auto-creating one with API URL: {VERAHost.hostUrl}");
                 }
 
                 GameObject surveyIOObject = new GameObject("SurveyInterfaceIO (Auto-Created)");
@@ -200,7 +200,7 @@ namespace VERA
 
                 if (verboseLogging)
                 {
-                    Debug.Log("[VERA Mock Test] SurveyInterfaceIO created and configured successfully.");
+                    VERADebugger.Log("[VERA Mock Test] SurveyInterfaceIO created and configured successfully.");
                 }
             }
 
@@ -220,7 +220,7 @@ namespace VERA
 
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Uploading {numQuestions} mock survey responses to VERA...");
+                VERADebugger.Log($"[VERA Mock Test] Uploading {numQuestions} mock survey responses to VERA...");
             }
 
             // Call the actual upload method
@@ -233,11 +233,11 @@ namespace VERA
             {
                 if (surveyIO.uploadSuccessful)
                 {
-                    Debug.Log($"[VERA Mock Test] ✓ Successfully uploaded mock survey responses to VERA");
+                    VERADebugger.Log($"[VERA Mock Test] ✓ Successfully uploaded mock survey responses to VERA");
                 }
                 else
                 {
-                    Debug.LogWarning($"[VERA Mock Test] ✗ Failed to upload mock survey responses to API (CSV file still created locally)");
+                    VERADebugger.LogWarning($"[VERA Mock Test] ✗ Failed to upload mock survey responses to API (CSV file still created locally)");
                 }
             }
         }
@@ -247,11 +247,11 @@ namespace VERA
             var workflow = VERALogger.Instance?.trialWorkflow;
             if (workflow == null || workflow.AllWorkflowItems == null)
             {
-                Debug.LogWarning($"[VERA Mock Test] Workflow or AllWorkflowItems is null");
+                VERADebugger.LogWarning($"[VERA Mock Test] Workflow or AllWorkflowItems is null");
                 return null;
             }
 
-            Debug.Log($"[VERA Mock Test] Searching for survey ID '{surveyId}' in {workflow.AllWorkflowItems.Count} workflow items");
+            VERADebugger.Log($"[VERA Mock Test] Searching for survey ID '{surveyId}' in {workflow.AllWorkflowItems.Count} workflow items");
 
             // Search through all trials to find the survey with this ID
             foreach (var trial in workflow.AllWorkflowItems)
@@ -261,32 +261,32 @@ namespace VERA
 
                 if (verboseLogging)
                 {
-                    Debug.Log($"[VERA Mock Test]   Checking trial: type='{trial.type}', surveyId='{trial.surveyId}', instanceId='{trial.instanceId}', hasSurveyData={trial.survey != null}");
+                    VERADebugger.Log($"[VERA Mock Test]   Checking trial: type='{trial.type}', surveyId='{trial.surveyId}', instanceId='{trial.instanceId}', hasSurveyData={trial.survey != null}");
                 }
 
                 // Check if this is a standalone survey with matching surveyId
                 if (trial.type == "survey" && trial.surveyId == surveyId && trial.survey != null)
                 {
-                    Debug.Log($"[VERA Mock Test] ✓ Found survey data for standalone survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    VERADebugger.Log($"[VERA Mock Test] ✓ Found survey data for standalone survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
                     return trial.survey;
                 }
 
                 // Also check by instanceId (surveys use instanceId as the identifier)
                 if (trial.type == "survey" && trial.instanceId == surveyId && trial.survey != null)
                 {
-                    Debug.Log($"[VERA Mock Test] ✓ Found survey data by instanceId '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    VERADebugger.Log($"[VERA Mock Test] ✓ Found survey data by instanceId '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
                     return trial.survey;
                 }
 
                 // Also check attached surveys
                 if (trial.attachedSurveyId == surveyId && trial.survey != null)
                 {
-                    Debug.Log($"[VERA Mock Test] ✓ Found survey data for attached survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
+                    VERADebugger.Log($"[VERA Mock Test] ✓ Found survey data for attached survey '{surveyId}' with {trial.survey.questions?.Count ?? 0} questions");
                     return trial.survey;
                 }
             }
 
-            Debug.LogWarning($"[VERA Mock Test] Survey data not found for ID '{surveyId}'");
+            VERADebugger.LogWarning($"[VERA Mock Test] Survey data not found for ID '{surveyId}'");
             return null;
         }
 
@@ -353,7 +353,7 @@ namespace VERA
                 VERACsvHandler csvHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
                 if (csvHandler == null)
                 {
-                    Debug.LogError("[VERA Mock Test] No CSV handler found for Survey_Responses file type.");
+                    VERADebugger.LogError("[VERA Mock Test] No CSV handler found for Survey_Responses file type.");
                     return;
                 }
 
@@ -368,12 +368,12 @@ namespace VERA
 
                 if (verboseLogging)
                 {
-                    Debug.Log($"[VERA Mock Test] Generated {numQuestions} mock survey responses via Survey_Responses file type.");
+                    VERADebugger.Log($"[VERA Mock Test] Generated {numQuestions} mock survey responses via Survey_Responses file type.");
                 }
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"[VERA Mock Test] Failed to generate mock survey responses: {ex.Message}");
+                VERADebugger.LogError($"[VERA Mock Test] Failed to generate mock survey responses: {ex.Message}");
             }
         }
 
@@ -384,7 +384,7 @@ namespace VERA
 
             if (verboseLogging)
             {
-                Debug.Log($"[VERA Mock Test] Fetching survey data from API: {url}");
+                VERADebugger.Log($"[VERA Mock Test] Fetching survey data from API: {url}");
             }
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
@@ -400,7 +400,7 @@ namespace VERA
 
                     if (verboseLogging)
                     {
-                        Debug.Log($"[VERA Mock Test] Survey API response (first 500 chars): {jsonResponse.Substring(0, System.Math.Min(500, jsonResponse.Length))}");
+                        VERADebugger.Log($"[VERA Mock Test] Survey API response (first 500 chars): {jsonResponse.Substring(0, System.Math.Min(500, jsonResponse.Length))}");
                     }
 
                     try
@@ -411,25 +411,25 @@ namespace VERA
 
                         if (survey != null && survey.questions != null && survey.questions.Count > 0)
                         {
-                            Debug.Log($"[VERA Mock Test] ✓ Fetched survey with {survey.questions.Count} questions from API");
+                            VERADebugger.Log($"[VERA Mock Test] ✓ Fetched survey with {survey.questions.Count} questions from API");
                             onComplete?.Invoke(survey);
                         }
                         else
                         {
-                            Debug.LogError($"[VERA Mock Test] Survey fetched from API has no questions");
+                            VERADebugger.LogError($"[VERA Mock Test] Survey fetched from API has no questions");
                             onComplete?.Invoke(null);
                         }
                     }
                     catch (System.Exception ex)
                     {
-                        Debug.LogError($"[VERA Mock Test] Failed to parse survey JSON from API: {ex.Message}");
-                        Debug.LogError($"[VERA Mock Test] Raw response was: {jsonResponse.Substring(0, System.Math.Min(200, jsonResponse.Length))}");
+                        VERADebugger.LogError($"[VERA Mock Test] Failed to parse survey JSON from API: {ex.Message}");
+                        VERADebugger.LogError($"[VERA Mock Test] Raw response was: {jsonResponse.Substring(0, System.Math.Min(200, jsonResponse.Length))}");
                         onComplete?.Invoke(null);
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[VERA Mock Test] Failed to fetch survey from API: {request.error} (HTTP {request.responseCode})");
+                    VERADebugger.LogError($"[VERA Mock Test] Failed to fetch survey from API: {request.error} (HTTP {request.responseCode})");
                     onComplete?.Invoke(null);
                 }
             }
@@ -498,14 +498,14 @@ namespace VERA
                 }
                 else
                 {
-                    Debug.LogWarning($"[VERA Mock Test] Survey has no questions array. Questions token type: {questionsToken?.Type.ToString() ?? "null"}");
+                    VERADebugger.LogWarning($"[VERA Mock Test] Survey has no questions array. Questions token type: {questionsToken?.Type.ToString() ?? "null"}");
                 }
 
                 return survey;
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"[VERA Mock Test] Error in ParseSurveyFromJSON: {ex.Message}");
+                VERADebugger.LogError($"[VERA Mock Test] Error in ParseSurveyFromJSON: {ex.Message}");
                 return null;
             }
         }
@@ -548,11 +548,11 @@ namespace VERA
 
         private void OnWorkflowCompleted()
         {
-            Debug.Log("[VERA Mock Test] ✓ Automated workflow test completed successfully!");
-            Debug.Log($"[VERA Mock Test] All trials and surveys were processed.");
+            VERADebugger.Log("[VERA Mock Test] ✓ Automated workflow test completed successfully!");
+            VERADebugger.Log($"[VERA Mock Test] All trials and surveys were processed.");
 
             // Finalize session to upload all files and mark participant as COMPLETE
-            Debug.Log("[VERA Mock Test] Finalizing session and uploading files...");
+            VERADebugger.Log("[VERA Mock Test] Finalizing session and uploading files...");
             VERASessionManager.FinalizeSession();
         }
 

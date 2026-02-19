@@ -75,7 +75,7 @@ namespace VERA
             VERACsvHandler surveyHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
             if (surveyHandler == null)
             {
-                Debug.LogError("[VERA Survey] No CSV handler found for Survey_Responses file type. Cannot upload survey instance file.");
+                VERADebugger.LogError("No CSV handler found for Survey_Responses file type. Cannot upload survey instance file.", "SurveyInterfaceIO");
                 fileUploadSuccessful = false;
                 yield break;
             }
@@ -83,7 +83,7 @@ namespace VERA
             string fileTypeId = surveyHandler.columnDefinition.fileType.fileTypeId;
             if (string.IsNullOrEmpty(fileTypeId) || fileTypeId == "survey-responses")
             {
-                Debug.LogWarning("[VERA Survey] Survey_Responses file type ID not available. Skipping per-instance upload.");
+                VERADebugger.LogWarning("Survey_Responses file type ID not available. Skipping per-instance upload.", "SurveyInterfaceIO");
                 // Fall back to recording to the shared CSV (will be uploaded at finalization)
                 RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
                 fileUploadSuccessful = false;
@@ -144,11 +144,11 @@ namespace VERA
                 }
                 string backupFilePath = Path.Combine(dataPath, fileName);
                 File.WriteAllText(backupFilePath, csvContent.ToString());
-                Debug.Log($"[VERA Survey] Backup saved: {backupFilePath}");
+                VERADebugger.Log($"[VERA Survey] Backup saved: {backupFilePath}");
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"[VERA Survey] Failed to create survey instance CSV file: {ex.Message}");
+                VERADebugger.LogError($"[VERA Survey] Failed to create survey instance CSV file: {ex.Message}");
                 // Fall back to shared CSV
                 RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
                 fileUploadSuccessful = false;
@@ -160,7 +160,7 @@ namespace VERA
             string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
             string apiKey = VERALogger.Instance.apiKey;
 
-            Debug.Log($"[VERA Survey] Uploading survey instance file: {fileName}");
+            VERADebugger.Log($"Uploading survey instance file: {fileName}", "VERA Survey", DebugPreference.Informative);
 
             byte[] fileData = File.ReadAllBytes(tempFilePath);
 
@@ -175,15 +175,15 @@ namespace VERA
 
                 if (request.result == UnityWebRequest.Result.Success)
                 {
-                    Debug.Log($"[VERA Survey] ✓ Successfully uploaded survey instance file: {fileName}");
+                    VERADebugger.Log($"Successfully uploaded survey instance file: {fileName}", "VERA Survey", DebugPreference.Informative);
                     fileUploadSuccessful = true;
                     // Commit the instance count increment now that upload succeeded
                     surveyInstanceCounts[sanitizedSurveyName] = instanceCount;
                 }
                 else
                 {
-                    Debug.LogError($"[VERA Survey] Failed to upload survey instance file: {request.error}");
-                    Debug.LogError($"[VERA Survey] HTTP Status: {request.responseCode}");
+                    VERADebugger.LogError($"[VERA Survey] Failed to upload survey instance file: {request.error}");
+                    VERADebugger.LogError($"[VERA Survey] HTTP Status: {request.responseCode}");
                     fileUploadSuccessful = false;
                     // Fall back to shared CSV as backup
                     RecordToSharedCsv(surveyHandler, surveyResults, pID, ts, studyId, surveyId, surveyName, instanceId, questionTextLookup);
@@ -215,7 +215,7 @@ namespace VERA
                 }
                 csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
             }
-            Debug.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to shared Survey_Responses file.");
+            VERADebugger.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to shared Survey_Responses file.");
         }
 
         // Escapes a value for CSV format
@@ -257,7 +257,7 @@ namespace VERA
             VERACsvHandler csvHandler = VERALogger.Instance.FindCsvHandlerByFileName("Survey_Responses");
             if (csvHandler == null)
             {
-                Debug.LogError("[VERA Survey] No CSV handler found for Survey_Responses file type.");
+                VERADebugger.LogError("[VERA Survey] No CSV handler found for Survey_Responses file type.");
                 return;
             }
 
@@ -273,7 +273,7 @@ namespace VERA
                 csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
             }
 
-            Debug.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to Survey_Responses file type.");
+            VERADebugger.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to Survey_Responses file type.");
         }
 
         // Outputs given results of given survey back to the database
@@ -295,12 +295,12 @@ namespace VERA
             {
                 // Use existing survey instance ID
                 instanceId = surveyToOutput.surveyInstanceId;
-                Debug.Log($"[VERA Survey] Using existing survey instance ID: {instanceId}");
+                VERADebugger.Log($"[VERA Survey] Using existing survey instance ID: {instanceId}");
             }
             else
             {
                 // Create a new SurveyInstance
-                Debug.Log("[VERA Survey] No existing instance ID found. Creating new survey instance.");
+                VERADebugger.Log("[VERA Survey] No existing instance ID found. Creating new survey instance.");
 
                 SurveyInstance surveyInstance = new SurveyInstance();
                 surveyInstance.studyId = VERALogger.Instance.experimentUUID;
@@ -333,7 +333,7 @@ namespace VERA
                 }
 
                 // Submit individual responses to the response API
-                Debug.Log($"[VERA Survey] Submitting {surveyResults.Length} responses with instanceId={instanceId}, participantId={participantId}");
+                VERADebugger.Log($"Submitting {surveyResults.Length} responses with instanceId={instanceId}, participantId={participantId}", "VERA Survey", DebugPreference.Informative);
 
                 for (int i = 0; i < surveyResults.Length; i++)
                 {
@@ -346,7 +346,7 @@ namespace VERA
                     };
 
                     string responseJson = JsonUtility.ToJson(surveyResponse);
-                    Debug.Log($"[VERA Survey] Submitting response {i + 1}/{surveyResults.Length}: {responseJson}");
+                    VERADebugger.Log($"[VERA Survey] Submitting response {i + 1}/{surveyResults.Length}: {responseJson}");
 
                     UnityWebRequest responseRequest = new UnityWebRequest(VERAHost.hostUrl + "/api/surveys/responses", "POST");
                     byte[] responseBodyRaw = System.Text.Encoding.UTF8.GetBytes(responseJson);
@@ -358,20 +358,20 @@ namespace VERA
 
                     if (responseRequest.result != UnityWebRequest.Result.Success)
                     {
-                        Debug.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
-                        Debug.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
-                        Debug.LogError($"[VERA Survey] Question ID: {surveyResults[i].Key}");
-                        Debug.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/responses");
+                        VERADebugger.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
+                        VERADebugger.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
+                        VERADebugger.LogError($"[VERA Survey] Question ID: {surveyResults[i].Key}");
+                        VERADebugger.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/responses");
                         if (!string.IsNullOrEmpty(responseRequest.downloadHandler?.text))
                         {
-                            Debug.LogError($"[VERA Survey] Response Body: {responseRequest.downloadHandler.text}");
+                            VERADebugger.LogError($"[VERA Survey] Response Body: {responseRequest.downloadHandler.text}");
                         }
-                        Debug.LogError($"[VERA Survey] Request Body: {responseJson}");
+                        VERADebugger.LogError($"[VERA Survey] Request Body: {responseJson}");
                         break;
                     }
                     else
                     {
-                        Debug.Log($"[VERA Survey] ✓ Response {i + 1} submitted successfully");
+                        VERADebugger.Log($"[VERA Survey] ✓ Response {i + 1} submitted successfully");
                     }
                 }
             }
@@ -380,12 +380,12 @@ namespace VERA
                 // Only log error if we actually tried to create an instance
                 if (instanceRequest != null)
                 {
-                    Debug.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
-                    Debug.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
-                    Debug.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/instances");
+                    VERADebugger.LogError($"[VERA Survey] Error creating SurveyInstance: {instanceRequest.error}");
+                    VERADebugger.LogError($"[VERA Survey] HTTP Status Code: {instanceRequest.responseCode}");
+                    VERADebugger.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/instances");
                     if (!string.IsNullOrEmpty(instanceRequest.downloadHandler?.text))
                     {
-                        Debug.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
+                        VERADebugger.LogError($"[VERA Survey] Response Body: {instanceRequest.downloadHandler.text}");
                     }
                 }
             }
@@ -398,12 +398,12 @@ namespace VERA
             // Instance creation is secondary - the file upload is what we require
             if (fileUploadSuccessful)
             {
-                Debug.Log("[VERA Survey] Survey response file successfully uploaded.");
+                VERADebugger.Log("Survey response file successfully uploaded.", "VERA Survey", DebugPreference.Informative);
                 uploadSuccessful = true;
             }
             else
             {
-                Debug.LogWarning("[VERA Survey] Survey response file upload failed. Responses saved locally - retry required.");
+                VERADebugger.LogWarning("[VERA Survey] Survey response file upload failed. Responses saved locally - retry required.");
                 uploadSuccessful = false;
             }
         }

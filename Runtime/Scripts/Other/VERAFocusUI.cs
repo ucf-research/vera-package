@@ -49,7 +49,7 @@ namespace VERA
             }
             else
             {
-                Debug.LogWarning("VERAFocusUI: No player head transform assigned and no main camera found!");
+                VERADebugger.LogWarning("No player head transform assigned and no main camera found!", "VERAFocusUI");
             }
         }
 
