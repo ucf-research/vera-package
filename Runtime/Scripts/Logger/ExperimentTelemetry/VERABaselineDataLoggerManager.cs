@@ -10,10 +10,6 @@ namespace VERA
         [Tooltip("Automatically create VERABaselineDataLogger if none exists")]
         [SerializeField] private bool autoCreateLogger = true;
 
-        [Header("Logging Settings")]
-        [Tooltip("Logging rate in Hz")]
-        [SerializeField] private float logRate = 30f;
-
         private VERABaselineDataLogger baselineLogger;
 
         private void Awake()
