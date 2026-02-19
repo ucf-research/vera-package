@@ -58,6 +58,17 @@ namespace VERA
             string fileName = columnDefinition.fileType.name;
             string filePath = generatedCsPath + "VERAFile_" + fileName + ".cs";
 
+            // If this is the Survey_Responses file type, do not generate a class since it's handled separately with a fixed schema
+            if (fileName == "Survey_Responses")
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                    AssetDatabase.Refresh();
+                }
+                return;
+            }
+
             // Use StringBuilder to create the code
             StringBuilder sb = new StringBuilder();
 

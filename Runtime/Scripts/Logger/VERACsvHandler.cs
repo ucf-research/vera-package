@@ -49,12 +49,20 @@ namespace VERA
         public VERAColumnDefinition columnDefinition { get; private set; } // The column definition of this CSV
         public UnityWebRequest activeWebRequest { get; private set; }
 
+        // Returns true if this file type should not be uploaded via the standard file type API
+        public bool ShouldSkipUpload()
+        {
+            return columnDefinition?.fileType?.skipUpload ?? false;
+        }
+
         // Unwritten entries and flushing
         private List<string> unwrittenEntries = new List<string>(); // A cache of unwritten log entries
         private int unwrittenEntryLimit = 100; // If unwritten entries exceeds this limit, a flush will occur
         private float timeSinceLastFlush = 0f;
         private float flushInterval = 5f; // How frequently a flush of unwritten entries will occur
         public bool finalEntryUploaded { get; private set; } = false;
+
+        private bool skipLocalSync = false;
 
 
         #region MONOBEHAVIOUR
@@ -91,58 +99,10 @@ namespace VERA
         #region INIT
 
 
-        /// <summary>
-        /// Builds the hierarchical directory path based on experiment, site, build version, and participant.
-        /// Creates the directory if it doesn't already exist.
-        /// </summary>
-        private string BuildHierarchicalDirectoryPath()
+        public void Initialize(VERAColumnDefinition columnDef, bool skipLocalSync)
         {
-            VERABuildAuthInfo authInfo = VERALogger.Instance.buildAuthInfo;
-            string participantShortId = VERALogger.Instance.activeParticipant.participantShortId.ToString();
+            this.skipLocalSync = skipLocalSync;
 
-            // Start with the base directory from baseFilePath
-            string baseDirectory = Path.GetDirectoryName(VERALogger.Instance.baseFilePath);
-
-            // 1. Experiment folder (replace spaces with dashes)
-            string experimentFolder = authInfo.activeExperimentName.Replace(" ", "-");
-            string path = Path.Combine(baseDirectory, experimentFolder);
-
-            // 2. Site folder (only if multi-site)
-            if (authInfo.isMultiSite)
-            {
-                string siteFolder = "Site-" + authInfo.activeSiteName.Replace(" ", "-");
-                path = Path.Combine(path, siteFolder);
-            }
-
-            // 3. Build version folder
-            string buildVersionFolder;
-            if (authInfo.currentBuildNumber <= 0)
-            {
-                buildVersionFolder = "BuildVersion_PreBuild";
-            }
-            else
-            {
-                buildVersionFolder = "BuildVersion_" + authInfo.currentBuildNumber.ToString();
-            }
-            path = Path.Combine(path, buildVersionFolder);
-
-            // 4. Participant folder
-            string participantFolder = "Participant-" + participantShortId;
-            path = Path.Combine(path, participantFolder);
-
-            // Create directory if it doesn't exist
-            if (!Directory.Exists(path))
-            {
-                Directory.CreateDirectory(path);
-                VERADebugger.Log("Created directory structure: " + path, "VERACsvHandler", DebugPreference.Verbose);
-            }
-
-            return path;
-        }
-
-
-        public void Initialize(VERAColumnDefinition columnDef)
-        {
             DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
             if (dataRecordingType == DataRecordingType.DoNotRecord)
             {
@@ -154,7 +114,7 @@ namespace VERA
             columnDefinition = columnDef;
 
             // Build the hierarchical directory path and get the directory for CSV storage
-            string csvDirectory = BuildHierarchicalDirectoryPath();
+            string csvDirectory = VERALogger.Instance.GetCsvDirectory();
 
             // Construct file paths within the hierarchical directory
             string baseFileName = columnDefinition.fileType.name.Replace(" ", "-");
@@ -169,16 +129,19 @@ namespace VERA
             }
 
             // Write the initial files using StreamWriter
-            using (StreamWriter writer = new StreamWriter(fullCsvFilePath))
+            if (!skipLocalSync)
             {
-                writer.WriteLine(string.Join(",", columnNames));
-                writer.Flush();
-            }
+                using (StreamWriter writer = new StreamWriter(fullCsvFilePath))
+                {
+                    writer.WriteLine(string.Join(",", columnNames));
+                    writer.Flush();
+                }
 
-            using (StreamWriter writer = new StreamWriter(partialCsvFilePath))
-            {
-                writer.WriteLine(string.Join(",", columnNames));
-                writer.Flush();
+                using (StreamWriter writer = new StreamWriter(partialCsvFilePath))
+                {
+                    writer.WriteLine(string.Join(",", columnNames));
+                    writer.Flush();
+                }
             }
 
             VERADebugger.Log("CSV File (and partial sync file) for file type \"" + columnDefinition.fileType.name + ".csv\" created and saved at " + fullCsvFilePath, "VERACsvHandler", DebugPreference.Verbose);
@@ -200,10 +163,12 @@ namespace VERA
         // Logs an entry to the file. Doesn't write yet, only writes on flush.
         public void CreateEntry(int eventId, params object[] values)
         {
-            if (!VERALogger.Instance.collecting || VERALogger.Instance.sessionFinalized)
+            if (!VERALogger.Instance.collecting || VERALogger.Instance.sessionFinalized || skipLocalSync)
             {
                 return;
             }
+
+            bool skipAuto = columnDefinition.skipAutoColumns;
 
             // check baseline data file (omits eventId column)
             bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
@@ -211,22 +176,26 @@ namespace VERA
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
             {
-                VERADebugger.LogError("You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
+                Debug.LogError("[VERA Logger]: You are attempting to create a log entry with " + (values.Length + autoColumnCount).ToString() +
                     " columns. The file type \"" + columnDefinition.fileType.name + "\" expects " + columnDefinition.columns.Count +
-                    " columns. Cannot log entry as desired.", "VERACsvHandler");
+                    " columns. Cannot log entry as desired.");
                 return;
             }
 
             List<string> entry = new List<string>();
-            // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
-            entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
-            entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
-            entry.Add(Convert.ToString(Time.realtimeSinceStartup));
 
-            // Only add eventId for non-baseline telemetry file types
-            if (autoColumnCount == 4)
+            if (!skipAuto)
             {
-                entry.Add(Convert.ToString(eventId));
+                // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
+                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
+                entry.Add(Convert.ToString(Time.realtimeSinceStartup));
+
+                // Only add eventId for non-baseline telemetry file types
+                if (autoColumnCount == 4)
+                {
+                    entry.Add(Convert.ToString(eventId));
+                }
             }
 
             for (int i = 0; i < values.Length; i++)
@@ -416,7 +385,7 @@ namespace VERA
         public IEnumerator SubmitFileWithRetry(bool finalUpload = false, bool usePartial = false)
         {
             DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
-            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally)
+            if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally || ShouldSkipUpload())
             {
                 yield break;
             }
@@ -561,6 +530,8 @@ namespace VERA
             string host = VERAHost.hostUrl;
             string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
 
+            Debug.Log($"[VERA CSV] Uploading {columnDefinition.fileType.name}: URL={url}, fileTypeId={fileTypeId}");
+
             // Add mode parameter for partial uploads
             if (partial)
             {
@@ -622,8 +593,6 @@ namespace VERA
         {
             finalEntryUploaded = true;
             DeletePartialFile();
-
-            VERALogger.Instance.OnCsvFullyUploaded(csvFilePath: fullCsvFilePath);
         }
 
 

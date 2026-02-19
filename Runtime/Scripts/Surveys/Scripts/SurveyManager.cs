@@ -4,8 +4,8 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using static UnityEngine.GraphicsBuffer;
 using VLAT;
+using System;
 
 namespace VERA
 {
@@ -17,7 +17,7 @@ namespace VERA
         #region VARIABLES
 
         // Overall survey
-        private SurveyInfo activeSurvey;
+        private VERASurveyInfo activeSurvey;
         private bool surveyStarted = false;
         private bool connectionIssues = false;
         private bool previousConnectionIssues = false;
@@ -25,6 +25,7 @@ namespace VERA
 
         // References
         [Header("References")]
+        [SerializeField] private VERAFocusUI focusUi;
         [SerializeField] private Canvas managerCanvas;
         private CanvasGroup managerCanvGroup;
         [SerializeField] private RectTransform responseAreaParent;
@@ -41,7 +42,6 @@ namespace VERA
         private CanvasGroup moreOptionsCanvGroup;
         [SerializeField] private Button nextButton;
         [SerializeField] private Button previousButton;
-        private bool reconnectFlag = false;
 
         // Question
         private int currentQuestionIndex;
@@ -68,6 +68,7 @@ namespace VERA
 
         // Start and results
         private KeyValuePair<string, string>[] surveyResults;
+        private Action onSurveyCompleteCallback;
 
         // Animations
         private float swipeTime = 0.25f;
@@ -76,13 +77,15 @@ namespace VERA
         private VLAT_MenuNavigator vlatMenuNav;
         private int infLoopDetect = 0;
 
+        private bool isSetup = false;
+
         #endregion
 
 
         #region SETUP
 
         // Sets up the manager and its various components
-        public void Setup()
+        private void Awake()
         {
             surveyInterfaceIo = GetComponent<SurveyInterfaceIO>();
             managerCanvGroup = managerCanvas.GetComponent<CanvasGroup>();
@@ -101,6 +104,8 @@ namespace VERA
 
             managerCanvGroup.alpha = 0f;
             managerCanvas.gameObject.SetActive(false);
+
+            isSetup = true;
         }
 
         #endregion
@@ -113,7 +118,6 @@ namespace VERA
         {
             surveyStarted = false;
             connectionIssues = true;
-            reconnectFlag = false;
 
             managerCanvas.gameObject.SetActive(true);
 
@@ -129,16 +133,26 @@ namespace VERA
         }
 
         // Begins a survey based on given info
-        public void BeginSurvey(SurveyInfo surveyToBegin)
+        public void BeginSurvey(VERASurveyInfo surveyToBegin, float heightOffset, float distanceOffset, System.Action onSurveyComplete)
         {
+            VERADebugger.Log("Beginning survey: " + surveyToBegin.surveyName, "SurveyManager", DebugPreference.Verbose);
+
+            if (!isSetup)
+                Awake();
+
             surveyStarted = false;
             connectionIssues = false;
+
+            onSurveyCompleteCallback = onSurveyComplete;
 
             managerCanvas.gameObject.SetActive(true);
 
             LeanTween.cancel(managerCanvGroup.gameObject);
             managerCanvGroup.alpha = 0f;
             managerCanvGroup.LeanAlpha(1f, swipeTime);
+
+            focusUi.SetParameters(heightOffset, distanceOffset);
+            focusUi.ResetPositionImmediate();
 
             activeSurvey = surveyToBegin;
 
@@ -159,6 +173,7 @@ namespace VERA
 
             vlatMenuNav.StartMenuNavigation();
 
+            RemoveDisplayedOptions();
             NextQuestion();
         }
 
@@ -172,7 +187,8 @@ namespace VERA
         // Hides the window by fading it out, then deactivating it
         private IEnumerator HideWindow()
         {
-            surveyInterfaceIo.InvokeCompletion();
+            onSurveyCompleteCallback?.Invoke();
+            onSurveyCompleteCallback = null;
 
             vlatMenuNav.StopMenuNavigation();
 
@@ -202,7 +218,7 @@ namespace VERA
             LeanTween.cancel(questionAreaParent.gameObject);
             LeanTween.cancel(responseAreaParent.gameObject);
 
-            // Begin fade animation        
+            // Begin fade animation
             responseContentCanvGroup.LeanAlpha(0f, swipeTime);
             questionTextCanvGroup.LeanAlpha(0f, swipeTime);
             countDisplayCanvGroup.LeanAlpha(0f, swipeTime);
@@ -307,6 +323,24 @@ namespace VERA
                 nextButton.interactable = true;
         }
 
+        // Shows a brief notification that the current question must be answered before proceeding
+        private IEnumerator ShowAnswerRequiredNotification()
+        {
+            // Store the original question text
+            string originalText = questionText.text;
+            Color originalColor = questionText.color;
+
+            // Flash the question text red briefly to indicate an answer is required
+            questionText.text = "Please answer this question before continuing";
+            questionText.color = new Color(1f, 0.3f, 0.3f); // Light red
+
+            yield return new WaitForSeconds(1.5f);
+
+            // Restore the original question text
+            questionText.text = originalText;
+            questionText.color = originalColor;
+        }
+
         #endregion
 
 
@@ -315,30 +349,11 @@ namespace VERA
         // Navigates to the next question
         public void NextQuestion()
         {
-            // Check for connection issues
+            // Check for connection issues - surveys are required, so always retry
             if (connectionIssues)
             {
-                if (surveyInterfaceIo.reconnectSuccessful)
-                {
-                    surveyInterfaceIo.StartSurveyFromReconnect();
-                    surveyInterfaceIo.StartSurveyFromReconnect();
-                    return;
-                }
-                else
-                {
-                    if (reconnectFlag)
-                    {
-                        StartCoroutine(HideWindow());
-                        return;
-                    }
-                    else
-                    {
-                        reconnectFlag = true;
-                        StopCoroutine(DisplayConnectionIssuesScreen());
-                        StartCoroutine(DisplayConnectionIssuesScreen());
-                        return;
-                    }
-                }
+                StopCoroutine(DisplayConnectionIssuesScreen());
+                StartCoroutine(DisplayConnectionIssuesScreen());
             }
 
             // Check for start screen
@@ -368,11 +383,29 @@ namespace VERA
             // Check for upload complete screen
             if (currentQuestionIndex >= activeSurvey.surveyQuestions.Count + 1)
             {
-                StartCoroutine(HideWindow());
+                // If upload was successful, allow exit. Otherwise, retry upload.
+                if (surveyInterfaceIo.uploadSuccessful)
+                {
+                    StartCoroutine(HideWindow());
+                }
+                else
+                {
+                    // Retry upload - survey responses must be uploaded
+                    StartCoroutine(UploadSurvey());
+                }
                 return;
             }
 
             previousButton.interactable = true;
+
+            // Validate that the current question has been answered (all questions are required)
+            if (currentQuestionIndex >= 0 && !IsCurrentQuestionAnswered())
+            {
+                // Show notification that question must be answered
+                Debug.Log("[VERA Survey] Question must be answered before proceeding.");
+                StartCoroutine(ShowAnswerRequiredNotification());
+                return;
+            }
 
             // Save this question's results
             SaveCurrentQuestionResults();
@@ -399,14 +432,6 @@ namespace VERA
         // Navigates to the previous question
         public void PreviousQuestion()
         {
-            // Check for connection issues
-            if (connectionIssues)
-            {
-                StopCoroutine(TryAgainConnection());
-                StartCoroutine(TryAgainConnection());
-                return;
-            }
-
             // Check if we are on the final screen
             if (currentQuestionIndex == activeSurvey.surveyQuestions.Count)
             {
@@ -468,16 +493,16 @@ namespace VERA
             // Setup new question based on question type
             switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
             {
-                case SurveyQuestionInfo.SurveyQuestionType.MultipleChoice:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
                     SetupChoiceOrSelection(multipleChoiceOptionPrefab);
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Selection:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
                     SetupChoiceOrSelection(selectionOptionPrefab);
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Slider:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
                     SetupSlider();
                     break;
-                case SurveyQuestionInfo.SurveyQuestionType.Matrix:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     matrixSeparatorLine.SetActive(true);
                     SetupMatrix();
                     break;
@@ -520,91 +545,6 @@ namespace VERA
         #region CONNECTION ISSUES
 
 
-        // Tries the connection again, notifying on failure or success
-        private IEnumerator TryAgainConnection()
-        {
-            vlatMenuNav.ClearNavigatableItems();
-
-            previousButton.interactable = false;
-            nextButton.interactable = false;
-
-            FadeOutSwipeAnims();
-
-            // Wait for swipe animation to complete, then remove existing options
-            yield return new WaitForSeconds(swipeTime);
-
-            RemoveDisplayedOptions();
-
-            // Set the description
-            TMP_Text newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-            newBlock.text = "\nRetrying connection...";
-            questionText.text = "Survey: Connection issues";
-
-            UpdateQuestionResponseSizes(true);
-
-            FadeInSwipeAnimsNoCount();
-
-            // Wait for IO to finish uploading (and ensure we have waited at least 1.5 seconds overall)
-            float currentTime = Time.time;
-            yield return StartCoroutine(surveyInterfaceIo.TryReconnect());
-            if (currentTime + 1.5f > Time.time)
-            {
-                yield return new WaitForSeconds((currentTime + 1.5f) - Time.time);
-            }
-
-            if (surveyInterfaceIo.reconnectSuccessful)
-            {
-                // Display that reconnection was successful
-                FadeOutSwipeAnims();
-                yield return new WaitForSeconds(swipeTime);
-                RemoveDisplayedOptions();
-
-                newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-                newBlock.text = "\n\nReconnection was successful. You may now begin the survey.";
-                questionText.text = "Survey: reconnect successful";
-
-                UpdateQuestionResponseSizes(true);
-                FadeInSwipeAnimsNoCount();
-
-                // Allow exit
-                TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-                nextText.text = "Begin";
-                nextButton.interactable = true;
-
-                TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
-                prevText.text = "Previous";
-
-                vlatMenuNav.AddNavigatableItem(nextButton.gameObject);
-            }
-            else
-            {
-                // Display that there was an error reconnecting
-                FadeOutSwipeAnims();
-                yield return new WaitForSeconds(swipeTime);
-                RemoveDisplayedOptions();
-
-                newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
-                newBlock.text = "\n\nUnable to reconnect. Please check your connection and try again, or exit to skip survey.";
-                questionText.text = "Survey: Connection issues";
-
-                UpdateQuestionResponseSizes(true);
-                FadeInSwipeAnimsNoCount();
-
-                // Allow exit and previous
-                TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-                nextText.text = "Exit";
-                nextButton.interactable = true;
-
-                TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
-                prevText.text = "Retry";
-                previousButton.interactable = true;
-
-                vlatMenuNav.AddNavigatableItem(previousButton.gameObject);
-                vlatMenuNav.AddNavigatableItem(nextButton.gameObject);
-            }
-        }
-
-
         // Displays the survey's start screen
         private IEnumerator DisplayConnectionIssuesScreen()
         {
@@ -612,8 +552,9 @@ namespace VERA
 
             vlatMenuNav.ClearNavigatableItems();
 
+            // Both buttons trigger retry - surveys are required
             TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-            nextText.text = "Exit";
+            nextText.text = "Retry";
             nextButton.interactable = true;
 
             TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
@@ -630,7 +571,7 @@ namespace VERA
             // Set the description
             TMP_Text newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
             newBlock.text = "\n\nThere were issues connecting to the survey database. " +
-                "Please check your internet connection, and try again, or exit to skip survey process.";
+                "Please check your internet connection and try again.";
             questionText.text = "Survey: Connection issues";
 
             UpdateQuestionResponseSizes();
@@ -722,6 +663,35 @@ namespace VERA
 
         #region SAVE
 
+        // Checks if the current question has been answered (all questions are required)
+        private bool IsCurrentQuestionAnswered()
+        {
+            if (currentQuestionIndex < 0 || currentQuestionIndex >= activeSurvey.surveyQuestions.Count)
+                return true; // Not on a question, allow progression
+
+            switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
+            {
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
+                    return selectedOption != null;
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
+                    return selectedOptions != null && selectedOptions.Count > 0;
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
+                    // Sliders always have a value since they have a default position
+                    return true;
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
+                    if (matrixOptions == null) return false;
+                    List<int> activeIndexes = matrixOptions.GetActiveIndexes();
+                    // For matrix, require all rows to have a selection (no -1 values)
+                    foreach (int index in activeIndexes)
+                    {
+                        if (index < 0) return false;
+                    }
+                    return activeIndexes.Count > 0;
+                default:
+                    return true;
+            }
+        }
+
         // Saves current question results to array
         private void SaveCurrentQuestionResults()
         {
@@ -734,7 +704,7 @@ namespace VERA
             switch (activeSurvey.surveyQuestions[currentQuestionIndex].questionType)
             {
                 // Multiple choice, save selected answer (e.g., "MultipleChoice: A")
-                case SurveyQuestionInfo.SurveyQuestionType.MultipleChoice:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice:
                     if (selectedOption == null)
                     {
                         saveString += "N/A";
@@ -745,7 +715,7 @@ namespace VERA
                     }
                     break;
                 // Selection, save selected answers (e.g., "Selection: A, B, D")
-                case SurveyQuestionInfo.SurveyQuestionType.Selection:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Selection:
                     if (selectedOptions.Count == 0)
                     {
                         saveString += "N/A";
@@ -760,11 +730,11 @@ namespace VERA
                     }
                     break;
                 // Slider, save slider value (as float)
-                case SurveyQuestionInfo.SurveyQuestionType.Slider:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Slider:
                     saveString += activeSliderOption.GetSliderValue().ToString();
                     break;
                 // Matrix, save row selection options
-                case SurveyQuestionInfo.SurveyQuestionType.Matrix:
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     List<int> activeIndexes = matrixOptions.GetActiveIndexes();
                     if (activeIndexes.Count == 0)
                     {
@@ -860,15 +830,15 @@ namespace VERA
 
                 newBlock = GameObject.Instantiate(textAreaPrefab, responseContentParent);
                 newBlock.text = "There was an issue with uploading survey results. " +
-                    "Please make sure you are connected to the internet and retry, or exit to discard survey results.";
-                questionText.text = "Survey results uploaded";
+                    "Results have been saved locally. Please check your connection and retry to upload.";
+                questionText.text = "Upload pending";
 
                 UpdateQuestionResponseSizes(true);
                 FadeInSwipeAnimsNoCount();
 
-                // Allow exit and previous
+                // Both buttons trigger retry - survey responses must be uploaded
                 TMP_Text nextText = nextButton.transform.GetComponentInChildren<TMP_Text>();
-                nextText.text = "Exit";
+                nextText.text = "Retry";
                 nextButton.interactable = true;
 
                 TMP_Text prevText = previousButton.transform.GetComponentInChildren<TMP_Text>();
@@ -931,7 +901,7 @@ namespace VERA
         public void OptionWasClicked(SurveySelectionOption option)
         {
             // Multiple choice, only one option can be active at a time
-            if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == SurveyQuestionInfo.SurveyQuestionType.MultipleChoice)
+            if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice)
             {
                 // Selected new option (off -> on)
                 if (option.isSelected)
@@ -955,7 +925,7 @@ namespace VERA
                 }
             }
             // Selection, multiple options can be active at a time
-            else if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == SurveyQuestionInfo.SurveyQuestionType.Selection)
+            else if (activeSurvey.surveyQuestions[currentQuestionIndex].questionType == VERASurveyQuestionInfo.VERASurveyQuestionType.Selection)
             {
                 // If we are activating an option, add it to the selected options list if needed
                 if (option.isSelected)
