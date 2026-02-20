@@ -53,6 +53,7 @@ namespace VERA
         public UnityEvent onLoggerInitialized = new UnityEvent();
         public VERACsvHandler[] csvHandlers { get; private set; }
         private Dictionary<string, string> conditionsCache = new Dictionary<string, string>();
+        private Dictionary<string, Dictionary<string, string>> conditionEncodingLookup = new Dictionary<string, Dictionary<string, string>>();
 
         // Upload events and progress
         private UnityWebRequest trackedUploadRequest;
@@ -1051,6 +1052,7 @@ namespace VERA
             // Always add all IVs to the cache - they'll appear in telemetry immediately
             // Trials will update the values when they run
             conditionsCache.Clear();
+            conditionEncodingLookup.Clear();
             foreach (IVInfo iv in resp.independentVariables)
             {
                 if (iv.selectedCondition != null && !string.IsNullOrEmpty(iv.selectedCondition.name))
@@ -1069,6 +1071,18 @@ namespace VERA
                     // No conditions available - initialize with empty value
                     conditionsCache.Add(iv.ivName, "");
                     Debug.Log($"[VERA Logger] Independent variable \"{iv.ivName}\" has no conditions - initialized with empty value.");
+                }
+
+                // Build encoding lookup for all conditions of this IV
+                if (iv.conditions != null && iv.conditions.Length > 0)
+                {
+                    var encodingMap = new Dictionary<string, string>();
+                    foreach (ConditionsInfo c in iv.conditions)
+                    {
+                        if (!string.IsNullOrEmpty(c.name))
+                            encodingMap[c.name] = c.encoding ?? c.name;
+                    }
+                    conditionEncodingLookup[iv.ivName] = encodingMap;
                 }
             }
 
@@ -1112,21 +1126,25 @@ namespace VERA
             }
         }
 
-        // Returns a string representing the experiment conditions
-        // JSON format - lists all IVs and their values
+        // Returns a flat string representing the experiment conditions for CSV logging
+        // Format: "IV Name: encoding, IV Name 2: encoding2"
         public string GetExperimentConditions()
         {
             if (conditionsCache == null || conditionsCache.Count == 0)
-                return "{}";
+                return "";
 
             var pairs = new List<string>();
             foreach (var kvp in conditionsCache)
             {
-                string key = kvp.Key.Replace("\"", "\\\"");
-                string value = kvp.Value.Replace("\"", "\\\"");
-                pairs.Add($"\"{key}\":\"{value}\"");
+                string encoding = kvp.Value;
+                if (conditionEncodingLookup.TryGetValue(kvp.Key, out var encodingMap) &&
+                    encodingMap.TryGetValue(kvp.Value, out string resolvedEncoding))
+                {
+                    encoding = resolvedEncoding;
+                }
+                pairs.Add($"{kvp.Key}: {encoding}");
             }
-            return "{" + string.Join(",", pairs.ToArray()) + "}";
+            return string.Join(", ", pairs);
         }
 
         [System.Serializable]
