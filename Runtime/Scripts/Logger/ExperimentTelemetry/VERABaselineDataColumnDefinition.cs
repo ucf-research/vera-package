@@ -15,7 +15,7 @@ namespace VERA
         public static VERAColumnDefinition CreateBaselineDataColumnDefinition()
         {
             var columnDefinition = ScriptableObject.CreateInstance<VERAColumnDefinition>();
-            
+
             // Set up file type
             columnDefinition.fileType = new VERAColumnDefinition.FileType
             {
@@ -23,7 +23,7 @@ namespace VERA
                 name = "Experiment_Telemetry",
                 description = "Baseline VR tracking and input data"
             };
-            
+
             // Create columns according to the specification
             columnDefinition.columns = new List<VERAColumnDefinition.Column>
             {
@@ -199,27 +199,27 @@ namespace VERA
                     type = VERAColumnDefinition.DataType.Number
                 }
             };
-            
+
             return columnDefinition;
         }
-        
+
 #if UNITY_EDITOR
         public static void CreateAndSaveBaselineDataColumnDefinition()
         {
             var columnDef = CreateBaselineDataColumnDefinition();
-            
+
             // Save to Resources folder so it can be loaded by VERALogger
-            string resourcesPath = "Assets/Resources";
+            string resourcesPath = "Assets/VERA/Resources";
             if (!AssetDatabase.IsValidFolder(resourcesPath))
             {
-                AssetDatabase.CreateFolder("Assets", "Resources");
+                AssetDatabase.CreateFolder("Assets/VERA", "Resources");
             }
-            
+
             string assetPath = $"{resourcesPath}/Experiment_TelemetryColumnDefinition.asset";
             AssetDatabase.CreateAsset(columnDef, assetPath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            
+
             // Create column definition (removed debug logging to keep console clean)
             Selection.activeObject = columnDef;
         }

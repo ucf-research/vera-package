@@ -135,7 +135,7 @@ namespace VERA
         {
             if (isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Trial workflow is already initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Trial workflow is already initialized.");
                 yield break;
             }
 
@@ -197,13 +197,13 @@ namespace VERA
                         result.success = false;
                         result.error = currentRequest.error;
                         result.responseCode = (int)currentRequest.responseCode;
-                        Debug.LogWarning($"[VERA Trial Workflow] Request failed with non-retryable error (HTTP {currentRequest.responseCode}): {currentRequest.error}");
+                        VERADebugger.LogWarning($"[VERA Trial Workflow] Request failed with non-retryable error (HTTP {currentRequest.responseCode}): {currentRequest.error}");
                         onComplete?.Invoke(result);
                         yield break;
                     }
                     else
                     {
-                        Debug.LogWarning($"[VERA Trial Workflow] Request attempt {attemptCount}/{maxRetries} failed: {currentRequest.error}");
+                        VERADebugger.LogWarning($"[VERA Trial Workflow] Request attempt {attemptCount}/{maxRetries} failed: {currentRequest.error}");
 
                         if (attemptCount < maxRetries)
                         {
@@ -221,7 +221,7 @@ namespace VERA
             // All retries exhausted
             result.success = false;
             result.error = $"Request failed after {maxRetries} attempts";
-            Debug.LogError($"[VERA Trial Workflow] {result.error}");
+            VERADebugger.LogError($"[VERA Trial Workflow] {result.error}");
             onComplete?.Invoke(result);
         }
 
@@ -313,11 +313,11 @@ namespace VERA
                 string checkpointData = JsonUtility.ToJson(new CheckpointResponse { currentTrialIndex = trialIndex });
                 PlayerPrefs.SetString(LocalCheckpointKey, checkpointData);
                 PlayerPrefs.Save();
-                Debug.Log($"[VERA Trial Workflow] Local checkpoint saved: trial {trialIndex + 1}/{trialWorkflow.Count}");
+                VERADebugger.Log($"[VERA Trial Workflow] Local checkpoint saved: trial {trialIndex + 1}/{trialWorkflow.Count}");
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Failed to save local checkpoint: {e.Message}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Failed to save local checkpoint: {e.Message}");
             }
         }
 
@@ -336,14 +336,14 @@ namespace VERA
                     if (checkpoint != null && checkpoint.currentTrialIndex >= 0)
                     {
                         trialIndex = checkpoint.currentTrialIndex;
-                        Debug.Log($"[VERA Trial Workflow] Local checkpoint found: trial {trialIndex + 1}");
+                        VERADebugger.Log($"[VERA Trial Workflow] Local checkpoint found: trial {trialIndex + 1}");
                         return true;
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Failed to load local checkpoint: {e.Message}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Failed to load local checkpoint: {e.Message}");
             }
             return false;
         }
@@ -383,7 +383,7 @@ namespace VERA
             if (withinGroupsForLatinSquare.Count > 0 && !latinSquareApplied)
             {
                 // This is just a warning, not an error - Latin square is optional
-                Debug.LogWarning("[VERA Trial Workflow] Latin square ordering is available but may not have been applied. Call ApplyLatinSquareOrdering() if needed.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Latin square ordering is available but may not have been applied. Call ApplyLatinSquareOrdering() if needed.");
             }
 
             return true;
@@ -422,7 +422,7 @@ namespace VERA
                 }
             }
 
-            Debug.Log($"[VERA Trial Workflow] Built group metadata cache: {groupMetadataCache.Count} groups");
+            VERADebugger.Log($"[VERA Trial Workflow] Built group metadata cache: {groupMetadataCache.Count} groups");
         }
 
         /// <summary>
@@ -470,7 +470,7 @@ namespace VERA
             // Warn if we're in a very high cycle (might indicate an error)
             if (cycleNumber >= 100)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Participant {participantNumber} is in cycle {cycleNumber} for group '{groupName}' ({conditionCount} conditions). This seems unusually high - please verify the participant number is correct.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Participant {participantNumber} is in cycle {cycleNumber} for group '{groupName}' ({conditionCount} conditions). This seems unusually high - please verify the participant number is correct.");
             }
 
             // Provide info about counterbalancing status
@@ -480,22 +480,22 @@ namespace VERA
                 int participantsNeeded = conditionCount - (participantNumber + 1);
                 if (participantsNeeded > 0)
                 {
-                    Debug.Log($"[VERA Trial Workflow] Group '{groupName}': Participant {participantNumber} assigned to row {cyclePosition}/{conditionCount}. Need {participantsNeeded} more participant(s) to complete first counterbalancing cycle.");
+                    VERADebugger.Log($"[VERA Trial Workflow] Group '{groupName}': Participant {participantNumber} assigned to row {cyclePosition}/{conditionCount}. Need {participantsNeeded} more participant(s) to complete first counterbalancing cycle.");
                 }
                 else
                 {
-                    Debug.Log($"[VERA Trial Workflow] Group '{groupName}': First counterbalancing cycle complete. Participant {participantNumber} is the last of cycle 0.");
+                    VERADebugger.Log($"[VERA Trial Workflow] Group '{groupName}': First counterbalancing cycle complete. Participant {participantNumber} is the last of cycle 0.");
                 }
             }
             else
             {
-                Debug.Log($"[VERA Trial Workflow] Group '{groupName}': Participant {participantNumber} assigned to row {cyclePosition}/{conditionCount} (cycle {cycleNumber}). Counterbalancing will continue across multiple cycles.");
+                VERADebugger.Log($"[VERA Trial Workflow] Group '{groupName}': Participant {participantNumber} assigned to row {cyclePosition}/{conditionCount} (cycle {cycleNumber}). Counterbalancing will continue across multiple cycles.");
             }
 
             // Warn if using a large participant number with few conditions
             if (conditionCount <= 4 && participantNumber > 1000)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Group '{groupName}' has only {conditionCount} conditions but participant number is {participantNumber}. Consider using sequential participant numbers (0, 1, 2, ...) for better counterbalancing tracking.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Group '{groupName}' has only {conditionCount} conditions but participant number is {participantNumber}. Consider using sequential participant numbers (0, 1, 2, ...) for better counterbalancing tracking.");
             }
         }
 
@@ -530,21 +530,21 @@ namespace VERA
             // Validate workflow state
             if (!ValidateWorkflowReadyToStart(out string error))
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Cannot start next trial: {error}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Cannot start next trial: {error}");
                 return null;
             }
 
             // Prevent starting next trial if current trial is still in progress
             if (currentTrialState == TrialState.InProgress)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot start next trial: current trial is still in progress. Call CompleteTrial() or AbortTrial() first.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot start next trial: current trial is still in progress. Call CompleteTrial() or AbortTrial() first.");
                 return null;
             }
 
             // Check if we're waiting for a survey to complete
             if (waitingForSurvey)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot start next trial: waiting for attached survey to complete. Call MarkSurveyCompleted() first.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot start next trial: waiting for attached survey to complete. Call MarkSurveyCompleted() first.");
                 return null;
             }
 
@@ -552,7 +552,7 @@ namespace VERA
 
             if (currentTrialIndex >= trialWorkflow.Count)
             {
-                Debug.Log("[VERA Trial Workflow] No more trials in workflow.");
+                VERADebugger.Log("No more trials in workflow.", "VERA Trial Workflow", DebugPreference.Minimal);
                 currentTrialIndex = trialWorkflow.Count;
                 return null;
             }
@@ -562,7 +562,7 @@ namespace VERA
             // Validate trial before starting
             if (trial == null)
             {
-                Debug.LogError($"[VERA Trial Workflow] Trial at index {currentTrialIndex} is null! This should not happen.");
+                VERADebugger.LogError($"[VERA Trial Workflow] Trial at index {currentTrialIndex} is null! This should not happen.");
                 currentTrialState = TrialState.Aborted;
                 return null;
             }
@@ -576,7 +576,7 @@ namespace VERA
                 string sid = trial.surveyId;
                 string sname = trial.surveyName ?? trial.label;
                 string iid = trial.instanceId;
-                Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
+                VERADebugger.Log($"Standalone survey '{sname}' encountered. Waiting for survey completion.", "VERA Trial Workflow", DebugPreference.Informative);
                 waitingForSurvey = true;
                 pendingSurveyPosition = "standalone";
                 currentTrialState = TrialState.InProgress; // Mark trial as in progress (the survey IS the trial)
@@ -589,7 +589,7 @@ namespace VERA
             // Check for attached survey that should show BEFORE trial
             if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
             {
-                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
+                VERADebugger.Log($"Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.", "VERA Trial Workflow", DebugPreference.Informative);
                 waitingForSurvey = true;
                 pendingSurveyPosition = "before";
                 OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before", trial.instanceId);
@@ -604,14 +604,14 @@ namespace VERA
             trialStartTime = Time.time;
             trialDuration = 0f;
 
-            Debug.Log($"[VERA Trial Workflow] Started trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}");
+            VERADebugger.Log($"Started trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}", "VERA Trial Workflow", DebugPreference.Minimal);
 
             // Update experiment-level IV conditions from trial conditions
             if (trial.conditions != null && trial.conditions.Count > 0)
             {
                 string conditionsStr = string.Join(", ",
                     System.Linq.Enumerable.Select(trial.conditions, kvp => $"{kvp.Key}={kvp.Value}"));
-                Debug.Log($"[VERA Trial Workflow] Trial conditions: {conditionsStr}");
+                VERADebugger.Log($"Trial conditions: {conditionsStr}", "VERA Trial Workflow", DebugPreference.Informative);
 
                 // Set the experiment-level IV values to match this trial's conditions
                 foreach (var kvp in trial.conditions)
@@ -640,14 +640,14 @@ namespace VERA
             // Validate workflow state
             if (!ValidateWorkflowReadyToStart(out string error))
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Cannot get next trial: {error}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Cannot get next trial: {error}");
                 return null;
             }
 
             // Prevent advancing if current trial is still in progress
             if (currentTrialState == TrialState.InProgress)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot advance to next trial: current trial is still in progress. Call CompleteTrial() or AbortTrial() first.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot advance to next trial: current trial is still in progress. Call CompleteTrial() or AbortTrial() first.");
                 return null;
             }
 
@@ -655,7 +655,7 @@ namespace VERA
 
             if (currentTrialIndex >= trialWorkflow.Count)
             {
-                Debug.Log("[VERA Trial Workflow] No more trials in workflow.");
+                VERADebugger.Log("No more trials in workflow.", "VERA Trial Workflow", DebugPreference.Minimal);
                 currentTrialIndex = trialWorkflow.Count;
                 return null;
             }
@@ -664,11 +664,11 @@ namespace VERA
 
             if (trial == null)
             {
-                Debug.LogError($"[VERA Trial Workflow] Trial at index {currentTrialIndex} is null! This should not happen.");
+                VERADebugger.LogError($"[VERA Trial Workflow] Trial at index {currentTrialIndex} is null! This should not happen.");
                 return null;
             }
 
-            Debug.Log($"[VERA Trial Workflow] Advanced to trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}");
+            VERADebugger.Log($"Advanced to trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}", "VERA Trial Workflow", DebugPreference.Minimal);
 
             return trial;
         }
@@ -677,33 +677,33 @@ namespace VERA
         {
             if (!isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot start trial: workflow not initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot start trial: workflow not initialized.");
                 return false;
             }
 
             if (currentTrialIndex < 0 || currentTrialIndex >= trialWorkflow.Count)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot start trial: no trial is current. Call GetNextTrial() first.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot start trial: no trial is current. Call GetNextTrial() first.");
                 return false;
             }
 
             if (currentTrialState == TrialState.InProgress)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Trial is already in progress.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Trial is already in progress.");
                 return false;
             }
 
             // Check if we're waiting for a survey to complete
             if (waitingForSurvey)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Cannot start trial: waiting for '{pendingSurveyPosition}' survey to complete. Call MarkSurveyCompleted() first.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Cannot start trial: waiting for '{pendingSurveyPosition}' survey to complete. Call MarkSurveyCompleted() first.");
                 return false;
             }
 
             TrialConfig trial = trialWorkflow[currentTrialIndex];
             if (trial == null)
             {
-                Debug.LogError($"[VERA Trial Workflow] Current trial is null!");
+                VERADebugger.LogError($"[VERA Trial Workflow] Current trial is null!");
                 return false;
             }
 
@@ -716,7 +716,7 @@ namespace VERA
                 string sid = trial.surveyId;
                 string sname = trial.surveyName ?? trial.label;
                 string iid = trial.instanceId;
-                Debug.Log($"[VERA Trial Workflow] Standalone survey '{sname}' encountered. Waiting for survey completion.");
+                VERADebugger.Log($"Standalone survey '{sname}' encountered. Waiting for survey completion.", "VERA Trial Workflow", DebugPreference.Informative);
                 waitingForSurvey = true;
                 pendingSurveyPosition = "standalone";
                 OnSurveyRequired?.Invoke(sid, sname, "standalone", iid);
@@ -726,7 +726,7 @@ namespace VERA
             // Check for attached survey that should show BEFORE trial
             if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "before")
             {
-                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.");
+                VERADebugger.Log($"Trial has attached survey '{trial.attachedSurveyName}' to show BEFORE trial starts.", "VERA Trial Workflow", DebugPreference.Informative);
                 waitingForSurvey = true;
                 pendingSurveyPosition = "before";
                 OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "before", trial.instanceId);
@@ -737,13 +737,13 @@ namespace VERA
             trialStartTime = Time.time;
             trialDuration = 0f;
 
-            Debug.Log($"[VERA Trial Workflow] Started trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}");
+            VERADebugger.Log($"Started trial {currentTrialIndex + 1}/{trialWorkflow.Count}: {trial.label ?? "Unlabeled"}", "VERA Trial Workflow", DebugPreference.Minimal);
 
             if (trial.conditions != null && trial.conditions.Count > 0)
             {
                 string conditionsStr = string.Join(", ",
                     trial.conditions.Select(kvp => $"{kvp.Key}={kvp.Value}"));
-                Debug.Log($"[VERA Trial Workflow] Trial conditions: {conditionsStr}");
+                VERADebugger.Log($"Trial conditions: {conditionsStr}", "VERA Trial Workflow", DebugPreference.Informative);
             }
 
             return true;
@@ -753,7 +753,7 @@ namespace VERA
         {
             if (!isInitialized || currentTrialState != TrialState.InProgress)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot complete trial: no trial is currently in progress.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot complete trial: no trial is currently in progress.");
                 return false;
             }
 
@@ -761,7 +761,7 @@ namespace VERA
             currentTrialState = TrialState.Completed;
 
             TrialConfig trial = GetCurrentTrial();
-            Debug.Log($"[VERA Trial Workflow] Completed trial: {trial?.label ?? "Unknown"} (Duration: {trialDuration:F2}s)");
+            VERADebugger.Log($"Completed trial: {trial?.label ?? "Unknown"} (Duration: {trialDuration:F2}s)", "VERA Trial Workflow", DebugPreference.Minimal);
 
             // Fire event after trial completes
             OnTrialCompleted?.Invoke(trial);
@@ -769,7 +769,7 @@ namespace VERA
             // Check for attached survey that should show AFTER trial
             if (!string.IsNullOrEmpty(trial.attachedSurveyId) && trial.surveyPosition == "after")
             {
-                Debug.Log($"[VERA Trial Workflow] Trial has attached survey '{trial.attachedSurveyName}' to show AFTER trial completion.");
+                VERADebugger.Log($"Trial has attached survey '{trial.attachedSurveyName}' to show AFTER trial completion.", "VERA Trial Workflow", DebugPreference.Informative);
                 waitingForSurvey = true;
                 pendingSurveyPosition = "after";
                 OnSurveyRequired?.Invoke(trial.attachedSurveyId, trial.attachedSurveyName, "after", trial.instanceId);
@@ -793,7 +793,7 @@ namespace VERA
         {
             if (!isInitialized || currentTrialState != TrialState.InProgress)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot abort trial: no trial is currently in progress.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot abort trial: no trial is currently in progress.");
                 return false;
             }
 
@@ -804,7 +804,7 @@ namespace VERA
             string logMessage = $"[VERA Trial Workflow] Aborted trial: {trial?.label ?? "Unknown"} (Duration: {trialDuration:F2}s)";
             if (!string.IsNullOrEmpty(reason))
                 logMessage += $" - Reason: {reason}";
-            Debug.LogWarning(logMessage);
+            VERADebugger.LogWarning(logMessage);
 
             return true;
         }
@@ -817,7 +817,7 @@ namespace VERA
             trialDuration = 0f;
             waitingForSurvey = false;
             pendingSurveyPosition = null;
-            Debug.Log("[VERA Trial Workflow] Workflow reset to beginning.");
+            VERADebugger.Log("Workflow reset to beginning.", "VERA Trial Workflow", DebugPreference.Minimal);
         }
 
         /// <summary>
@@ -826,7 +826,7 @@ namespace VERA
         /// </summary>
         public void Cleanup()
         {
-            Debug.Log("[VERA Trial Workflow] Cleaning up trial workflow manager...");
+            VERADebugger.Log("[VERA Trial Workflow] Cleaning up trial workflow manager...");
 
             // Stop any running coroutines
             StopAllCoroutines();
@@ -867,7 +867,7 @@ namespace VERA
             participantNumber = -1;
             manualBetweenSubjectsAssignments = null;
 
-            Debug.Log("[VERA Trial Workflow] Cleanup complete.");
+            VERADebugger.Log("[VERA Trial Workflow] Cleanup complete.");
         }
 
         #endregion
@@ -891,7 +891,7 @@ namespace VERA
         {
             if (string.IsNullOrEmpty(conditionName))
             {
-                Debug.LogWarning("[VERA Trial Workflow] GetConditionValue called with null or empty conditionName.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] GetConditionValue called with null or empty conditionName.");
                 return null;
             }
 
@@ -1102,7 +1102,7 @@ namespace VERA
         /// <code>
         /// // Subscribe to survey event - handles standalone, before, and after surveys
         /// trialManager.OnSurveyRequired += (surveyId, surveyName, position, instanceId) => {
-        ///     Debug.Log($"Survey required: {surveyName} ({position}), instanceId: {instanceId}");
+        ///     VERADebugger.Log($"Survey required: {surveyName} ({position}), instanceId: {instanceId}");
         ///     StartCoroutine(ShowSurvey(surveyId, surveyName, instanceId));
         /// };
         ///
@@ -1204,11 +1204,11 @@ namespace VERA
         {
             if (!waitingForSurvey)
             {
-                Debug.LogWarning("[VERA Trial Workflow] MarkSurveyCompleted called but no survey was pending.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] MarkSurveyCompleted called but no survey was pending.");
                 return;
             }
 
-            Debug.Log($"[VERA Trial Workflow] Survey marked as completed (position: {pendingSurveyPosition})");
+            VERADebugger.Log($"Survey marked as completed (position: {pendingSurveyPosition})", "VERA Trial Workflow", DebugPreference.Informative);
 
             // For standalone surveys, mark the trial itself as complete
             if (pendingSurveyPosition == "standalone")
@@ -1269,19 +1269,19 @@ namespace VERA
         {
             if (currentTrialIndex >= 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
                 return;
             }
 
             if (!isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
                 return;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count <= 1)
             {
-                Debug.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
+                VERADebugger.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
                 return;
             }
 
@@ -1297,7 +1297,7 @@ namespace VERA
                 trialWorkflow[n] = temp;
             }
 
-            Debug.Log("[VERA Trial Workflow] Workflow randomized using Fisher-Yates shuffle.");
+            VERADebugger.Log("Workflow randomized using Fisher-Yates shuffle.", "VERA Trial Workflow", DebugPreference.Informative);
 
             // Rebuild cache after randomization
             BuildGroupMetadataCache();
@@ -1307,19 +1307,19 @@ namespace VERA
         {
             if (currentTrialIndex >= 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
                 return;
             }
 
             if (!isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
                 return;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count <= 1)
             {
-                Debug.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
+                VERADebugger.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
                 return;
             }
 
@@ -1335,7 +1335,7 @@ namespace VERA
                 trialWorkflow[n] = temp;
             }
 
-            Debug.Log($"[VERA Trial Workflow] Workflow randomized with seed {seed} using Fisher-Yates shuffle.");
+            VERADebugger.Log($"Workflow randomized with seed {seed} using Fisher-Yates shuffle.", "VERA Trial Workflow", DebugPreference.Informative);
 
             // Rebuild cache after randomization
             BuildGroupMetadataCache();
@@ -1345,25 +1345,25 @@ namespace VERA
         {
             if (currentTrialIndex >= 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: trials have already started.");
                 return;
             }
 
             if (!isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot randomize: workflow not initialized.");
                 return;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count <= 1)
             {
-                Debug.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
+                VERADebugger.Log("[VERA Trial Workflow] Workflow has 0-1 trials, no randomization needed.");
                 return;
             }
 
             if (blockSize <= 0)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Invalid block size {blockSize}. Using default randomization.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Invalid block size {blockSize}. Using default randomization.");
                 RandomizeWorkflow();
                 return;
             }
@@ -1390,7 +1390,7 @@ namespace VERA
                 }
             }
 
-            Debug.Log($"[VERA Trial Workflow] Workflow randomized within blocks of size {blockSize}.");
+            VERADebugger.Log($"Workflow randomized within blocks of size {blockSize}.", "VERA Trial Workflow", DebugPreference.Informative);
 
             // Rebuild cache after randomization
             BuildGroupMetadataCache();
@@ -1405,7 +1405,7 @@ namespace VERA
         {
             if (participantNumber < 0)
             {
-                Debug.LogError("[VERA Trial Workflow] Cannot apply Latin square: no participant number was provided during Initialize(). Use ApplyLatinSquareOrdering(participantNumber) instead.");
+                VERADebugger.LogError("[VERA Trial Workflow] Cannot apply Latin square: no participant number was provided during Initialize(). Use ApplyLatinSquareOrdering(participantNumber) instead.");
                 return;
             }
 
@@ -1462,20 +1462,20 @@ namespace VERA
             // Validate totalParticipants
             if (totalParticipants <= 0)
             {
-                Debug.LogError($"[VERA Trial Workflow] Invalid totalParticipants ({totalParticipants}). Must be greater than 0.");
+                VERADebugger.LogError($"[VERA Trial Workflow] Invalid totalParticipants ({totalParticipants}). Must be greater than 0.");
                 return false;
             }
 
             // Validate participantNumber is within range
             if (participantNumber < 0)
             {
-                Debug.LogError($"[VERA Trial Workflow] Invalid participantNumber ({participantNumber}). Must be 0 or greater.");
+                VERADebugger.LogError($"[VERA Trial Workflow] Invalid participantNumber ({participantNumber}). Must be 0 or greater.");
                 return false;
             }
 
             if (participantNumber >= totalParticipants)
             {
-                Debug.LogError($"[VERA Trial Workflow] participantNumber ({participantNumber}) must be less than totalParticipants ({totalParticipants}). Participant numbers are 0-indexed.");
+                VERADebugger.LogError($"[VERA Trial Workflow] participantNumber ({participantNumber}) must be less than totalParticipants ({totalParticipants}). Participant numbers are 0-indexed.");
                 return false;
             }
 
@@ -1483,7 +1483,7 @@ namespace VERA
             int maxConditionCount = GetMaxConditionCount();
             if (maxConditionCount > totalParticipants)
             {
-                Debug.LogError($"[VERA Trial Workflow] INCOMPLETE COUNTERBALANCING: " +
+                VERADebugger.LogError($"[VERA Trial Workflow] INCOMPLETE COUNTERBALANCING: " +
                     $"You have {maxConditionCount} conditions but only {totalParticipants} total participants. " +
                     $"For complete Latin square counterbalancing, you need at least {maxConditionCount} participants. " +
                     $"Cannot apply Latin square ordering - increase totalParticipants to at least {maxConditionCount}.");
@@ -1494,7 +1494,7 @@ namespace VERA
             if (totalParticipants % maxConditionCount != 0)
             {
                 int recommendedTotal = ((totalParticipants / maxConditionCount) + 1) * maxConditionCount;
-                Debug.LogWarning($"[VERA Trial Workflow] Note: totalParticipants ({totalParticipants}) is not a multiple of condition count ({maxConditionCount}). " +
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Note: totalParticipants ({totalParticipants}) is not a multiple of condition count ({maxConditionCount}). " +
                     $"For perfectly balanced counterbalancing, consider using {recommendedTotal} participants.");
             }
 
@@ -1533,25 +1533,25 @@ namespace VERA
         {
             if (currentTrialIndex >= 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: trials have already started.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: trials have already started.");
                 return false;
             }
 
             if (!isInitialized)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: workflow not initialized.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: workflow not initialized.");
                 return false;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: no trials in workflow.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot apply Latin square: no trials in workflow.");
                 return false;
             }
 
             if (participantNumber < 0)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNumber}). Using 0 as fallback.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNumber}). Using 0 as fallback.");
                 participantNumber = 0;
             }
 
@@ -1564,7 +1564,7 @@ namespace VERA
             // If no within-groups need Latin square, apply to entire workflow (legacy behavior)
             if (withinGroupsForLatinSquare == null || withinGroupsForLatinSquare.Count == 0)
             {
-                Debug.Log("[VERA Trial Workflow] No within-subjects groups require Latin square. Applying to entire workflow (legacy mode).");
+                VERADebugger.Log("[VERA Trial Workflow] No within-subjects groups require Latin square. Applying to entire workflow (legacy mode).");
                 ApplyLatinSquareToEntireWorkflow(participantNumber);
                 return true;
             }
@@ -1577,7 +1577,7 @@ namespace VERA
 
                 if (indices == null || indices.Count <= 1)
                 {
-                    Debug.Log($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}': too few trials ({indices?.Count ?? 0}).");
+                    VERADebugger.Log($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}': too few trials ({indices?.Count ?? 0}).");
                     continue;
                 }
 
@@ -1587,7 +1587,7 @@ namespace VERA
                 {
                     if (idx < 0 || idx >= trialWorkflow.Count)
                     {
-                        Debug.LogError($"[VERA Trial Workflow] Invalid trial index {idx} in group '{groupId}'. Workflow has {trialWorkflow.Count} trials.");
+                        VERADebugger.LogError($"[VERA Trial Workflow] Invalid trial index {idx} in group '{groupId}'. Workflow has {trialWorkflow.Count} trials.");
                         invalidIndices = true;
                         break;
                     }
@@ -1595,7 +1595,7 @@ namespace VERA
 
                 if (invalidIndices)
                 {
-                    Debug.LogError($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}' due to invalid indices.");
+                    VERADebugger.LogError($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}' due to invalid indices.");
                     continue;
                 }
 
@@ -1608,7 +1608,7 @@ namespace VERA
                 {
                     if (trialWorkflow[idx] == null)
                     {
-                        Debug.LogError($"[VERA Trial Workflow] Trial at index {idx} is null in group '{groupId}'.");
+                        VERADebugger.LogError($"[VERA Trial Workflow] Trial at index {idx} is null in group '{groupId}'.");
                         invalidIndices = true;
                         break;
                     }
@@ -1617,7 +1617,7 @@ namespace VERA
 
                 if (invalidIndices)
                 {
-                    Debug.LogError($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}' due to null trials.");
+                    VERADebugger.LogError($"[VERA Trial Workflow] Skipping Latin square for group '{groupId}' due to null trials.");
                     continue;
                 }
 
@@ -1628,7 +1628,7 @@ namespace VERA
                     trialWorkflow[indices[i]] = groupTrials[sourceIndex];
                 }
 
-                Debug.Log($"[VERA Trial Workflow] Applied Latin square to within-group '{groupId}' for participant {participantNumber} (row {offset} of {n}).");
+                VERADebugger.Log($"Applied Latin square to within-group '{groupId}' for participant {participantNumber} (row {offset} of {n}).", "VERA Trial Workflow", DebugPreference.Informative);
             }
 
             // Rebuild cache after reordering
@@ -1644,13 +1644,13 @@ namespace VERA
         {
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot apply Latin square to entire workflow: workflow is empty.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot apply Latin square to entire workflow: workflow is empty.");
                 return;
             }
 
             if (participantNumber < 0)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNumber}). Using 0.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNumber}). Using 0.");
                 participantNumber = 0;
             }
 
@@ -1663,14 +1663,14 @@ namespace VERA
                 int index = (i + offset) % n;
                 if (trialWorkflow[index] == null)
                 {
-                    Debug.LogError($"[VERA Trial Workflow] Trial at index {index} is null. Cannot apply Latin square.");
+                    VERADebugger.LogError($"[VERA Trial Workflow] Trial at index {index} is null. Cannot apply Latin square.");
                     return;
                 }
                 latinSquareOrder.Add(trialWorkflow[index]);
             }
 
             trialWorkflow = latinSquareOrder;
-            Debug.Log($"[VERA Trial Workflow] Applied Latin square to entire workflow for participant {participantNumber} (row {offset} of {n}).");
+            VERADebugger.Log($"Applied Latin square to entire workflow for participant {participantNumber} (row {offset} of {n}).", "VERA Trial Workflow", DebugPreference.Informative);
 
             // Rebuild cache after reordering
             BuildGroupMetadataCache();
@@ -1747,7 +1747,7 @@ namespace VERA
         ///     StartCoroutine(ShowSurveyUI(surveyId, surveyName, instanceId, () => workflow.MarkSurveyCompleted()));
         /// };
         /// workflow.OnWorkflowCompleted += () => {
-        ///     Debug.Log("All trials done!");
+        ///     VERADebugger.Log("All trials done!");
         /// };
         /// workflow.StartAutomatedWorkflow();
         /// </code>
@@ -1756,25 +1756,25 @@ namespace VERA
         {
             if (!isInitialized)
             {
-                Debug.LogError("[VERA Trial Workflow] Cannot start automated workflow: not initialized.");
+                VERADebugger.LogError("[VERA Trial Workflow] Cannot start automated workflow: not initialized.");
                 return;
             }
 
             if (automatedMode)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Automated workflow is already running.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Automated workflow is already running.");
                 return;
             }
 
             if (trialWorkflow.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] No trials in workflow. Nothing to automate.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] No trials in workflow. Nothing to automate.");
                 OnWorkflowCompleted?.Invoke();
                 return;
             }
 
             automatedMode = true;
-            Debug.Log($"[VERA Trial Workflow] Starting automated workflow with {trialWorkflow.Count} items.");
+            VERADebugger.Log($"Starting automated workflow with {trialWorkflow.Count} items.", "VERA Trial Workflow", DebugPreference.Informative);
             automatedWorkflowCoroutine = StartCoroutine(RunAutomatedWorkflow());
         }
 
@@ -1786,7 +1786,7 @@ namespace VERA
         {
             if (!automatedMode)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Automated workflow is not running.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Automated workflow is not running.");
                 return;
             }
 
@@ -1798,7 +1798,7 @@ namespace VERA
 
             automatedMode = false;
             waitingForTrialLogic = false;
-            Debug.Log("[VERA Trial Workflow] Automated workflow stopped.");
+            VERADebugger.Log("Automated workflow stopped.", "VERA Trial Workflow", DebugPreference.Informative);
         }
 
         /// <summary>
@@ -1809,13 +1809,13 @@ namespace VERA
         {
             if (!automatedMode)
             {
-                Debug.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but automated mode is not active. Use CompleteTrial() for manual mode.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but automated mode is not active. Use CompleteTrial() for manual mode.");
                 return;
             }
 
             if (!waitingForTrialLogic)
             {
-                Debug.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but no trial is waiting for completion.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] CompleteAutomatedTrial called but no trial is waiting for completion.");
                 return;
             }
 
@@ -1829,7 +1829,7 @@ namespace VERA
         /// </summary>
         private IEnumerator RunAutomatedWorkflow()
         {
-            Debug.Log("[VERA Trial Workflow] Automated workflow coroutine started.");
+            VERADebugger.Log("[VERA Trial Workflow] Automated workflow coroutine started.");
 
             while (automatedMode)
             {
@@ -1909,7 +1909,7 @@ namespace VERA
             automatedMode = false;
             waitingForTrialLogic = false;
             automatedWorkflowCoroutine = null;
-            Debug.Log("[VERA Trial Workflow] Automated workflow completed.");
+            VERADebugger.Log("Automated workflow completed.", "VERA Trial Workflow", DebugPreference.Informative);
             OnWorkflowCompleted?.Invoke();
         }
 
@@ -1948,7 +1948,7 @@ namespace VERA
                     string jsonResponse = result.jsonResponse;
                     if (string.IsNullOrEmpty(jsonResponse))
                     {
-                        Debug.LogError("[VERA Trial Workflow] Empty response from server.");
+                        VERADebugger.LogError("[VERA Trial Workflow] Empty response from server.");
                         yield break;
                     }
 
@@ -1963,7 +1963,7 @@ namespace VERA
                         trialsArray = arr3;
                     else
                     {
-                        Debug.LogError($"[VERA Trial Workflow] Unexpected response format from server. Received: {jsonResponse.Substring(0, Mathf.Min(200, jsonResponse.Length))}...");
+                        VERADebugger.LogError($"[VERA Trial Workflow] Unexpected response format from server. Received: {jsonResponse.Substring(0, Mathf.Min(200, jsonResponse.Length))}...");
                         yield break;
                     }
 
@@ -1972,7 +1972,7 @@ namespace VERA
                         TrialConfig[] topLevelTrials = ParseTrials(trialsArray);
                         if (topLevelTrials == null || topLevelTrials.Length == 0)
                         {
-                            Debug.LogError("[VERA Trial Workflow] Failed to parse trials from response.");
+                            VERADebugger.LogError("[VERA Trial Workflow] Failed to parse trials from response.");
                             yield break;
                         }
 
@@ -1984,22 +1984,22 @@ namespace VERA
                         BuildGroupMetadataCache();
 
                         isInitialized = true;
-                        Debug.Log($"[VERA Trial Workflow] Successfully loaded {trialWorkflow.Count} executable trials from {topLevelTrials.Length} top-level items.");
+                        VERADebugger.Log($"[VERA Trial Workflow] Successfully loaded {trialWorkflow.Count} executable trials from {topLevelTrials.Length} top-level items.");
                     }
                     else
                     {
-                        Debug.LogWarning("[VERA Trial Workflow] No trials found in workflow.");
+                        VERADebugger.LogWarning("[VERA Trial Workflow] No trials found in workflow.");
                         isInitialized = true;
                     }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[VERA Trial Workflow] Failed to parse response: {e.Message}\nStack trace: {e.StackTrace}");
+                    VERADebugger.LogError($"[VERA Trial Workflow] Failed to parse response: {e.Message}\nStack trace: {e.StackTrace}");
                 }
             }
             else
             {
-                Debug.LogError($"[VERA Trial Workflow] Failed to fetch workflow: {result?.error ?? "Unknown error"}");
+                VERADebugger.LogError($"[VERA Trial Workflow] Failed to fetch workflow: {result?.error ?? "Unknown error"}");
             }
         }
 
@@ -2095,7 +2095,7 @@ namespace VERA
 
             if (trialsArray == null || trialsArray.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] ParseTrials received empty or null array.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] ParseTrials received empty or null array.");
                 return new TrialConfig[0];
             }
 
@@ -2105,7 +2105,7 @@ namespace VERA
                 {
                     if (trialToken == null)
                     {
-                        Debug.LogWarning("[VERA Trial Workflow] Skipping null trial token.");
+                        VERADebugger.LogWarning("[VERA Trial Workflow] Skipping null trial token.");
                         continue;
                     }
 
@@ -2199,7 +2199,7 @@ namespace VERA
                     // Validate trial configuration AFTER parsing all fields including childTrials
                     if (!ValidateTrialConfig(trial, out string validationError))
                     {
-                        Debug.LogError($"[VERA Trial Workflow] Invalid trial configuration: {validationError}. Skipping trial.");
+                        VERADebugger.LogError($"[VERA Trial Workflow] Invalid trial configuration: {validationError}. Skipping trial.");
                         continue;
                     }
 
@@ -2207,7 +2207,7 @@ namespace VERA
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[VERA Trial Workflow] Error parsing trial: {e.Message}. Skipping trial.");
+                    VERADebugger.LogError($"[VERA Trial Workflow] Error parsing trial: {e.Message}. Skipping trial.");
                 }
             }
 
@@ -2221,7 +2221,7 @@ namespace VERA
 
             if (topLevelTrials == null || topLevelTrials.Length == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] FlattenTrialHierarchy received empty or null trials array.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] FlattenTrialHierarchy received empty or null trials array.");
                 return flattenedTrials;
             }
 
@@ -2229,7 +2229,7 @@ namespace VERA
             {
                 if (trial == null)
                 {
-                    Debug.LogWarning("[VERA Trial Workflow] Skipping null trial in top-level trials.");
+                    VERADebugger.LogWarning("[VERA Trial Workflow] Skipping null trial in top-level trials.");
                     continue;
                 }
 
@@ -2269,13 +2269,13 @@ namespace VERA
                             if (manualBetweenSubjectsAssignments != null && manualBetweenSubjectsAssignments.TryGetValue(trial.id, out int manualIndex))
                             {
                                 conditionIndex = manualIndex;
-                                Debug.Log($"[VERA Trial Workflow] Between-subjects group '{trial.label}': Using manual condition assignment (index {conditionIndex}).");
+                                VERADebugger.Log($"[VERA Trial Workflow] Between-subjects group '{trial.label}': Using manual condition assignment (index {conditionIndex}).");
                             }
 
                             trialsToInclude = FilterBetweenSubjectsCondition(trial.childTrials, participantNumber, conditionIndex);
                             if (trialsToInclude.Length > 0)
                             {
-                                Debug.Log($"[VERA Trial Workflow] Between-subjects group '{trial.label}': Participant assigned to condition with {trialsToInclude.Length} trials.");
+                                VERADebugger.Log($"[VERA Trial Workflow] Between-subjects group '{trial.label}': Participant assigned to condition with {trialsToInclude.Length} trials.");
                             }
                         }
 
@@ -2289,7 +2289,7 @@ namespace VERA
                         {
                             if (childTrial == null)
                             {
-                                Debug.LogWarning($"[VERA Trial Workflow] Skipping null child trial in group '{trial.id}'.");
+                                VERADebugger.LogWarning($"[VERA Trial Workflow] Skipping null child trial in group '{trial.id}'.");
                                 continue;
                             }
 
@@ -2301,7 +2301,7 @@ namespace VERA
                             int reps = childTrial.repetitionCount > 0 ? childTrial.repetitionCount : 1;
                             if (reps > 100)
                             {
-                                Debug.LogWarning($"[VERA Trial Workflow] Trial '{childTrial.id}' has unusually high repetition count ({reps}). Capping at 100.");
+                                VERADebugger.LogWarning($"[VERA Trial Workflow] Trial '{childTrial.id}' has unusually high repetition count ({reps}). Capping at 100.");
                                 reps = 100;
                             }
 
@@ -2336,13 +2336,13 @@ namespace VERA
         {
             if (childTrials == null || childTrials.Length == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] FilterBetweenSubjectsCondition received empty or null child trials.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] FilterBetweenSubjectsCondition received empty or null child trials.");
                 return Array.Empty<TrialConfig>();
             }
 
             if (participantNum < 0)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNum}). Using 0 as fallback.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Invalid participant number ({participantNum}). Using 0 as fallback.");
                 participantNum = 0;
             }
 
@@ -2353,7 +2353,7 @@ namespace VERA
             {
                 if (trial == null)
                 {
-                    Debug.LogWarning("[VERA Trial Workflow] Skipping null trial in between-subjects group.");
+                    VERADebugger.LogWarning("[VERA Trial Workflow] Skipping null trial in between-subjects group.");
                     continue;
                 }
 
@@ -2369,7 +2369,7 @@ namespace VERA
 
             if (conditionGroups.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] No valid condition groups found in between-subjects trials.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] No valid condition groups found in between-subjects trials.");
                 return Array.Empty<TrialConfig>();
             }
 
@@ -2388,7 +2388,7 @@ namespace VERA
             var groupsList = conditionGroups.Values.ToList();
             if (conditionIndex >= groupsList.Count)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Condition index {conditionIndex} out of range. Using index 0.");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Condition index {conditionIndex} out of range. Using index 0.");
                 conditionIndex = 0;
             }
 
@@ -2396,7 +2396,7 @@ namespace VERA
 
             if (selectedGroup == null || selectedGroup.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Selected condition group is empty.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Selected condition group is empty.");
                 return Array.Empty<TrialConfig>();
             }
 
@@ -2427,7 +2427,7 @@ namespace VERA
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Error creating condition signature: {e.Message}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Error creating condition signature: {e.Message}");
                 return "signature_error";
             }
         }
@@ -2449,7 +2449,7 @@ namespace VERA
                 {
                     groupInfo.Add($"{group.Key} ({group.Value.Count} trials)");
                 }
-                Debug.Log($"[VERA Trial Workflow] Latin square ordering required for {withinGroupsForLatinSquare.Count} within-group(s): {string.Join(", ", groupInfo)}. Call ApplyLatinSquareOrdering(participantNumber) before starting trials.");
+                VERADebugger.Log($"[VERA Trial Workflow] Latin square ordering required for {withinGroupsForLatinSquare.Count} within-group(s): {string.Join(", ", groupInfo)}. Call ApplyLatinSquareOrdering(participantNumber) before starting trials.");
             }
         }
 
@@ -2460,7 +2460,7 @@ namespace VERA
         {
             if (string.IsNullOrEmpty(participantUUID) || string.IsNullOrEmpty(experimentUUID))
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot save checkpoint: missing participant or experiment UUID.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot save checkpoint: missing participant or experiment UUID.");
                 yield break;
             }
 
@@ -2497,13 +2497,13 @@ namespace VERA
 
             if (result != null && result.success)
             {
-                Debug.Log($"[VERA Trial Workflow] Checkpoint saved to server: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
+                VERADebugger.Log($"[VERA Trial Workflow] Checkpoint saved to server: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
                 // Clear local checkpoint after successful server save
                 ClearLocalCheckpoint();
             }
             else
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Failed to save checkpoint to server (using local fallback): {result?.error ?? "Unknown error"}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Failed to save checkpoint to server (using local fallback): {result?.error ?? "Unknown error"}");
             }
         }
 
@@ -2514,13 +2514,13 @@ namespace VERA
         {
             if (string.IsNullOrEmpty(participantUUID) || string.IsNullOrEmpty(experimentUUID))
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot check for saved progress: missing participant or experiment UUID.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot check for saved progress: missing participant or experiment UUID.");
                 yield break;
             }
 
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
-                Debug.LogWarning("[VERA Trial Workflow] Cannot resume progress: workflow is empty.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot resume progress: workflow is empty.");
                 yield break;
             }
 
@@ -2560,27 +2560,27 @@ namespace VERA
                         {
                             currentTrialIndex = checkpoint.currentTrialIndex;
                             currentTrialState = TrialState.NotStarted;
-                            Debug.Log($"[VERA Trial Workflow] Resumed from server checkpoint: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
+                            VERADebugger.Log($"[VERA Trial Workflow] Resumed from server checkpoint: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
                             checkpointLoaded = true;
                         }
                         else if (checkpoint != null)
                         {
-                            Debug.LogWarning($"[VERA Trial Workflow] Server checkpoint is invalid (index {checkpoint.currentTrialIndex} out of range 0-{trialWorkflow.Count - 1}).");
+                            VERADebugger.LogWarning($"[VERA Trial Workflow] Server checkpoint is invalid (index {checkpoint.currentTrialIndex} out of range 0-{trialWorkflow.Count - 1}).");
                         }
                     }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"[VERA Trial Workflow] Failed to parse server checkpoint response: {e.Message}");
+                    VERADebugger.LogWarning($"[VERA Trial Workflow] Failed to parse server checkpoint response: {e.Message}");
                 }
             }
             else if (result != null && result.responseCode == 404)
             {
-                Debug.Log("[VERA Trial Workflow] No server checkpoint found.");
+                VERADebugger.Log("[VERA Trial Workflow] No server checkpoint found.");
             }
             else
             {
-                Debug.LogWarning($"[VERA Trial Workflow] Failed to fetch server checkpoint: {result?.error ?? "Unknown error"}");
+                VERADebugger.LogWarning($"[VERA Trial Workflow] Failed to fetch server checkpoint: {result?.error ?? "Unknown error"}");
             }
 
             // Try local checkpoint if server checkpoint wasn't loaded
@@ -2590,18 +2590,18 @@ namespace VERA
                 {
                     currentTrialIndex = localTrialIndex;
                     currentTrialState = TrialState.NotStarted;
-                    Debug.Log($"[VERA Trial Workflow] Resumed from local checkpoint: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
+                    VERADebugger.Log($"[VERA Trial Workflow] Resumed from local checkpoint: trial {currentTrialIndex + 1}/{trialWorkflow.Count}");
                     checkpointLoaded = true;
                 }
                 else
                 {
-                    Debug.LogWarning($"[VERA Trial Workflow] Local checkpoint is invalid (index {localTrialIndex} out of range 0-{trialWorkflow.Count - 1}).");
+                    VERADebugger.LogWarning($"[VERA Trial Workflow] Local checkpoint is invalid (index {localTrialIndex} out of range 0-{trialWorkflow.Count - 1}).");
                 }
             }
 
             if (!checkpointLoaded)
             {
-                Debug.Log("[VERA Trial Workflow] No saved progress found, starting from beginning.");
+                VERADebugger.Log("[VERA Trial Workflow] No saved progress found, starting from beginning.");
             }
         }
 

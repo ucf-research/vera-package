@@ -40,10 +40,9 @@ namespace VERA
             }
         }
 
-        [MenuItem("VERA/Setup Baseline Data")]
         public static void SetupBaselineDataMenuItem()
         {
-            Debug.Log("Starting VERA Baseline Data setup...");
+            VERADebugger.Log("Starting VERA Baseline Data setup...", "VERABaselineDataSetup");
 
             CreateBaselineDataColumnDefinition();
 
@@ -51,7 +50,7 @@ namespace VERA
             string generatedCodePath = "Assets/VERA/Filetypes/GeneratedCode";
             if (!AssetDatabase.IsValidFolder(generatedCodePath))
             {
-                Debug.Log($"Creating directory: {generatedCodePath}");
+                VERADebugger.Log($"Creating directory: {generatedCodePath}", "VERABaselineDataSetup");
                 if (!AssetDatabase.IsValidFolder("Assets/VERA"))
                     AssetDatabase.CreateFolder("Assets", "VERA");
                 if (!AssetDatabase.IsValidFolder("Assets/VERA/Filetypes"))
@@ -60,18 +59,18 @@ namespace VERA
                     AssetDatabase.CreateFolder("Assets/VERA/Filetypes", "GeneratedCode");
             }
 
-            Debug.Log("Generating file type wrappers...");
+            VERADebugger.Log("Generating file type wrappers...", "VERABaselineDataSetup");
             FileTypeGenerator.GenerateAllFileTypesCsCode();
             AssetDatabase.Refresh();
 
-            Debug.Log("Adding scripting define symbol...");
+            VERADebugger.Log("Adding scripting define symbol...", "VERABaselineDataSetup");
             AddScriptingDefineSymbol();
 
-            Debug.Log($"✓ VERA Baseline Data setup complete!");
-            Debug.Log($"  - Column definition: Assets/Resources/Experiment_TelemetryColumnDefinition.asset");
-            Debug.Log($"  - Generated code: {generatedCodePath}/VERAFile_Experiment_Telemetry.cs");
-            Debug.Log($"  - Scripting symbol: {TELEMETRY_SYMBOL}");
-            Debug.Log("Unity will now recompile. Please wait...");
+            VERADebugger.Log("✓ VERA Baseline Data setup complete!", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Column definition: Assets/VERA/Resources/Experiment_TelemetryColumnDefinition.asset", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Generated code: {generatedCodePath}/VERAFile_Experiment_Telemetry.cs", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Scripting symbol: {TELEMETRY_SYMBOL}", "VERABaselineDataSetup");
+            VERADebugger.Log("Unity will now recompile. Please wait...", "VERABaselineDataSetup");
         }
 
         private static void CreateBaselineDataColumnDefinition()
@@ -92,7 +91,6 @@ namespace VERA
                 }
                 defines += TELEMETRY_SYMBOL;
                 PlayerSettings.SetScriptingDefineSymbols(buildTarget, defines);
-                Debug.Log($"Added '{TELEMETRY_SYMBOL}' to Scripting Define Symbols.");
             }
         }
     }

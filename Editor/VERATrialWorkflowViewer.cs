@@ -314,9 +314,6 @@ namespace VERA
                     {
                         string json = request.downloadHandler.text;
 
-                        // Log the response for debugging
-                        Debug.Log($"[VERA Trial Workflow] Received response: {json.Substring(0, Mathf.Min(500, json.Length))}...");
-
                         JToken parsed = JToken.Parse(json);
 
                         // Handle both array response and object response with trials property
@@ -341,7 +338,7 @@ namespace VERA
                                 // Show what we actually received
                                 string preview = json.Length > 200 ? json.Substring(0, 200) + "..." : json;
                                 errorMessage = $"Received unexpected response format from server. Response: {preview}";
-                                Debug.LogError($"[VERA Trial Workflow] Unexpected response format. Full response: {json}");
+                                VERADebugger.LogError($"Unexpected response format. Full response: {json}", "VERA Trial Workflow");
                                 request.Dispose();
                                 Repaint();
                                 return;
@@ -352,23 +349,23 @@ namespace VERA
                             // Show what we actually received
                             string preview = json.Length > 200 ? json.Substring(0, 200) + "..." : json;
                             errorMessage = $"Received unexpected response format from server. Response: {preview}";
-                            Debug.LogError($"[VERA Trial Workflow] Unexpected response format. Full response: {json}");
+                            VERADebugger.LogError($"Unexpected response format. Full response: {json}", "VERA Trial Workflow");
                             request.Dispose();
                             Repaint();
                             return;
                         }
 
                         trialWorkflow = ParseTrials(trialsArray);
-                        Debug.Log($"[VERA Trial Workflow] Successfully parsed {trialWorkflow.Count} top-level items from execution order");
+                        VERADebugger.Log($"Successfully parsed {trialWorkflow.Count} top-level items from execution order", "VERA Trial Workflow");
 
                         // Count total items including child trials
                         int totalItems = CountAllItems(trialWorkflow);
-                        Debug.Log($"[VERA Trial Workflow] Total items including children: {totalItems}");
+                        VERADebugger.Log($"Total items including children: {totalItems}", "VERA Trial Workflow");
                     }
                     catch (Exception e)
                     {
                         errorMessage = $"Failed to parse response: {e.Message}";
-                        Debug.LogError($"[VERA Trial Workflow] Parse error: {e.Message}\n{e.StackTrace}");
+                        VERADebugger.LogError($"Parse error: {e.Message}\n{e.StackTrace}", "VERA Trial Workflow");
                     }
                 }
 
@@ -517,7 +514,7 @@ namespace VERA
                 string surveyInfo = trial.survey != null
                     ? $" ({trial.survey.questionCount} questions)"
                     : "";
-                Debug.Log($"[VERA Trial Workflow] Parsed {trial.type} item: {trial.label} (ID: {trial.id}){childInfo}{surveyInfo}");
+                VERADebugger.Log($"Parsed {trial.type} item: {trial.label} (ID: {trial.id}){childInfo}{surveyInfo}", "VERA Trial Workflow");
             }
 
             return trials;

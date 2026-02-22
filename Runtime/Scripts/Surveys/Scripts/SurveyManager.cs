@@ -402,7 +402,7 @@ namespace VERA
             if (currentQuestionIndex >= 0 && !IsCurrentQuestionAnswered())
             {
                 // Show notification that question must be answered
-                Debug.Log("[VERA Survey] Question must be answered before proceeding.");
+                VERADebugger.Log("Question must be answered before proceeding.", "VERA Survey", DebugPreference.Minimal);
                 StartCoroutine(ShowAnswerRequiredNotification());
                 return;
             }

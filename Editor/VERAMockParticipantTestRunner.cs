@@ -17,7 +17,7 @@ namespace VERA
             // Check if we're already in Play mode
             if (EditorApplication.isPlaying)
             {
-                Debug.LogWarning("[VERA] Already in Play mode. Stop Play mode first, then run the test again.");
+                VERADebugger.LogWarning("Already in Play mode. Stop Play mode first, then run the test again.", "VERA Mock Participant Test Runner");
                 return;
             }
 
@@ -45,7 +45,7 @@ namespace VERA
             EditorPrefs.SetBool(PREFS_KEY, true);
 
             // Enter Play mode
-            Debug.Log("[VERA] Starting mock participant test in Play mode...");
+            VERADebugger.Log("Starting mock participant test in Play mode...", "VERA Mock Participant Test Runner");
             EditorApplication.isPlaying = true;
         }
 
@@ -64,7 +64,7 @@ namespace VERA
                 if (EditorPrefs.GetBool(PREFS_KEY, false))
                 {
                     EditorPrefs.DeleteKey(PREFS_KEY);
-                    Debug.Log("[VERA] Mock participant test is now running. Check Console for progress.");
+                    VERADebugger.Log("Mock participant test is now running. Check Console for progress.", "VERA Mock Participant Test Runner");
                 }
             }
         }
@@ -75,7 +75,7 @@ namespace VERA
             var existingRunner = UnityEngine.Object.FindAnyObjectByType<VERAMockTestRunner>();
             if (existingRunner != null)
             {
-                Debug.Log($"[VERA] Found existing test runner on '{existingRunner.gameObject.name}'.");
+                VERADebugger.Log($"Found existing test runner on '{existingRunner.gameObject.name}'.", "VERA Mock Participant Test Runner");
                 return existingRunner.gameObject;
             }
 
@@ -83,7 +83,7 @@ namespace VERA
             GameObject newObject = new GameObject("VERA Mock Participant Test Runner");
             newObject.AddComponent<VERAMockTestRunner>();
 
-            Debug.Log("[VERA] Created new test runner GameObject in the scene.");
+            VERADebugger.Log("Created new test runner GameObject in the scene.", "VERA Mock Participant Test Runner");
             return newObject;
         }
     }
