@@ -10,7 +10,7 @@ namespace VERA
 
         private const string localHost = "http://localhost:4000/vera-portal";
         private const string testHost = "https://sherlock.gaim.ucf.edu/vera-portal";
-        private const string liveHost = "https://vera-xr.io/vera-portal";
+        private const string liveHost = "https://vera-xr.io";
 
         // Global host URL - all other scripts which reference the host URL should use a reference to this
         // Set to localHost, testHost, or liveHost according to current needs.

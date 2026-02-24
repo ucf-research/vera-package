@@ -19,7 +19,7 @@ namespace VERA
             // Set up file type
             columnDefinition.fileType = new VERAColumnDefinition.FileType
             {
-                fileTypeId = "baseline-data",
+                fileTypeId = "Experiment_Telemetry",
                 name = "Experiment_Telemetry",
                 description = "Baseline VR tracking and input data"
             };
