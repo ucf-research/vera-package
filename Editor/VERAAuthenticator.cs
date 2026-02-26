@@ -1145,19 +1145,72 @@ namespace VERA
             return currentSymbols;
         }
 
-        // Saves define symbols as per given list
+        // Saves define symbols as per given list to ALL build target groups
         private static void SaveDefineSymbols(List<string> symbols)
         {
-            BuildTarget activeBuildTarget = EditorUserBuildSettings.activeBuildTarget;
+            string symbolsString = string.Join(";", symbols);
 
 #if UNITY_2023_1_OR_NEWER
             // Use the new API for Unity 2023.1 and newer
-            NamedBuildTarget namedBuildTarget = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(activeBuildTarget));
-            PlayerSettings.SetScriptingDefineSymbols(namedBuildTarget, string.Join(";", symbols));
+            // Apply to all relevant build target groups
+            BuildTargetGroup[] targetGroups = new BuildTargetGroup[]
+            {
+                BuildTargetGroup.Standalone,
+                BuildTargetGroup.iOS,
+                BuildTargetGroup.Android,
+                BuildTargetGroup.WebGL,
+                BuildTargetGroup.WSA,
+                BuildTargetGroup.PS4,
+                BuildTargetGroup.XboxOne,
+                BuildTargetGroup.tvOS,
+                BuildTargetGroup.Switch
+            };
+
+            foreach (BuildTargetGroup group in targetGroups)
+            {
+                if (group == BuildTargetGroup.Unknown)
+                    continue;
+
+                try
+                {
+                    NamedBuildTarget namedTarget = NamedBuildTarget.FromBuildTargetGroup(group);
+                    PlayerSettings.SetScriptingDefineSymbols(namedTarget, symbolsString);
+                }
+                catch
+                {
+                    // Skip unsupported or unavailable build targets
+                }
+            }
 #else
-        // Use the old API for older Unity versions
-        BuildTargetGroup activeBuildTargetGroup = BuildPipeline.GetBuildTargetGroup(activeBuildTarget);
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(activeBuildTargetGroup, string.Join(";", symbols));
+            // Use the old API for older Unity versions
+            // Apply to all relevant build target groups
+            BuildTargetGroup[] targetGroups = new BuildTargetGroup[]
+            {
+                BuildTargetGroup.Standalone,
+                BuildTargetGroup.iOS,
+                BuildTargetGroup.Android,
+                BuildTargetGroup.WebGL,
+                BuildTargetGroup.WSA,
+                BuildTargetGroup.PS4,
+                BuildTargetGroup.XboxOne,
+                BuildTargetGroup.tvOS,
+                BuildTargetGroup.Switch
+            };
+
+            foreach (BuildTargetGroup group in targetGroups)
+            {
+                if (group == BuildTargetGroup.Unknown)
+                    continue;
+
+                try
+                {
+                    PlayerSettings.SetScriptingDefineSymbolsForGroup(group, symbolsString);
+                }
+                catch
+                {
+                    // Skip unsupported or unavailable build targets
+                }
+            }
 #endif
         }
 
@@ -1272,6 +1325,46 @@ namespace VERA
             currentSymbols.RemoveAll(symbol => symbol.StartsWith("VERAIV_"));
 
             SaveDefineSymbols(currentSymbols);
+        }
+
+        /// <summary>
+        /// Gets all VERA-related define symbols from the active build target.
+        /// This includes file type symbols (VERAFile_*) and condition group symbols (VERAIV_*).
+        /// </summary>
+        /// <returns>List of VERA-related preprocessor define symbols</returns>
+        public static List<string> GetVERADefineSymbols()
+        {
+            List<string> currentSymbols = GetDefineSymbols();
+            return currentSymbols.Where(s => s.StartsWith("VERAFile_") || s.StartsWith("VERAIV_")).ToList();
+        }
+
+        /// <summary>
+        /// Applies VERA-related define symbols to the active build target.
+        /// Adds any VERA symbols that don't already exist without removing other symbols.
+        /// </summary>
+        /// <param name="veraSymbols">List of VERA-related preprocessor symbols to apply</param>
+        public static void ApplyVERADefineSymbols(List<string> veraSymbols)
+        {
+            if (veraSymbols == null || veraSymbols.Count == 0)
+                return;
+
+            List<string> currentSymbols = GetDefineSymbols();
+            HashSet<string> currentSet = new HashSet<string>(currentSymbols);
+            bool modified = false;
+
+            foreach (string symbol in veraSymbols)
+            {
+                if (!currentSet.Contains(symbol))
+                {
+                    currentSymbols.Add(symbol);
+                    modified = true;
+                }
+            }
+
+            if (modified)
+            {
+                SaveDefineSymbols(currentSymbols);
+            }
         }
 
 

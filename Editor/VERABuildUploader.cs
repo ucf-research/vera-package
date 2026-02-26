@@ -126,12 +126,27 @@ namespace VERA
 
             VERADebugger.Log("Switching build target to WebGL...", "VERA Build Uploader", DebugPreference.Informative);
 
+            // Save VERA preprocessor directives from the current build target before switching
+            List<string> veraSymbols = VERAAuthenticator.GetVERADefineSymbols();
+            if (veraSymbols.Count > 0)
+            {
+                VERADebugger.Log($"Preserving {veraSymbols.Count} VERA preprocessor directives: {string.Join(", ", veraSymbols)}", "VERA Build Uploader", DebugPreference.Verbose);
+            }
+
             // If not, switch to WebGL build target
             bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL);
 
             if (success)
             {
                 VERADebugger.Log("Successfully switched build target to WebGL.", "VERA Build Uploader", DebugPreference.Informative);
+
+                // Apply VERA preprocessor directives to the new build target
+                if (veraSymbols.Count > 0)
+                {
+                    VERAAuthenticator.ApplyVERADefineSymbols(veraSymbols);
+                    VERADebugger.Log($"Applied {veraSymbols.Count} VERA preprocessor directives to WebGL build target.", "VERA Build Uploader", DebugPreference.Verbose);
+                }
+
                 return true;
             }
             else
@@ -524,14 +539,18 @@ namespace VERA
                     string body = await resp.Content.ReadAsStringAsync();
 
                     if (!resp.IsSuccessStatusCode)
-                        throw new Exception($"Upload failed ({(int)resp.StatusCode}): {body}");
+                    {
+                        // Log full response JSON
+                        string errorMessage = $"Upload failed ({(int)resp.StatusCode}).\nFull response: {body}";
+                        throw new Exception(errorMessage);
+                    }
 
                     VERADebugger.Log("Upload complete! Response: " + body, "VERA Build Uploader", DebugPreference.Informative);
                 }
             }
             catch (Exception ex)
             {
-                VERADebugger.LogError($"Failed to build and upload project. {ex}", "VERA Build Uploader");
+                VERADebugger.LogError($"Failed to build and upload project, error: {ex}", "VERA Build Uploader");
                 return false;
             }
             finally
