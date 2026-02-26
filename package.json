@@ -1,0 +1,42 @@
+{
+  "name": "com.vera.vera",
+  "version": "0.2.0",
+  "displayName": "VERA",
+  "description": "VERA (Virtual Experience Research Accelerator) is a platform for conducting XR experiments at scale with flexible participant groups and study settings.",
+  "unity": "6000.0",
+  "author": {
+    "name": "VERA",
+    "email": "veraccel@ucf.edu",
+    "url": "https://sreal.ucf.edu/vera/"
+  },
+  "keywords": [
+    "VR",
+    "Research",
+    "XR",
+    "Interaction",
+    "Virtual Reality",
+    "Education"
+  ],
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0",
+    "com.unity.textmeshpro": "3.0.6",
+    "com.unity.xr.interaction.toolkit": "3.0.3",
+    "com.unity.xr.management": "4.4.0",
+    "com.unity.xr.oculus": "4.2.0"
+  },
+  "samples": [
+    {
+      "displayName": "VERA Demo Scene",
+      "description": "A sample scene demonstrating VERA's core functionalities.",
+      "path": "Samples~/DemoScene"
+    }
+  ],
+  "documentationUrl": "https://vera-xr.io/documentation",
+  "changelogUrl": "https://github.com/ucf-research/vera-package/blob/main/CHANGELOG.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ucf-research/vera-package.git"
+  },
+  "hideInEditor": false
+}
+
