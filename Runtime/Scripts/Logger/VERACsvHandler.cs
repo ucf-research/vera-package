@@ -24,17 +24,57 @@ namespace VERA
     }
 
     [System.Serializable]
+    internal class SerializableEulerAngles
+    {
+        public float x, y, z;
+        public SerializableEulerAngles(Vector3 euler) { x = euler.x; y = euler.y; z = euler.z; }
+    }
+
+    [System.Serializable]
     internal class SerializableTransform
     {
         public SerializableVector3 position;
-        public SerializableQuaternion rotation;
+        public SerializableQuaternion rotation;        // Included when format is Quaternion or Both
+        public SerializableEulerAngles eulerAngles;    // Included when format is Euler or Both
         public SerializableVector3 localScale;
 
         public SerializableTransform(Transform t)
         {
             position = new SerializableVector3(t.position);
-            rotation = new SerializableQuaternion(t.rotation);
             localScale = new SerializableVector3(t.localScale);
+
+            // Get rotation format from build settings
+            RotationFormat rotationFormat = GetRotationFormat();
+
+            switch (rotationFormat)
+            {
+                case RotationFormat.Quaternion:
+                    rotation = new SerializableQuaternion(t.rotation);
+                    eulerAngles = null;
+                    break;
+                case RotationFormat.Euler:
+                    rotation = null;
+                    eulerAngles = new SerializableEulerAngles(t.rotation.eulerAngles);
+                    break;
+                case RotationFormat.Both:
+                default:
+                    rotation = new SerializableQuaternion(t.rotation);
+                    eulerAngles = new SerializableEulerAngles(t.rotation.eulerAngles);
+                    break;
+            }
+        }
+
+        private static RotationFormat GetRotationFormat()
+        {
+            // Try to get from VERALogger instance first
+            if (VERALogger.Instance != null && VERALogger.Instance.buildAuthInfo != null)
+            {
+                return VERALogger.Instance.buildAuthInfo.rotationFormat;
+            }
+
+            // Fallback to PlayerPrefs
+            int formatInt = PlayerPrefs.GetInt("VERA_RotationFormat", (int)RotationFormat.Both);
+            return (RotationFormat)formatInt;
         }
     }
 

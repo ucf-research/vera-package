@@ -760,6 +760,32 @@ namespace VERA
             return currentAuthInfo.debugPreference;
         }
 
+        /// <summary>
+        /// Changes the rotation format setting for transform data logging.
+        /// </summary>
+        /// <param name="rotationFormat">The new rotation format to set.</param>
+        public static void ChangeRotationFormat(RotationFormat rotationFormat)
+        {
+            // Get current auth info, to not overwrite other existing info
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+
+            // Set info
+            currentAuthInfo.rotationFormat = rotationFormat;
+
+            // Push to file (updates PlayerPrefs as well)
+            SetSavedBuildAuthInfo(currentAuthInfo);
+        }
+
+        /// <summary>
+        /// Gets the current rotation format setting.
+        /// </summary>
+        /// <returns>The current rotation format.</returns>
+        public static RotationFormat GetRotationFormat()
+        {
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+            return currentAuthInfo.rotationFormat;
+        }
+
 
         #endregion
 

@@ -427,6 +427,26 @@ namespace VERA
         };
 
         /// <summary>
+        /// Display labels for the rotation format dropdown options.
+        /// </summary>
+        private static readonly string[] RotationFormatLabels = new string[]
+        {
+            "Quaternion only",
+            "Euler angles only",
+            "Both (Quaternion + Euler)"
+        };
+
+        /// <summary>
+        /// Display descriptions for each rotation format option.
+        /// </summary>
+        private static readonly string[] RotationFormatDescriptions = new string[]
+        {
+            "Transform rotation data will be logged as quaternion values (x, y, z, w). Quaternions are precise and avoid gimbal lock, but are harder for humans to interpret.",
+            "Transform rotation data will be logged as Euler angles (x, y, z) in degrees. Euler angles are human-readable but can suffer from gimbal lock at extreme angles.",
+            "Transform rotation data will include both quaternion and Euler angles. This provides precision for programmatic use and readability for human inspection."
+        };
+
+        /// <summary>
         /// Displays the data recording type dropdown and its description.
         /// </summary>
         private void DisplayDataRecordingOptions()
@@ -460,6 +480,35 @@ namespace VERA
                 // Display description for the selected option
                 GUILayout.Space(5);
                 EditorGUILayout.HelpBox(DataRecordingTypeDescriptions[newIndex], MessageType.Info);
+
+                // Rotation Format setting
+                GUILayout.Space(15);
+                GUILayout.Label("Transform Rotation Format", EditorStyles.boldLabel);
+                GUILayout.Label("Select how rotation data should be formatted when logging transforms.", EditorStyles.wordWrappedLabel);
+                GUILayout.Space(5);
+
+                // Get current rotation format
+                RotationFormat currentRotationFormat = VERAAuthenticator.GetRotationFormat();
+                int currentRotationIndex = (int)currentRotationFormat;
+
+                // Ensure index is within valid bounds
+                if (currentRotationIndex < 0 || currentRotationIndex >= RotationFormatLabels.Length)
+                {
+                    currentRotationIndex = (int)RotationFormat.Quaternion;
+                }
+
+                // Display the dropdown
+                int newRotationIndex = EditorGUILayout.Popup("Rotation Format", currentRotationIndex, RotationFormatLabels);
+
+                // Check if the selection has changed
+                if (newRotationIndex != currentRotationIndex)
+                {
+                    VERAAuthenticator.ChangeRotationFormat((RotationFormat)newRotationIndex);
+                }
+
+                // Display description for the selected option
+                GUILayout.Space(5);
+                EditorGUILayout.HelpBox(RotationFormatDescriptions[newRotationIndex], MessageType.Info);
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
