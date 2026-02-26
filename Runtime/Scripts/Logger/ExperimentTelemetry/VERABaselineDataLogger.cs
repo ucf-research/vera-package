@@ -42,6 +42,7 @@ namespace VERA
         [SerializeField] private InputActionProperty leftPrimaryButtonAction;
         [SerializeField] private InputActionProperty leftSecondaryButtonAction;
         [SerializeField] private InputActionProperty leftPrimary2DAxisClickAction;
+        [SerializeField] private InputActionProperty leftThumbstickAction;
 
         [Tooltip("Input actions for right controller buttons - leave empty to auto-detect from ActionBasedController")]
         [SerializeField] private InputActionProperty rightTriggerAction;
@@ -49,6 +50,7 @@ namespace VERA
         [SerializeField] private InputActionProperty rightPrimaryButtonAction;
         [SerializeField] private InputActionProperty rightSecondaryButtonAction;
         [SerializeField] private InputActionProperty rightPrimary2DAxisClickAction;
+        [SerializeField] private InputActionProperty rightThumbstickAction;
 #endif
 
         // Internal variables
@@ -486,6 +488,13 @@ namespace VERA
                 data.leftPrimary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
             else
                 data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
+            Vector2 leftAxis;
+            if (leftThumbstickAction != null && leftThumbstickAction.action != null)
+                leftAxis = GetVector2InputState(leftThumbstickAction);
+            else
+                leftAxis = GetVector2InputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.leftThumbstickX = leftAxis.x;
+            data.leftThumbstickY = leftAxis.y;
 #else
             // Fallback to XR device input
             data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
@@ -493,6 +502,9 @@ namespace VERA
             data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
             data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
             data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
+            Vector2 leftAxisFallback = GetVector2InputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.leftThumbstickX = leftAxisFallback.x;
+            data.leftThumbstickY = leftAxisFallback.y;
 #endif
 
             // Right controller data
@@ -537,6 +549,13 @@ namespace VERA
                 data.rightPrimary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
             else
                 data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
+            Vector2 rightAxis;
+            if (rightThumbstickAction != null && rightThumbstickAction.action != null)
+                rightAxis = GetVector2InputState(rightThumbstickAction);
+            else
+                rightAxis = GetVector2InputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.rightThumbstickX = rightAxis.x;
+            data.rightThumbstickY = rightAxis.y;
 #else
             // Fallback to XR device input
             data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
@@ -544,6 +563,9 @@ namespace VERA
             data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
             data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
             data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
+            Vector2 rightAxisFallback = GetVector2InputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.rightThumbstickX = rightAxisFallback.x;
+            data.rightThumbstickY = rightAxisFallback.y;
 #endif
 
             return data;
@@ -577,6 +599,8 @@ namespace VERA
                     data.leftPrimaryButton,
                     data.leftSecondaryButton,
                     data.leftPrimary2DAxisClick,
+                    data.leftThumbstickX,
+                    data.leftThumbstickY,
                     data.rightDetected,
                     data.rightControllerPosX,
                     data.rightControllerPosY,
@@ -586,7 +610,9 @@ namespace VERA
                     data.rightGrip,
                     data.rightPrimaryButton,
                     data.rightSecondaryButton,
-                    data.rightPrimary2DAxisClick
+                    data.rightPrimary2DAxisClick,
+                    data.rightThumbstickX,
+                    data.rightThumbstickY
                 );
             }
             catch (System.Exception e)
@@ -719,6 +745,41 @@ namespace VERA
             return -1f; // NA when unable to read
         }
 
+        private Vector2 GetVector2InputState(InputActionProperty actionProperty)
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (actionProperty.action == null)
+                return new Vector2(-2f, -2f); // NA when unknown
+
+            try
+            {
+                return actionProperty.action.ReadValue<Vector2>();
+            }
+            catch
+            {
+                return new Vector2(-2f, -2f); // NA when error occurs
+            }
+#else
+            return new Vector2(-2f, -2f);
+#endif
+        }
+
+        private Vector2 GetVector2InputStateFromDevice(List<UnityEngine.XR.InputDevice> devices, InputFeatureUsage<Vector2> v2Usage)
+        {
+            if (devices.Count == 0)
+                return new Vector2(-2f, -2f); // NA when no device
+
+            foreach (var device in devices)
+            {
+                if (device.TryGetFeatureValue(v2Usage, out Vector2 value))
+                {
+                    return value;
+                }
+            }
+
+            return new Vector2(-2f, -2f); // NA when unable to read
+        }
+
         [System.Serializable]
         public class BaselineDataEntry
         {
@@ -740,6 +801,8 @@ namespace VERA
             public int leftPrimaryButton;    // 1/0/-1 for pressed/released/NA
             public int leftSecondaryButton;  // 1/0/-1 for pressed/released/NA
             public int leftPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
+            public float leftThumbstickX;    // -1 to 1 axis; -2 for NA
+            public float leftThumbstickY;    // -1 to 1 axis; -2 for NA
             public bool rightDetected = false;       // true = present, false = absent
             public float rightControllerPosX; // Right controller position X
             public float rightControllerPosY; // Right controller position Y
@@ -750,6 +813,8 @@ namespace VERA
             public int rightPrimaryButton;   // 1/0/-1 for pressed/released/NA
             public int rightSecondaryButton; // 1/0/-1 for pressed/released/NA
             public int rightPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
+            public float rightThumbstickX;   // -1 to 1 axis; -2 for NA
+            public float rightThumbstickY;   // -1 to 1 axis; -2 for NA
         }
 
         #region Public API
