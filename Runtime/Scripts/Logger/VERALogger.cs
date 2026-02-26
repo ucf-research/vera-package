@@ -190,6 +190,7 @@ namespace VERA
                 PlayerPrefs.SetString("VERA_ActiveSite", authInfo.activeSite);
                 PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
                 PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
+                PlayerPrefs.SetInt("VERA_RotationFormat", (int)authInfo.rotationFormat);
             }
             else
             {
@@ -204,7 +205,8 @@ namespace VERA
                     isMultiSite = false,
                     currentBuildNumber = -1,
                     dataRecordingType = DataRecordingType.RecordLocallyAndLive,
-                    debugPreference = DebugPreference.Informative
+                    debugPreference = DebugPreference.Informative,
+                    rotationFormat = RotationFormat.Both
                 };
                 buildAuthInfo = emptyAuthInfo;
 
@@ -215,6 +217,7 @@ namespace VERA
                 PlayerPrefs.SetString("VERA_ActiveSite", emptyAuthInfo.activeSite);
                 PlayerPrefs.SetInt("VERA_DataRecordingType", (int)emptyAuthInfo.dataRecordingType);
                 PlayerPrefs.SetInt("VERA_DebugPreference", (int)emptyAuthInfo.debugPreference);
+                PlayerPrefs.SetInt("VERA_RotationFormat", (int)emptyAuthInfo.rotationFormat);
 
                 // Log unauthenticated user
                 VERADebugger.LogError("Your experiment has not been authenticated, and will not be " +
@@ -959,7 +962,7 @@ namespace VERA
             VERADebugger.Log("All finalization tasks have completed successfully.", "VERA Logger", DebugPreference.Minimal);
 #if UNITY_WEBGL && !UNITY_EDITOR
             // In WebGL builds, notify the site itself that the session is complete
-            VERADebugger.Log("Notifying VERA portal that session has been finalized.", "VERA Logger", DebugPreference.Informative);   
+            VERADebugger.Log("Notifying VERA portal that session has been finalized.", "VERA Logger", DebugPreference.Informative);
 #if UNITY_2021_1_OR_NEWER
             Application.ExternalEval("window.unityMessageHandler('FINALIZE_SESSION')");
 #else
@@ -1798,6 +1801,27 @@ namespace VERA
         None = 3
     }
 
+    /// <summary>
+    /// Defines how rotation data is formatted when logging transforms.
+    /// </summary>
+    public enum RotationFormat
+    {
+        /// <summary>
+        /// Log rotation as quaternion (x, y, z, w). Precise but hard to interpret.
+        /// </summary>
+        Quaternion = 0,
+
+        /// <summary>
+        /// Log rotation as Euler angles (x, y, z) in degrees. Human-readable.
+        /// </summary>
+        Euler = 1,
+
+        /// <summary>
+        /// Log both quaternion and Euler angles. Provides precision and readability.
+        /// </summary>
+        Both = 2
+    }
+
     [System.Serializable]
     internal class VERABuildAuthInfo
     {
@@ -1811,5 +1835,6 @@ namespace VERA
         public int currentBuildNumber = -1;
         public DataRecordingType dataRecordingType = DataRecordingType.RecordLocallyAndLive;
         public DebugPreference debugPreference = DebugPreference.Informative;
+        public RotationFormat rotationFormat = RotationFormat.Quaternion;
     }
 }

@@ -140,6 +140,18 @@ namespace VERA
                 },
                 new VERAColumnDefinition.Column
                 {
+                    name = "leftThumbstickX",
+                    description = "Left controller thumbstick horizontal axis (-1=left, 0=center, 1=right; -2=NA)",
+                    type = VERAColumnDefinition.DataType.Number
+                },
+                new VERAColumnDefinition.Column
+                {
+                    name = "leftThumbstickY",
+                    description = "Left controller thumbstick vertical axis (-1=down, 0=center, 1=up; -2=NA)",
+                    type = VERAColumnDefinition.DataType.Number
+                },
+                new VERAColumnDefinition.Column
+                {
                     name = "rightDetected",
                     description = "Whether right hand controller is connected and tracking",
                     type = VERAColumnDefinition.DataType.Boolean
@@ -196,6 +208,18 @@ namespace VERA
                 {
                     name = "rightPrimary2DAxisClick",
                     description = "Right controller thumbstick click (1=clicked, 0=not clicked)",
+                    type = VERAColumnDefinition.DataType.Number
+                },
+                new VERAColumnDefinition.Column
+                {
+                    name = "rightThumbstickX",
+                    description = "Right controller thumbstick horizontal axis (-1=left, 0=center, 1=right; -2=NA)",
+                    type = VERAColumnDefinition.DataType.Number
+                },
+                new VERAColumnDefinition.Column
+                {
+                    name = "rightThumbstickY",
+                    description = "Right controller thumbstick vertical axis (-1=down, 0=center, 1=up; -2=NA)",
                     type = VERAColumnDefinition.DataType.Number
                 }
             };

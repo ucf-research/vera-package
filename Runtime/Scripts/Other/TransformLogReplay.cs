@@ -128,11 +128,11 @@ namespace VERA
                 {
                     timeOffset = timeOffset,
                     position = new Vector3(transformData.position.x, transformData.position.y, transformData.position.z),
-                    rotation = new Quaternion(transformData.rotation.x, transformData.rotation.y, transformData.rotation.z, transformData.rotation.w),
+                    rotation = GetRotationFromTransformData(transformData),
                     localScale = new Vector3(transformData.localScale.x, transformData.localScale.y, transformData.localScale.z)
                 };
 
-                entries.Add(entry);
+                entries.Add(entry);;
             }
         }
 
@@ -186,6 +186,35 @@ namespace VERA
             return input;
         }
 
+        // Helper method to extract rotation from transform data, supporting both quaternion and Euler formats
+        Quaternion GetRotationFromTransformData(TransformData transformData)
+        {
+            // Prefer quaternion if available (more precise)
+            if (transformData.rotation != null &&
+                (transformData.rotation.x != 0 || transformData.rotation.y != 0 ||
+                 transformData.rotation.z != 0 || transformData.rotation.w != 0))
+            {
+                return new Quaternion(
+                    transformData.rotation.x,
+                    transformData.rotation.y,
+                    transformData.rotation.z,
+                    transformData.rotation.w);
+            }
+
+            // Fall back to Euler angles if quaternion is not available
+            if (transformData.eulerAngles != null)
+            {
+                return Quaternion.Euler(
+                    transformData.eulerAngles.x,
+                    transformData.eulerAngles.y,
+                    transformData.eulerAngles.z);
+            }
+
+            // Default to identity if neither is available
+            VERADebugger.LogWarning("No rotation data found in transform entry, using identity rotation.", "TransformLogReplay");
+            return Quaternion.identity;
+        }
+
         // Class to hold each transform entry
         public class TransformEntry
         {
@@ -200,7 +229,8 @@ namespace VERA
         public class TransformData
         {
             public Vector3Data position;
-            public QuaternionData rotation;
+            public QuaternionData rotation;      // Present when format is Quaternion or Both
+            public Vector3Data eulerAngles;      // Present when format is Euler or Both
             public Vector3Data localScale;
         }
 
