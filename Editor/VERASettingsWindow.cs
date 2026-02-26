@@ -63,6 +63,12 @@ namespace VERA
                     TestUserConnection(false);
                 }
 
+                // Display help button
+                if (GUILayout.Button("Open Help Window"))
+                {
+                    VERAHelpWindow.ShowWindow();
+                }
+
                 GUILayout.Space(10); // Add space between sections
 
                 // Add the experiment selection description
