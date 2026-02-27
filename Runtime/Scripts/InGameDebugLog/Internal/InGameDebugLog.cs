@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -31,6 +30,10 @@ namespace VERA
         private List<InGameDebugLine> displayedLogLines = new List<InGameDebugLine>();
         private InGameDebugLine activeExtendedDebugLine;
         private bool newLogHasNotBeenSeen = false;
+
+        // Queue for log messages received during a canvas rebuild, processed next Update
+        private readonly Queue<(string logString, string stackTrace, LogType type)> pendingLogs
+            = new Queue<(string, string, LogType)>();
 
         private int numNormalLogs = 0;
         private int numWarningLogs = 0;
@@ -64,9 +67,16 @@ namespace VERA
             }
         }
 
-        // Update, checks if scroll view has reached the bottom, 
+        // Update, checks if scroll view has reached the bottom,
         private void Update()
         {
+            // Flush any log messages that were queued during a canvas rebuild
+            while (pendingLogs.Count > 0)
+            {
+                var (logString, stackTrace, type) = pendingLogs.Dequeue();
+                AddLogLine(logString, stackTrace, type);
+            }
+
             // Check for "reading" new log
             if (newLogHasNotBeenSeen && debugLineAreaScrollRect.verticalNormalizedPosition < .001f)
             {
@@ -88,10 +98,17 @@ namespace VERA
             transform.GetChild(0).gameObject.SetActive(false);
         }
 
-        // Handles an incoming debug log, outputting it on its own line
+        // Handles an incoming debug log — defers to next Update if called during a canvas rebuild
         private void HandleNewLog(string logString, string stackTrace, LogType type)
         {
-            // Create new line, and pass it desired info
+            // Instantiating UI during a canvas rebuild causes Unity warnings and undefined behaviour.
+            // Queue the message; Update() will flush it safely outside the rebuild loop.
+            pendingLogs.Enqueue((logString, stackTrace, type));
+        }
+
+        // Creates and displays a log line; must only be called outside a canvas rebuild
+        private void AddLogLine(string logString, string stackTrace, LogType type)
+        {
             InGameDebugLine newLine = Instantiate(debugLinePrefab, debugLineAreaParent);
             newLine.SetLineContent(this, logString, stackTrace, type);
             displayedLogLines.Add(newLine);

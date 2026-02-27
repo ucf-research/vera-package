@@ -31,6 +31,12 @@ namespace VERA
         // Track survey instance counts for file naming
         private static Dictionary<string, int> surveyInstanceCounts = new Dictionary<string, int>();
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ResetInstanceCounts()
+        {
+            surveyInstanceCounts = new Dictionary<string, int>();
+        }
+
         [SerializeField] private UnityEvent OnSurveyCompleted;
 
         #endregion
@@ -118,13 +124,14 @@ namespace VERA
             string sanitizedSurveyName = System.Text.RegularExpressions.Regex.Replace(surveyName ?? "Survey", @"[<>:""/\\|?*\s]", "_");
 
             // Track instance count per survey name (e.g., VRSQ.csv, VRSQ_2.csv, VRSQ_3.csv)
-            // Only increment on success to avoid duplicate filenames on retry
+            // Increment immediately when file is written so each survey gets a unique name
+            // regardless of whether the subsequent upload succeeds
             if (!surveyInstanceCounts.ContainsKey(sanitizedSurveyName))
             {
                 surveyInstanceCounts[sanitizedSurveyName] = 0;
             }
-            // Use pending count (current + 1) for this attempt
             int instanceCount = surveyInstanceCounts[sanitizedSurveyName] + 1;
+            surveyInstanceCounts[sanitizedSurveyName] = instanceCount;
 
             // First instance has no suffix, subsequent instances have _2, _3, etc.
             string fileName = instanceCount == 1
@@ -177,8 +184,6 @@ namespace VERA
                 {
                     VERADebugger.Log($"Successfully uploaded survey instance file: {fileName}", "VERA Survey", DebugPreference.Informative);
                     fileUploadSuccessful = true;
-                    // Commit the instance count increment now that upload succeeded
-                    surveyInstanceCounts[sanitizedSurveyName] = instanceCount;
                 }
                 else
                 {

@@ -15,7 +15,7 @@ namespace VERA
         // Global host URL - all other scripts which reference the host URL should use a reference to this
         // Set to localHost, testHost, or liveHost according to current needs.
 
-        public const string hostUrl = liveHost;
+        public const string hostUrl = localHost;
 
     }
 }

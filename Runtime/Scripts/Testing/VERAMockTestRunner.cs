@@ -175,10 +175,8 @@ namespace VERA
 
                 if (surveyData == null || surveyData.questions == null || surveyData.questions.Count == 0)
                 {
-                    VERADebugger.LogWarning($"[VERA Mock Test] Survey data could not be fetched from API. Falling back to local CSV recording only.");
-                    GenerateMockSurveyResponsesLocal(surveyId, surveyName);
-                    yield return null; // Always return normally so caller can mark survey complete
-                    yield break;
+                    VERADebugger.LogWarning($"[VERA Mock Test] Survey data could not be fetched from API. Generating synthetic mock survey data.");
+                    surveyData = GenerateSyntheticSurvey(surveyId, surveyName);
                 }
                 else
                 {
@@ -375,6 +373,24 @@ namespace VERA
             {
                 VERADebugger.LogError($"[VERA Mock Test] Failed to generate mock survey responses: {ex.Message}");
             }
+        }
+
+        private VERASurvey GenerateSyntheticSurvey(string surveyId, string surveyName)
+        {
+            int numQuestions = UnityEngine.Random.Range(3, 8);
+            var questions = new List<VERASurveyQuestion>();
+            for (int i = 0; i < numQuestions; i++)
+            {
+                questions.Add(new VERASurveyQuestion
+                {
+                    _id = $"q{i + 1}_{System.Guid.NewGuid().ToString().Substring(0, 8)}",
+                    questionText = $"Mock Question {i + 1}",
+                    questionType = "multipleChoice",
+                    questionNumberInSurvey = i,
+                    questionOptions = new List<string> { "Option A", "Option B", "Option C", "Option D", "Option E" }
+                });
+            }
+            return new VERASurvey { _id = surveyId, surveyName = surveyName, questions = questions };
         }
 
         private IEnumerator FetchSurveyDataFromAPI(string surveyId, System.Action<VERASurvey> onComplete)
