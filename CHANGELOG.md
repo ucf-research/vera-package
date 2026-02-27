@@ -1,12 +1,23 @@
 # Changelog
 
+## [0.2.1] - 2026-02-27
+
+### Fixed
+
+- Prevent surveys from being fetched before initialization.
+- Set participant status to COMPLETE after all files upload successfully. ​
+- Track file uploads separately for each survey instance.
+
 ## [0.2.0] - 2026-2-26
+
 ### Added
+
 - Running surveys (#8)
 - Managing trials and participant flow (#3)
 - Help guide (#13)
 
 ### Adjusted
+
 - Telemetry files log every frame (#1)
 - General updates to the telemetry file (#5)
 - Adjustments to rotation formatting (#14)
@@ -16,8 +27,11 @@
 - Condition / IV values log using short encoding (#10)
 
 ### Fixed
+
 - Define symbols copy to all build profiles (#12)
 
 ## [0.1.0] - 2025-12-9
+
 ### Added
+
 - Initial development package release (#1)

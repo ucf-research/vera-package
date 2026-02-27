@@ -663,9 +663,6 @@ namespace VERA
                             // Generate condition code
                             ConditionGenerator.ClearAllConditionCsCode();
                             ConditionGenerator.GenerateAllConditionCsCode(activeExperiment);
-
-                            // Generate survey helper code and SurveyInfo assets for this experiment's surveys
-                            SurveyHelperGenerator.FetchAndConvertSurveys();
                         }
                     }
                 });
@@ -683,13 +680,20 @@ namespace VERA
                 return;
             }
 
-            // Update authentication token for the new experiment to allow data collection
+            // Update authentication token for the new experiment to allow data collection.
+            // Survey helper generation is deferred until after the new token is saved, to avoid
+            // fetching surveys with a stale/invalid token and getting a 400 response.
             GetBuildAuthToken(activeExperimentId, (success) =>
             {
                 if (!success)
                 {
                     VERADebugger.LogError("Failed to authenticate for experiment. Cannot change active experiment. " +
                         "Please check your internet connection, refresh experiments, and try again.", "VERA Authentication");
+                }
+                else
+                {
+                    // Generate survey helper code and SurveyInfo assets now that the correct token is saved
+                    SurveyHelperGenerator.FetchAndConvertSurveys();
                 }
             });
         }

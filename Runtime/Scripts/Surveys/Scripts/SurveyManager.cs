@@ -88,6 +88,11 @@ namespace VERA
         private void Awake()
         {
             surveyInterfaceIo = GetComponent<SurveyInterfaceIO>();
+
+            // If serialized UI refs are missing (e.g. AddComponent without prefab), skip UI setup gracefully.
+            // This can happen when SurveyInterfaceIO is created in test scenarios.
+            if (managerCanvas == null) return;
+
             managerCanvGroup = managerCanvas.GetComponent<CanvasGroup>();
             questionTextCanvGroup = questionText.GetComponent<CanvasGroup>();
             countDisplayCanvGroup = countDisplay.GetComponent<CanvasGroup>();

@@ -427,6 +427,8 @@ namespace VERA
             DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
             if (dataRecordingType == DataRecordingType.DoNotRecord || dataRecordingType == DataRecordingType.OnlyRecordLocally || ShouldSkipUpload())
             {
+                if (finalUpload)
+                    OnFinalUploadComplete();
                 yield break;
             }
 
@@ -516,7 +518,10 @@ namespace VERA
                 {
                     // failure → log and back off
                     string err = activeWebRequest != null ? activeWebRequest.error : "unknown error";
-                    VERADebugger.LogWarning($"Attempt {attempt} failed for {columnDefinition.fileType.name}: {err}", "VERACsvHandler");
+                    string responseBody = "";
+                    try { responseBody = activeWebRequest?.downloadHandler?.text ?? ""; } catch { }
+                    string responseInfo = string.IsNullOrEmpty(responseBody) ? "" : $" | Server: {responseBody}";
+                    VERADebugger.LogWarning($"Attempt {attempt} failed for {columnDefinition.fileType.name}: {err}{responseInfo}", "VERACsvHandler");
                     if (attempt < maxAttempts)
                     {
                         VERADebugger.Log($"Retrying in {delay}s...", "VERACsvHandler", DebugPreference.Informative);
@@ -604,7 +609,9 @@ namespace VERA
 
             // Set up the request
             WWWForm form = new WWWForm();
+            form.AddField("experiment_UUID", experimentUUID);
             form.AddField("participant_UUID", participantUUID);
+            form.AddField("site_UUID", siteUUID);
             form.AddBinaryData("fileUpload", fileData, experimentUUID + "-" + siteUUID + "-" + participantUUID + "-" + fileTypeId + ".csv", "text/csv");
 
             // Send the request

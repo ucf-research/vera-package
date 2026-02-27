@@ -133,6 +133,9 @@ namespace VERA
             // Fetch the Survey_Responses file type ID from server (needed for CSV upload)
             yield return FetchSurveyResponsesFileTypeId();
 
+            // Fetch the Experiment_Telemetry (baseline-data) file type ID from server
+            yield return FetchBaselineDataFileTypeId();
+
             // Initialize experiment conditions BEFORE enabling collection
             // This ensures conditions are available when baseline logging starts
             yield return InitializeExperimentConditions();
@@ -147,7 +150,6 @@ namespace VERA
             // Set up survey starter
             surveyStarter = gameObject.AddComponent<VERASurveyStarter>();
 
-            yield return InitializeExperimentConditions();
             // Initialize trial workflow manager (pass participant info for between-subjects assignment and checkpointing)
             trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
             int participantNum = activeParticipant != null ? activeParticipant.participantShortId : -1;
@@ -550,6 +552,78 @@ namespace VERA
                     VERADebugger.LogWarning($"Survey_Responses CSV upload will be disabled. Individual responses are still submitted via /api/surveys/responses.", "VERA Logger");
                     // Disable upload for this file type since we don't have a valid ID
                     surveyHandler.columnDefinition.fileType.skipUpload = true;
+                }
+            }
+        }
+
+        private IEnumerator FetchBaselineDataFileTypeId()
+        {
+            // Find the Experiment_Telemetry handler (collecting flag not set yet)
+            VERACsvHandler baselineHandler = null;
+            if (csvHandlers != null)
+            {
+                foreach (var handler in csvHandlers)
+                {
+                    if (handler?.columnDefinition?.fileType?.name == "Experiment_Telemetry")
+                    {
+                        baselineHandler = handler;
+                        break;
+                    }
+                }
+            }
+
+            if (baselineHandler == null)
+            {
+                VERADebugger.LogWarning("Experiment_Telemetry CSV handler not found; skipping file type ID fetch.", "VERA Logger");
+                yield break;
+            }
+
+            // Skip fetch if already have a valid ID (not a known placeholder)
+            string existingId = baselineHandler.columnDefinition.fileType.fileTypeId;
+            bool isPlaceholder = string.IsNullOrEmpty(existingId)
+                || existingId == "Experiment_Telemetry"
+                || existingId == "baseline-data";
+
+            if (!isPlaceholder)
+            {
+                VERADebugger.Log($"Experiment_Telemetry already has valid file type ID: {existingId}", "VERA Logger");
+                yield break;
+            }
+
+            string url = $"{VERAHost.hostUrl}/api/experiments/{experimentUUID}/filetypes/baseline-data";
+            VERADebugger.Log($"Fetching Experiment_Telemetry file type ID from: {url}", "VERA Logger");
+
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                yield return request.SendWebRequest();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    try
+                    {
+                        string responseText = request.downloadHandler.text;
+                        var json = Newtonsoft.Json.Linq.JObject.Parse(responseText);
+                        string fileTypeId = json["_id"]?.ToString();
+
+                        if (!string.IsNullOrEmpty(fileTypeId))
+                        {
+                            baselineHandler.columnDefinition.fileType.fileTypeId = fileTypeId;
+                            VERADebugger.Log($"Experiment_Telemetry file type ID fetched: {fileTypeId}", "VERA Logger");
+                        }
+                        else
+                        {
+                            VERADebugger.LogWarning("Experiment_Telemetry file type response missing _id field; upload URL may be invalid.", "VERA Logger");
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        VERADebugger.LogWarning($"Failed to parse Experiment_Telemetry file type response: {ex.Message}", "VERA Logger");
+                    }
+                }
+                else
+                {
+                    VERADebugger.LogWarning($"Failed to fetch Experiment_Telemetry file type (HTTP {request.responseCode}): {request.error}. Upload URL may be invalid.", "VERA Logger");
                 }
             }
         }
@@ -1014,8 +1088,7 @@ namespace VERA
                 StartCoroutine(SyncParticipantCondition(ivName));
             }
 
-            VERADebugger.LogError("No independent variable found with name \"" + ivName + "\"; cannot set selected value.", "VERA Logger");
-            return null;
+            return ivValue;
         }
 
         // Initializes participant's conditions according to experiment's current values

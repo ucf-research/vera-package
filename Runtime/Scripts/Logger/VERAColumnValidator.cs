@@ -50,6 +50,26 @@ namespace VERA
                         VERADebugger.LogError($"Failed to fix column definition for {fileTypeName}", "VERAColumnValidator");
                     }
                 }
+
+                // For Experiment_Telemetry, also validate that data columns match the canonical schema.
+                // This catches cases where the saved asset was created with an older version of the logger
+                // that had fewer columns, causing a runtime column count mismatch error.
+                if (isBaseline && fileTypeName == "Experiment_Telemetry")
+                {
+                    var canonical = VERABaselineDataColumnDefinition.CreateBaselineDataColumnDefinition();
+                    if (columnDef.columns.Count != canonical.columns.Count)
+                    {
+                        int prevCount = columnDef.columns.Count;
+                        columnDef.columns = canonical.columns;
+                        foundIssues = true;
+                        issuesFound.Add($"{fileTypeName}: Schema updated from {prevCount} to {canonical.columns.Count} columns to match current logger");
+
+#if UNITY_EDITOR
+                        UnityEditor.EditorUtility.SetDirty(columnDef);
+                        UnityEditor.AssetDatabase.SaveAssets();
+#endif
+                    }
+                }
             }
 
             if (foundIssues)
