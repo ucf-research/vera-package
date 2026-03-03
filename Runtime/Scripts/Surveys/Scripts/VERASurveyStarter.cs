@@ -8,6 +8,7 @@ namespace VERA
     {
 
         private SurveyManager activeSurveyInterface;
+        private GameObject spawnedSurveyLobby;
 
         /// <summary>
         /// Starts a survey for the current participant session, based on the provided SurveyInfo.
@@ -66,8 +67,20 @@ namespace VERA
                 VERAFadeCanvas.Instance.FadeIn(1f);
                 yield return new WaitForSeconds(1f);
 
+                // Spawn the survey lobby at the transport location
+                Vector3 lobbyPosition = new Vector3(0, -1000, 0);
+                GameObject surveyLobbyPrefab = Resources.Load<GameObject>("VERASurveyLobby");
+                if (surveyLobbyPrefab != null)
+                {
+                    spawnedSurveyLobby = Instantiate(surveyLobbyPrefab, lobbyPosition, Quaternion.identity);
+                }
+                else
+                {
+                    VERADebugger.LogWarning("VERASurveyLobby prefab not found in Resources folder.", "VERASurveyStarter");
+                }
+
                 // Transport participant
-                playerTransform.position = new Vector3(0, 0, 1000);
+                playerTransform.position = lobbyPosition;
                 yield return new WaitForSeconds(0.5f);
 
                 // Fade black screen out
@@ -101,6 +114,13 @@ namespace VERA
         private IEnumerator CleanupSurveyCoroutine(Vector3 startPosition, bool transportedToLobby, bool dimEnvironment, System.Action onSurveyComplete)
         {
             yield return null;
+
+            // Destroy the spawned survey lobby if it exists
+            if (spawnedSurveyLobby != null)
+            {
+                Destroy(spawnedSurveyLobby);
+                spawnedSurveyLobby = null;
+            }
 
             // If we transported the participant to a lobby, return them to their original position
             if (transportedToLobby)
