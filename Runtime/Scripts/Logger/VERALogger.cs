@@ -266,9 +266,9 @@ namespace VERA
                 dataPath = Path.Combine(Application.dataPath, "VERA", "data");
                 genericDataPath = Path.Combine(Application.dataPath, "VERA", "data", "generic");
 #else
-            baseFilePath = Path.Combine(Application.persistentDataPath, experimentUUID + "-" + siteUUID);
-            dataPath = Path.Combine(Application.persistentDataPath);
-            genericDataPath = Path.Combine(Application.persistentDataPath, "generic");
+                baseFilePath = Path.Combine(Application.persistentDataPath, experimentUUID + "-" + siteUUID);
+                dataPath = Path.Combine(Application.persistentDataPath);
+                genericDataPath = Path.Combine(Application.persistentDataPath, "generic");
 #endif
             }
         }
@@ -412,7 +412,7 @@ namespace VERA
 #if UNITY_2023_1_OR_NEWER
             VERABaselineAutoSetup existingSetup = FindAnyObjectByType<VERABaselineAutoSetup>();
 #else
-        VERABaselineAutoSetup existingSetup = FindObjectOfType<VERABaselineAutoSetup>();
+            VERABaselineAutoSetup existingSetup = FindObjectOfType<VERABaselineAutoSetup>();
 #endif
 
             if (existingSetup == null)
@@ -647,23 +647,6 @@ namespace VERA
 
 
         // Creates a CSV entry for the given file type
-        public void CreateCsvEntry(string fileTypeName, int eventId, params object[] values)
-        {
-            if (!collecting || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)
-                return;
-
-            VERACsvHandler csvHandler = FindCsvHandlerByFileName(fileTypeName);
-            if (csvHandler == null)
-            {
-                VERADebugger.LogError("No file type could be found associated with provided name \"" +
-                  fileTypeName + "\"; cannot log CSV entry to the file as desired.", "VERA Logger");
-                return;
-            }
-
-            csvHandler.CreateEntry(eventId, values);
-        }
-
-        // Creates a CSV entry for the given file type without an eventId (for baseline telemetry)
         public void CreateCsvEntry(string fileTypeName, params object[] values)
         {
             if (!collecting || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)

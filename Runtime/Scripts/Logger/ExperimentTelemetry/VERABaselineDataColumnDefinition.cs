@@ -44,7 +44,7 @@ namespace VERA
                 {
                     name = "ts",
                     description = "Time when data was recorded",
-                    type = VERAColumnDefinition.DataType.Date
+                    type = VERAColumnDefinition.DataType.Float
                 },
                 
                 // VR tracking and input data columns

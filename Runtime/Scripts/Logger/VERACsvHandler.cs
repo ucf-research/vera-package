@@ -193,15 +193,8 @@ namespace VERA
 
         #region ENTRY LOGGING
 
-
-        // Logs an entry to the file without eventId (for baseline telemetry). Doesn't write yet, only writes on flush.
-        public void CreateEntry(params object[] values)
-        {
-            CreateEntry(0, values); // eventId is ignored for baseline telemetry
-        }
-
         // Logs an entry to the file. Doesn't write yet, only writes on flush.
-        public void CreateEntry(int eventId, params object[] values)
+        public void CreateEntry(params object[] values)
         {
             if (!VERALogger.Instance.collecting || VERALogger.Instance.sessionFinalized || skipLocalSync)
             {
@@ -211,8 +204,9 @@ namespace VERA
             bool skipAuto = columnDefinition.skipAutoColumns;
 
             // check baseline data file (omits eventId column)
+            // eventId disabled while its necessity is evaluated
             bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
-            int autoColumnCount = isBaselineTelemetry ? 3 : 4; // 3 for baseline telemetry (no eventId), 4 otherwise
+            int autoColumnCount = 3;
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
             {
@@ -226,16 +220,18 @@ namespace VERA
 
             if (!skipAuto)
             {
-                // Add pID, conditions, timestamp, and eventId (except for baseline telemetry)
+                // Add pID, conditions, timestamp (except for baseline telemetry)
                 entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
                 entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
                 entry.Add(Convert.ToString(Time.realtimeSinceStartup));
 
                 // Only add eventId for non-baseline telemetry file types
+                // eventId disabled while its necessity is evaluated
+                /*
                 if (autoColumnCount == 4)
                 {
                     entry.Add(Convert.ToString(eventId));
-                }
+                }*/
             }
 
             for (int i = 0; i < values.Length; i++)

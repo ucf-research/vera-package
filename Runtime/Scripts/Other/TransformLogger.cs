@@ -7,14 +7,12 @@ namespace VERA
     internal class TransformLogger : MonoBehaviour
     {
 
-        // TransformLogger logs the transform of an object every frame, under given eventId
+        // TransformLogger logs the transform of an object every frame
 
         [Tooltip("The name of the file type this script should record its data to")]
         [SerializeField] private string fileToRecordTo = "DemoFile";
         [Tooltip("The object whose transform will be logged")]
         [SerializeField] private Transform targetObject;
-        [Tooltip("The EventID associated with this object's logging")]
-        [SerializeField] private int eventId;
 
         private Vector3 previousPosition;
         private Quaternion previousRotation;
@@ -50,7 +48,7 @@ namespace VERA
                 // If we have never logged before, make a single log, for the initial transform of the object
                 if (firstLog)
                 {
-                    VERALogger.Instance.CreateCsvEntry(fileToRecordTo, eventId, targetObject);
+                    VERALogger.Instance.CreateCsvEntry(fileToRecordTo, targetObject);
                     firstLog = false;
                     return;
                 }
@@ -69,7 +67,7 @@ namespace VERA
                         previousRotation = currentRotation;
                         previousScale = currentScale;
 
-                        VERALogger.Instance.CreateCsvEntry(fileToRecordTo, eventId, targetObject);
+                        VERALogger.Instance.CreateCsvEntry(fileToRecordTo, targetObject);
                     }
 
                     // Reset the timer
