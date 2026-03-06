@@ -13,6 +13,7 @@ namespace VERA
         // FileTypeGenerator will generate .cs files for associated column definitions, to allow easy logging of data per-file
 
         private const string generatedCsPath = "Assets/VERA/Filetypes/GeneratedCode/";
+        private static readonly HashSet<string> autoNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pid", "conditions", "ts", "timestamp", "timestamp_utc" };
 
         // Deletes all generated file type cs code
         public static void ClearAllFileTypeCsCode()
@@ -136,8 +137,8 @@ namespace VERA
 
         // Generates the CreateCsvEntry function for a given column definition
         // Will always be in a specific format. For example, for a file type "PlayerTransform" with columns
-        //   "Timestamp", "EventId", "Message", "Transform", would have the definition:
-        //   public static void CreateEntry(int EventId, string Message, Transform Transform)
+        //   "Timestamp", "Message", "Transform", would have the definition:
+        //   public static void CreateEntry(string Message, Transform Transform)
         private static void GenerateCreateCSVEntryFunction(VERAColumnDefinition columnDefinition, StringBuilder sb)
         {
             GenerateCSVEntryComments(columnDefinition, sb);
@@ -145,19 +146,19 @@ namespace VERA
             string functionDefinition = "\t\tpublic static void CreateCsvEntry(";
             List<string> parameterNames = new List<string>();
 
-            // Determine if this is baseline telemetry (no eventId)
+            // Determine if this is baseline telemetry
             bool isBaseline = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
 
             // Add eventId only for non-baseline
+            // eventId disabled while its necessity is evaluated
+            /*
             if (!isBaseline)
             {
                 functionDefinition += "int eventId";
-            }
-            // Determine which columns are auto-populated (pID, conditions, ts, eventId)
-            var autoNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pid", "conditions", "ts", "timestamp", "timestamp_utc", "eventid", "event_id" };
-
+            }*/
             // Build list of columns to include (in order) excluding auto-populated columns
             List<VERAColumnDefinition.Column> columnsToInclude = new List<VERAColumnDefinition.Column>();
+            bool firstColumnAdded = false;
             foreach (var col in columnDefinition.columns)
             {
                 if (autoNames.Contains((col.name ?? "").ToLowerInvariant())) continue;
@@ -167,7 +168,16 @@ namespace VERA
             if (columnsToInclude.Count > 0 || !isBaseline)
             {
                 if (!isBaseline)
-                    functionDefinition += ", ";
+                {
+                    if (firstColumnAdded)
+                    {
+                        functionDefinition += ", ";
+                    }
+                    else
+                    {
+                        firstColumnAdded = true;
+                    }
+                }
             }
 
             // Loop through filtered columns to add parameters
@@ -203,6 +213,9 @@ namespace VERA
                         case VERAColumnDefinition.DataType.Transform:
                             functionDefinition += "Transform ";
                             break;
+                        case VERAColumnDefinition.DataType.Float:
+                            functionDefinition += "float ";
+                            break;
                         default:
                             functionDefinition += "string ";
                             break;
@@ -225,10 +238,12 @@ namespace VERA
 
             // Add the actual function code, which calls the VERALogger
             string loggerCall = "\t\t\tVERASessionManager.CreateArbitraryCsvEntry(fileName";
+            // eventId disabled while its necessity is evaluated
+            /*
             if (!isBaseline)
             {
                 loggerCall += ", eventId";
-            }
+            }*/
             if (parameterNames.Count > 0)
                 loggerCall += ", ";
 
@@ -240,7 +255,7 @@ namespace VERA
                     loggerCall += ", ";
                 }
             }
-            loggerCall += "\t);";
+            loggerCall += ");";
             sb.AppendLine(loggerCall);
             sb.AppendLine("\t\t}");
         }
@@ -272,11 +287,12 @@ namespace VERA
             // Add additional arbitrary columns for this experiment
             sb.AppendLine("\t\t/// Included in your configuration are the following additional columns:");
             sb.AppendLine("\t\t/// <list type=\"bullet\">");
-            sb.AppendLine("\t\t/// <item>eventId: An identifier for this log entry, of type int. Mandatory for each user-generated file type, but may be arbitrarily assigned according to your preferences.</item>");
+            // eventId disabled while its necessity is evaluated
+            //sb.AppendLine("\t\t/// <item>eventId: An identifier for this log entry, of type int. Mandatory for each user-generated file type, but may be arbitrarily assigned according to your preferences.</item>");
             foreach (var col in columnDefinition.columns)
             {
                 string colNameLower = (col.name ?? "").ToLowerInvariant();
-                if (colNameLower == "pid" || colNameLower == "conditions" || colNameLower == "ts" || colNameLower == "timestamp" || colNameLower == "timestamp_utc" || colNameLower == "eventid" || colNameLower == "event_id")
+                if (autoNames.Contains(colNameLower))
                 {
                     // skip auto-populated columns
                     continue;
@@ -308,6 +324,9 @@ namespace VERA
                             break;
                         case VERAColumnDefinition.DataType.Transform:
                             typeString = "Transform";
+                            break;
+                        case VERAColumnDefinition.DataType.Float:
+                            typeString = "float";
                             break;
                         default:
                             typeString = "string";
@@ -320,11 +339,12 @@ namespace VERA
             sb.AppendLine("\t\t/// </summary>");
 
             // Now add param comments
-            sb.AppendLine("\t\t/// <param name=\"eventId\">eventId: An identifier for this log entry, of type int. Mandatory for each user-generated file type, but may be arbitrarily assigned according to your preferences.</param>");
+            // eventId disabled while its necessity is evaluated
+            //sb.AppendLine("\t\t/// <param name=\"eventId\">eventId: An identifier for this log entry, of type int. Mandatory for each user-generated file type, but may be arbitrarily assigned according to your preferences.</param>");
             foreach (var col in columnDefinition.columns)
             {
                 string colNameLower = (col.name ?? "").ToLowerInvariant();
-                if (colNameLower == "pid" || colNameLower == "conditions" || colNameLower == "ts" || colNameLower == "timestamp" || colNameLower == "timestamp_utc" || colNameLower == "eventid" || colNameLower == "event_id")
+                if (autoNames.Contains(colNameLower))
                 {
                     // skip auto-populated columns
                     continue;
@@ -357,12 +377,16 @@ namespace VERA
                         case VERAColumnDefinition.DataType.Transform:
                             typeString = "Transform";
                             break;
+                        case VERAColumnDefinition.DataType.Float:
+                            typeString = "float";
+                            break;
                         default:
                             typeString = "string";
                             break;
                     }
                 }
-                sb.AppendLine($"\t\t/// <param name=\"{col.name.Replace(" ", "")}\">{col.name.Replace(" ", "")}: Value for the '{col.name}' column, of type {typeString}.</param>");
+                if (col.name != null)
+                    sb.AppendLine($"\t\t/// <param name=\"{col.name.Replace(" ", "")}\">{col.name.Replace(" ", "")}: Value for the '{col.name}' column, of type {typeString}.</param>");
             }
         }
     }

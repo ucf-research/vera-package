@@ -982,8 +982,16 @@ namespace VERA
 
                                 // Set columns
                                 columnDefs[idx].columns.Clear();
-                                foreach (FtColumn col in sortedCols)
+                                for (int colIndex = 0; colIndex < sortedCols.Count; colIndex++)
                                 {
+                                    FtColumn col = sortedCols[colIndex];
+
+                                    // LEGACY: Skip the fourth column if it's "eventId"
+                                    if (colIndex == 3 && col.name?.ToLower() == "eventid")
+                                    {
+                                        continue;
+                                    }
+
                                     VERAColumnDefinition.Column newCol = new VERAColumnDefinition.Column();
                                     newCol.name = col.name;
                                     newCol.description = col.description;
@@ -1006,6 +1014,9 @@ namespace VERA
                                             break;
                                         case "Boolean":
                                             newCol.type = VERAColumnDefinition.DataType.Boolean;
+                                            break;
+                                        case "Float":
+                                            newCol.type = VERAColumnDefinition.DataType.Float;
                                             break;
                                     }
 

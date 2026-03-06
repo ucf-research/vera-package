@@ -87,8 +87,8 @@ namespace VERA
                 FileTypeGenerator.GenerateAllFileTypesCsCode();
                 VERADebugger.Log("File types regenerated successfully!", "VERAColumnValidator", DebugPreference.Verbose);
 #else
-            VERADebugger.LogWarning("Code regeneration is only available in the Unity Editor. " +
-                "Please regenerate file types using the VERA menu in the editor.", "VERAColumnValidator");
+                VERADebugger.LogWarning("Code regeneration is only available in the Unity Editor. " +
+                    "Please regenerate file types using the VERA menu in the editor.", "VERAColumnValidator");
 #endif
             }
             else
@@ -110,10 +110,14 @@ namespace VERA
             // Check for required auto-columns that VERA always adds
             // Determine baseline here as this method may be called independently
             bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == "Experiment_Telemetry");
-            // Baseline telemetry (Experiment_Telemetry or fileTypeId == "baseline-data") does not include eventId
+            // Baseline telemetry (Experiment_Telemetry or fileTypeId == "baseline-data")
+            // eventId disabled while its necessity is evaluated
+            /*
             string[] requiredColumns = isBaseline
                 ? new[] { "pID", "conditions", "ts" }
                 : new[] { "pID", "conditions", "ts", "eventId" };
+                */
+            string[] requiredColumns = new[] { "pID", "conditions", "ts" };
             List<string> columnNames = columnDef.columns.Select(c => c.name).ToList();
 
             List<string> missingColumns = new List<string>();
@@ -156,9 +160,12 @@ namespace VERA
                 // Determine baseline for this columnDef
                 bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == "Experiment_Telemetry");
                 // Baseline doesn't include eventId as an auto column
+                // eventId disabled while its necessity is evaluated
+                /*
                 string[] autoColumns = isBaseline
                     ? new[] { "pID", "conditions", "ts" }
-                    : new[] { "pID", "conditions", "ts", "eventId" };
+                    : new[] { "pID", "conditions", "ts", "eventId" };*/
+                string[] autoColumns = new[] { "pID", "conditions", "ts" };
 
                 foreach (var column in columnDef.columns)
                 {
@@ -190,10 +197,12 @@ namespace VERA
                 {
                     name = "ts",
                     description = "Time when the event occurred",
-                    type = VERAColumnDefinition.DataType.Date
+                    type = VERAColumnDefinition.DataType.Float
                 });
 
                 // Add eventId only for non-baseline file types
+                // eventId disabled while its necessity is evaluated
+                /*
                 if (!isBaseline)
                 {
                     columnDef.columns.Add(new VERAColumnDefinition.Column
@@ -202,7 +211,7 @@ namespace VERA
                         description = "Unique identifier for each event",
                         type = VERAColumnDefinition.DataType.Number
                     });
-                }
+                }*/
 
                 // Add back the data columns, ensuring numeric types for position/trigger/grip columns
                 foreach (var col in dataColumns)

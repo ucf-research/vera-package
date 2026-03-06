@@ -51,14 +51,14 @@ namespace VERA
             // Record a CSV row entry for the objects' initial transforms
             // Use preprocessor directives to ensure the VERAFile generated code exists for this file type
 #if VERAFile_PlayerTransforms
-            VERAFile_PlayerTransforms.CreateCsvEntry(1, mainCamera.transform);
-            VERAFile_PlayerTransforms.CreateCsvEntry(2, leftController.transform);
-            VERAFile_PlayerTransforms.CreateCsvEntry(3, rightController.transform);
+            VERAFile_PlayerTransforms.CreateCsvEntry(mainCamera.transform);
+            VERAFile_PlayerTransforms.CreateCsvEntry(leftController.transform);
+            VERAFile_PlayerTransforms.CreateCsvEntry(rightController.transform);
 #else
-        Debug.LogWarning("[VERA Default Logging] Cannot log player transforms, as your experiment does not have a " +
-            "defined file type named \"PlayerTransforms\". To use this default logging script, please define a file " +
-            "type named \"PlayerTransforms\".");
-        this.enabled = false;
+            Debug.LogWarning("[VERA Default Logging] Cannot log player transforms, as your experiment does not have a " +
+                "defined file type named \"PlayerTransforms\". To use this default logging script, please define a file " +
+                "type named \"PlayerTransforms\".");
+            this.enabled = false;
 #endif
         }
 
@@ -73,29 +73,29 @@ namespace VERA
             // Only record an entry if enough time has passed, according to our record rate
             if (elapsedTime >= recordRate)
             {
-                // Log the main camera's transform under eventId 1
+                // Log the main camera's transform
                 if (mainCamera && Vector3.Distance(mainCamera.transform.position, mainCameraLast) > 0.01f)
                 {
 #if VERAFile_PlayerTransforms
-                    VERAFile_PlayerTransforms.CreateCsvEntry(1, mainCamera.transform);
+                    VERAFile_PlayerTransforms.CreateCsvEntry(mainCamera.transform);
 #endif
                     mainCameraLast = mainCamera.transform.position;
                 }
 
-                // Log left controller transform under eventId 2
+                // Log left controller transform
                 if (leftController && Vector3.Distance(leftController.position, leftControllerLast) > 0.01f)
                 {
 #if VERAFile_PlayerTransforms
-                    VERAFile_PlayerTransforms.CreateCsvEntry(2, leftController.transform);
+                    VERAFile_PlayerTransforms.CreateCsvEntry(leftController.transform);
 #endif
                     leftControllerLast = leftController.position;
                 }
 
-                // Log right controller transform under eventId 3
+                // Log right controller transform
                 if (rightController && Vector3.Distance(rightController.position, rightControllerLast) > 0.01f)
                 {
 #if VERAFile_PlayerTransforms
-                    VERAFile_PlayerTransforms.CreateCsvEntry(3, rightController.transform);
+                    VERAFile_PlayerTransforms.CreateCsvEntry(rightController.transform);
 #endif
                     rightControllerLast = rightController.position;
                 }

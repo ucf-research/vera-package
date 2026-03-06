@@ -25,10 +25,10 @@ namespace VERA
             // This precompiler directive ensures the file exists, and can be used to log data entries.
             // One precompiler directive is automatically defined for each VERAFile, named as the file is named (VERAFile_FileName)
 #if !VERAFile_CubeRotation
-        Debug.LogWarning("[VERA Demo Logger] Cannot log cube telemetry, as your experiment does not have a " +
-            "defined file type named \"CubeRotation\". To use this demo logger script, please define a file " +
-            "type named \"CubeRotation\".");
-        this.enabled = false;
+            Debug.LogWarning("[VERA Demo Logger] Cannot log cube telemetry, as your experiment does not have a " +
+                "defined file type named \"CubeRotation\". To use this demo logger script, please define a file " +
+                "type named \"CubeRotation\".");
+            this.enabled = false;
 #endif
             StartCoroutine(DirectionChangeCoroutine());
         }
@@ -58,11 +58,10 @@ namespace VERA
 
             // The CreateCsvEntry function of this class will create one row entry into the corresponding CSV file.
             // The "ts" / Timestamp column is handled automatically;
-            // We must then provide an integer for the eventId column, and any other columns which have been defined.
             // The CubeRotation file type has two additional defined columns, a string for the demonstrative "message"
             // and a string for the cube's rotation. These are strictly typed as according to the corresponding file type.
 #if VERAFile_CubeRotation
-            VERAFile_CubeRotation.CreateCsvEntry(4, "Data Entry " + logCount, transform.rotation.ToString());
+            VERAFile_CubeRotation.CreateCsvEntry("Data Entry " + logCount, transform.rotation.ToString());
 #endif
             logCount++;
         }

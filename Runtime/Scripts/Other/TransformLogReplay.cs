@@ -12,9 +12,6 @@ namespace VERA
 
         // TransformLogReplay "replays" the transform data stored in a csv, matching an object's transform with the csv
 
-        [Tooltip("Filters matched transform to only a single target event ID")]
-        [SerializeField] private int targetEventId = 0;
-
         [Tooltip("The CSV file with desired transform data")]
         [SerializeField] private TextAsset csvFile;
 
@@ -38,7 +35,7 @@ namespace VERA
                 // Save to Assets/VERA/data
                 dataPath = Path.Combine(Application.dataPath, "VERA", "data");
 #else
-    dataPath = Path.Combine(Application.persistentDataPath);
+                dataPath = Path.Combine(Application.persistentDataPath);
 #endif
             }
             if (csvFile == null)
@@ -98,18 +95,7 @@ namespace VERA
                 }
 
                 string tsString = CleanString(parts[0]);
-                string eventIdString = CleanString(parts[1]);
-                string transformString = CleanTransformString(parts[2]);
-
-                int eventId;
-                if (!int.TryParse(eventIdString, out eventId))
-                {
-                    VERADebugger.LogWarning("Invalid eventId in line: " + line, "TransformLogReplay");
-                    continue;
-                }
-
-                if (eventId != targetEventId)
-                    continue; // Skip entries with different event IDs
+                string transformString = CleanTransformString(parts[1]);
 
                 System.DateTime timestamp = System.DateTime.Parse(tsString, null, DateTimeStyles.RoundtripKind);
                 float timeOffset = (float)(timestamp - firstTimestamp).TotalSeconds;
@@ -132,7 +118,7 @@ namespace VERA
                     localScale = new Vector3(transformData.localScale.x, transformData.localScale.y, transformData.localScale.z)
                 };
 
-                entries.Add(entry);;
+                entries.Add(entry); ;
             }
         }
 

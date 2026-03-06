@@ -401,13 +401,13 @@ namespace VERA
                 // Device list refresh is handled by a time-based refreshTimer in Update()
 
                 // Generate unique event ID for this sample
-                string eventId = System.Guid.NewGuid().ToString();
+                //string eventId = System.Guid.NewGuid().ToString();
 
                 // Collect all baseline data
-                var baselineData = CollectBaselineData(eventId);
+                var baselineData = CollectBaselineData();
 
                 // Log to VERA CSV system using the baseline data file type
-                LogToVERASystem(eventId, baselineData);
+                LogToVERASystem(baselineData);
 
                 currentSampleIndex++;
             }
@@ -418,12 +418,11 @@ namespace VERA
             }
         }
 
-        private BaselineDataEntry CollectBaselineData(string eventId)
+        private BaselineDataEntry CollectBaselineData()
         {
             var data = new BaselineDataEntry
             {
-                ts = DateTime.UtcNow,
-                eventId = eventId
+                ts = DateTime.UtcNow
             };
 
             // Headset data
@@ -571,7 +570,7 @@ namespace VERA
             return data;
         }
 
-        private void LogToVERASystem(string eventId, BaselineDataEntry data)
+        private void LogToVERASystem(BaselineDataEntry data)
         {
             // Only log to VERA server - no local CSV fallback
             if (VERALogger.Instance == null || !VERALogger.Instance.collecting)
@@ -784,7 +783,6 @@ namespace VERA
         public class BaselineDataEntry
         {
             public DateTime ts;              // Timestamp
-            public string eventId;           // Unique event identifier
             // Detection flags
             public bool headsetDetected = false;     // true = present, false = absent
             public float headsetPosX;        // Headset position X

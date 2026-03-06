@@ -48,12 +48,14 @@ namespace VERA
                 description = "Timestamp"
             });
 
+            // eventId disabled while its necessity is evaluated
+            /*
             columnDef.columns.Add(new VERAColumnDefinition.Column
             {
                 name = "eventId",
                 type = VERAColumnDefinition.DataType.Number,
                 description = "Event ID (1=camera, 2=left controller, 3=right controller)"
-            });
+            });*/
 
             // Add transform data column
             columnDef.columns.Add(new VERAColumnDefinition.Column
@@ -90,7 +92,7 @@ namespace VERA
             EditorGUIUtility.PingObject(columnDef);
 
             VERADebugger.Log($"Created PlayerTransforms column definition at: {fullPath}", "VERA PlayerTransforms");
-            VERADebugger.Log("This column definition has 5 columns total (pID, conditions, ts, eventId, transform) which should fix the column count mismatch.", "VERA PlayerTransforms");
+            VERADebugger.Log("This column definition has 4 columns total (pID, conditions, ts, transform) which should fix the column count mismatch.", "VERA PlayerTransforms");
         }
 #endif
     }

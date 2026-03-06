@@ -32,11 +32,12 @@ namespace VERA
             Transform,
             String,
             JSON,
-            Boolean
+            Boolean,
+            Float
         }
 
         public FileType fileType;
-        public bool skipAutoColumns; // When true, no auto-columns (pID, conditions, ts, eventId) are prepended; all columns are user-defined
+        public bool skipAutoColumns; // When true, no auto-columns (pID, conditions, ts) are prepended; all columns are user-defined
         public List<Column> columns = new List<Column>();
     }
 }

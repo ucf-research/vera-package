@@ -84,33 +84,9 @@ namespace VERA
         }
 
         /// <summary>
-        /// Creates a new arbitrary CSV entry with the specified file name, event ID, and values.
+        /// Creates a new arbitrary CSV entry with the specified file name and values.
         /// It is highly recommended to use the generated VERAFile_[FileName].CreateCsvEntry methods instead of this method,
         /// as those methods provide type safety and ensure correct column ordering. Use this function only as a last resort.
-        /// </summary>
-        /// <param name="eventId">An identifier for this log entry, of type int. Mandatory for each user-generated file type, but may be arbitrarily assigned according to your preferences.</param>
-        /// <param name="fileName">The name of the CSV file to which this entry should be added, without the .csv extension.</param>
-        /// <param name="values">The values to be logged in this CSV entry, in the correct order as per the file's configuration.</param>
-        public static void CreateArbitraryCsvEntry(string fileName, int eventId, params object[] values)
-        {
-            if (!initialized)
-            {
-                VERADebugger.LogWarning("Cannot create CSV entry because VERA is not initialized.", "VERASessionManager");
-                return;
-            }
-
-            if (!collecting)
-            {
-                VERADebugger.LogWarning("Cannot create CSV entry because data collection is not active.", "VERASessionManager");
-                return;
-            }
-
-            VERALogger.Instance.CreateCsvEntry(fileName, eventId, values);
-        }
-
-        /// <summary>
-        /// Creates a new row entry to a CSV log file by its file name, without an eventId.
-        /// This overload is used for baseline telemetry and other auto-populated file types that don't use eventId.
         /// </summary>
         /// <param name="fileName">The name of the CSV file to which this entry should be added, without the .csv extension.</param>
         /// <param name="values">The values to be logged in this CSV entry, in the correct order as per the file's configuration.</param>
