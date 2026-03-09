@@ -16,6 +16,7 @@ namespace VERA
         private List<Experiment> experimentList = null;
         private string timeExperimentsLastRefreshed = string.Empty;
         private Dictionary<string, IVGroup> ivFetchCache = new Dictionary<string, IVGroup>();
+        private Vector2 scrollPosition = Vector2.zero;
 
         // Foldout states for collapsible sections
         private bool experimentFoldout = true;
@@ -39,6 +40,8 @@ namespace VERA
         private void OnGUI()
         {
             GUILayout.Label("VERA Settings", EditorStyles.boldLabel);
+
+            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
             // Display differently according to whether user is authenticated or not
             if (PlayerPrefs.GetInt("VERA_UserAuthenticated") == 1)
@@ -255,6 +258,8 @@ namespace VERA
                     VERAAuthenticator.StartUserAuthentication();
                 }
             }
+
+            EditorGUILayout.EndScrollView();
         }
 
 
