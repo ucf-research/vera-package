@@ -116,15 +116,16 @@ namespace VERA
                         string token = response.token;
                         string userId = response.user._id;
                         string userName = response.user.firstName + " " + response.user.lastName;
-
-                        EditorApplication.delayCall += () => VERADebugger.Log($"Parsed data; name: {userName}. Returning success to VERA portal...", "VERA Authentication", DebugPreference.Informative);
+                        bool isPreviewAccount = response.user.previewAccount;
+                        EditorApplication.delayCall += () => VERADebugger.Log($"USERS RESPONSE: {response.user}, previewAccount: {response.user.previewAccount}", "VERA Authentication", DebugPreference.Informative);
+                        EditorApplication.delayCall += () => VERADebugger.Log($"Parsed data; name: {userName}, previewAccount: {isPreviewAccount}. Returning success to VERA portal...", "VERA Authentication", DebugPreference.Informative);
 
                         // Save
                         EditorApplication.delayCall += () =>
                         {
                             try
                             {
-                                SaveUserAuthentication(token, userId, userName);
+                                SaveUserAuthentication(token, userId, userName, isPreviewAccount);
                                 VERADebugger.Log("[VERA Connection] You are successfully authenticated and connected to the VERA portal.\n", "VERA Authentication", DebugPreference.Informative);
                             }
                             catch (Exception ex)
@@ -169,7 +170,7 @@ namespace VERA
 
 
         // Saves incoming user authentication info
-        private static void SaveUserAuthentication(string token, string userId, string userName)
+        private static void SaveUserAuthentication(string token, string userId, string userName, bool isPreviewAccount)
         {
             try
             {
@@ -188,6 +189,7 @@ namespace VERA
                 newAuthInfo.userAuthToken = token;
                 newAuthInfo.userId = userId;
                 newAuthInfo.userName = userName;
+                newAuthInfo.isPreviewAccount = isPreviewAccount;
 
                 // Push to file (updates PlayerPrefs as well)
                 SetSavedUserAuthInfo(newAuthInfo);
@@ -311,6 +313,7 @@ namespace VERA
                 PlayerPrefs.SetString("VERA_UserName", authInfo.userName);
                 PlayerPrefs.SetString("VERA_UserAuthToken", authInfo.userAuthToken);
                 PlayerPrefs.SetInt("VERA_UserAuthenticated", authInfo.authenticated ? 1 : 0);
+                PlayerPrefs.SetInt("VERA_IsPreviewAccount", authInfo.isPreviewAccount ? 1 : 0);
 
                 // Force save PlayerPrefs
                 PlayerPrefs.Save();
@@ -1438,6 +1441,7 @@ namespace VERA
         public string userAuthToken = String.Empty;
         public string userId = String.Empty;
         public string userName = String.Empty;
+        public bool isPreviewAccount = true; // Default to true (restricted) if not set
     }
 
     [System.Serializable]
@@ -1540,5 +1544,6 @@ namespace VERA
         public string firstName;
         public string lastName;
         public string email;
+        public bool previewAccount;
     }
 }
