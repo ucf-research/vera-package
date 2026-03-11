@@ -540,7 +540,20 @@ namespace VERA
 
                     if (!resp.IsSuccessStatusCode)
                     {
-                        // Log full response JSON
+                        // Check for 403 Forbidden - permission denied
+                        if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                        {
+                            string permissionError = "Upload failed: You do not have permission to upload WebXR builds. " +
+                                "This may be because you are using a preview account. " +
+                                "Please contact your administrator to upgrade your account permissions.";
+                            VERADebugger.LogError(permissionError, "VERA Build Uploader");
+                            EditorUtility.DisplayDialog("Permission Denied",
+                                permissionError,
+                                "Okay");
+                            return false;
+                        }
+
+                        // Log full response JSON for other errors
                         string errorMessage = $"Upload failed ({(int)resp.StatusCode}).\nFull response: {body}";
                         throw new Exception(errorMessage);
                     }

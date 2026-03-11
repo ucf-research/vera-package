@@ -666,6 +666,9 @@ namespace VERA
             buildUploadFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(buildUploadFoldout, "Build Upload");
             if (buildUploadFoldout)
             {
+                // Check if the user is on a preview account (default to true/restricted if not set)
+                bool isPreviewAccount = PlayerPrefs.GetInt("VERA_IsPreviewAccount", 1) == 1;
+
                 GUILayout.Label("Once your experiment is completed and you are ready to upload it to the VERA portal, " +
                     "you will need to build for WebXR and send the build to the portal.", EditorStyles.wordWrappedLabel);
 
@@ -674,6 +677,8 @@ namespace VERA
                 GUILayout.Label("Press the button below to automatically perform this build and upload " +
                     "process.", EditorStyles.wordWrappedLabel);
 
+                // Disable the button if on a preview account
+                EditorGUI.BeginDisabledGroup(isPreviewAccount);
                 if (GUILayout.Button("Build and Upload Experiment"))
                 {
                     // Display a confirmation dialog before proceeding
@@ -686,6 +691,14 @@ namespace VERA
                         // Call the build and upload method
                         VERABuildUploader.BuildAndUploadExperiment();
                     }
+                }
+                EditorGUI.EndDisabledGroup();
+
+                if (isPreviewAccount)
+                {
+                    GUILayout.Space(5);
+                    EditorGUILayout.HelpBox("You are logged in with an early-access preview account. Preview accounts do not have permission to build and upload experiments for WebXR. " +
+                        "Please contact the VERA team if you need to upload experiments.", MessageType.Warning);
                 }
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
