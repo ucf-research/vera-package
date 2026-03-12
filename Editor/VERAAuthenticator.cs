@@ -1024,6 +1024,7 @@ namespace VERA
                                     }
 
                                     // Enforce correct types for known telemetry columns regardless of server dataType
+                                    /*
                                     string lowerName = (newCol.name ?? "").ToLower();
                                     if (lowerName.Contains("_pos") || lowerName.Contains("trigger") || lowerName.Contains("grip"))
                                     {
@@ -1037,6 +1038,7 @@ namespace VERA
                                     {
                                         newCol.type = VERAColumnDefinition.DataType.Boolean;
                                     }
+                                    */
 
                                     columnDefs[idx].columns.Add(newCol);
                                 }
