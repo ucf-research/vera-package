@@ -186,11 +186,11 @@ namespace VERA
                 var col = columnsToInclude[i];
                 string colNameLower = (col.name ?? "").ToLower();
                 // Only ts/timestamp/timestamp_utc should be DateTime, all pos/trigger/grip are float, rest as per type
-                if (colNameLower == "ts" || colNameLower == "timestamp" || colNameLower == "timestamp_utc")
+                if (isBaseline && (colNameLower == "ts" || colNameLower == "timestamp" || colNameLower == "timestamp_utc"))
                 {
                     functionDefinition += "DateTime ";
                 }
-                else if (colNameLower.Contains("pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip"))
+                else if (isBaseline && (colNameLower.Contains("pos") || colNameLower.Contains("trigger") || colNameLower.Contains("grip")))
                 {
                     functionDefinition += "float ";
                 }
