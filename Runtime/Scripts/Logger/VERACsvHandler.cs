@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -221,9 +222,9 @@ namespace VERA
             if (!skipAuto)
             {
                 // Add pID, conditions, timestamp (except for baseline telemetry)
-                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId, CultureInfo.InvariantCulture));
                 entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
-                entry.Add(Convert.ToString(Time.realtimeSinceStartup));
+                entry.Add(Convert.ToString(Time.realtimeSinceStartup, CultureInfo.InvariantCulture));
 
                 // Only add eventId for non-baseline telemetry file types
                 // eventId disabled while its necessity is evaluated
@@ -251,7 +252,8 @@ namespace VERA
                         }
                         else
                         {
-                            formattedValue = Convert.ToString(value);
+                            // Use InvariantCulture to ensure period decimal separator regardless of user's locale
+                            formattedValue = Convert.ToString(value, CultureInfo.InvariantCulture);
                         }
                         break;
                     case VERAColumnDefinition.DataType.Boolean:
@@ -341,8 +343,17 @@ namespace VERA
                 if (value is string str)
                     return $"\"{str}\"";
 
-                if (value is bool || value is int || value is float || value is double || value is long)
+                // Use InvariantCulture for numeric types to ensure period decimal separator
+                if (value is bool)
                     return value.ToString();
+                if (value is int i)
+                    return i.ToString(CultureInfo.InvariantCulture);
+                if (value is float f)
+                    return f.ToString(CultureInfo.InvariantCulture);
+                if (value is double d)
+                    return d.ToString(CultureInfo.InvariantCulture);
+                if (value is long l)
+                    return l.ToString(CultureInfo.InvariantCulture);
 
                 // For complex objects, use ToString as last resort
                 return value.ToString();
