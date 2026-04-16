@@ -61,12 +61,13 @@ namespace VERA
         /// automatically generated VERASurveyHelper static class to do so in a more convenient manner.
         /// </summary>
         /// <param name="surveyToStart">A VERASurveyInfo scriptable object representing the survey to start.</param>
+        /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
         /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
         /// <param name="dimEnvironment">Whether to fade the surrounding environment slightly, to help focus on the survey. Default is true.</param>
         /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         /// <param name="onSurveyComplete">An optional callback Action that will be invoked when the survey is completed by the participant.</param>
-        public static void StartSurvey(VERASurveyInfo surveyToStart, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)
+        public static void StartSurvey(VERASurveyInfo surveyToStart, bool runInWeb = false, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)
         {
             if (!initialized)
             {
@@ -80,7 +81,7 @@ namespace VERA
                 return;
             }
 
-            VERALogger.Instance.StartSurvey(surveyToStart, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);
+            VERALogger.Instance.StartSurvey(surveyToStart, runInWeb, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);
         }
 
         /// <summary>

@@ -26,4 +26,16 @@ public class VERAWebXRHookup : MonoBehaviour
         VERADebugger.Log("Initializing VERA with Site ID: " + siteId + " and Participant ID: " + participantId, "VERAWebXRHookup", DebugPreference.Informative);
         VERASessionManager.ManualInitialization(siteId, participantId);
     }
+
+
+    /// <summary>
+    /// This function is called from WebXR when the web survey that was launched from the WebXR
+    /// environment has completed - this call allows VERA to respond to the survey completion
+    /// (for example to resume the experience / unpause / advance the experiment flow).
+    /// </summary>
+    public void OnWebSurveyCompleted(string data)
+    {
+        VERADebugger.Log("Web survey completed, resuming experience...", "VERAWebXRHookup", DebugPreference.Informative);
+        VERALogger.Instance.OnWebSurveyCompleted(data);
+    }
 }
