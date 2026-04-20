@@ -52,6 +52,7 @@ namespace VERA
         public bool initialized { get; private set; } = false;
         public UnityEvent onLoggerInitialized = new UnityEvent();
         public VERACsvHandler[] csvHandlers { get; private set; }
+        private Dictionary<string, VERAColumnDefinition> nonCsvFileTypes = new Dictionary<string, VERAColumnDefinition>();
         private Dictionary<string, string> conditionsCache = new Dictionary<string, string>();
         private Dictionary<string, Dictionary<string, string>> conditionEncodingLookup = new Dictionary<string, Dictionary<string, string>>();
 
@@ -386,22 +387,40 @@ namespace VERA
                 VERADebugger.Log("Using programmatic Survey_Responses definition (will fetch ID from server)", "VERA Logger");
             }
 
-            if (allDefinitions.Count == 0)
+            // Separate CSV and non-CSV file types
+            var csvDefinitions = new List<VERAColumnDefinition>();
+            nonCsvFileTypes.Clear();
+            foreach (var def in allDefinitions)
             {
-                VERADebugger.Log("No CSV file types found; continuing assuming no CSV logging will occur.", "VERA Logger", DebugPreference.Informative);
+                bool isCsv = string.IsNullOrEmpty(def.fileType.extension) ||
+                              def.fileType.extension.Equals("csv", StringComparison.OrdinalIgnoreCase);
+                if (isCsv)
+                {
+                    csvDefinitions.Add(def);
+                }
+                else
+                {
+                    nonCsvFileTypes[def.fileType.name] = def;
+                    VERADebugger.Log($"Registered non-CSV file type: {def.fileType.name} (extension: {def.fileType.extension})", "VERA Logger", DebugPreference.Informative);
+                }
+            }
+
+            if (csvDefinitions.Count == 0 && nonCsvFileTypes.Count == 0)
+            {
+                VERADebugger.Log("No file types found; continuing assuming no data logging will occur.", "VERA Logger", DebugPreference.Informative);
                 return;
             }
 
-            csvHandlers = new VERACsvHandler[allDefinitions.Count];
+            csvHandlers = new VERACsvHandler[csvDefinitions.Count];
 
-            // For each column definition, set it up as its own CSV handler
+            // For each CSV column definition, set it up as its own CSV handler
             for (int i = 0; i < csvHandlers.Length; i++)
             {
                 // Skip local sync for survey responses since we upload individual responses immediately via API, instead of batch uploading a CSV
-                bool skipLocalSync = allDefinitions[i].fileType.name == "Survey_Responses";
+                bool skipLocalSync = csvDefinitions[i].fileType.name == "Survey_Responses";
 
                 csvHandlers[i] = gameObject.AddComponent<VERACsvHandler>();
-                csvHandlers[i].Initialize(allDefinitions[i], skipLocalSync);
+                csvHandlers[i].Initialize(csvDefinitions[i], skipLocalSync);
             }
         }
 
@@ -661,6 +680,100 @@ namespace VERA
             }
 
             csvHandler.CreateEntry(values);
+        }
+
+
+        // Uploads a file to a non-CSV file type
+        public void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
+        {
+            if (!collecting || !initialized)
+            {
+                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized or not collecting.", "VERA Logger");
+                return;
+            }
+
+            DataRecordingType recordingType = GetDataRecordingType();
+            if (recordingType == DataRecordingType.DoNotRecord)
+                return;
+
+            if (!nonCsvFileTypes.ContainsKey(fileTypeName))
+            {
+                VERADebugger.LogError($"No non-CSV file type could be found associated with provided name \"{fileTypeName}\"; cannot upload file.", "VERA Logger");
+                return;
+            }
+
+            // Validate file extension
+            string actualExtension = Path.GetExtension(filePath);
+            if (string.IsNullOrEmpty(actualExtension))
+            {
+                VERADebugger.LogError($"The file \"{filePath}\" has no extension. Expected .{expectedExtension}.", "VERA Logger");
+                return;
+            }
+
+            // Normalize extensions for comparison (strip leading dot)
+            string normalizedActual = actualExtension.TrimStart('.').ToLowerInvariant();
+            string normalizedExpected = expectedExtension.TrimStart('.').ToLowerInvariant();
+            if (normalizedActual != normalizedExpected)
+            {
+                VERADebugger.LogError($"The file \"{filePath}\" has extension .{normalizedActual}, but the file type \"{fileTypeName}\" expects .{normalizedExpected}.", "VERA Logger");
+                return;
+            }
+
+            if (!File.Exists(filePath))
+            {
+                VERADebugger.LogError($"The file \"{filePath}\" does not exist.", "VERA Logger");
+                return;
+            }
+
+            VERAColumnDefinition fileTypeDef = nonCsvFileTypes[fileTypeName];
+            StartCoroutine(UploadFileTypeFileCoroutine(fileTypeDef, filePath));
+        }
+
+
+        // Coroutine to upload a file to a non-CSV file type
+        private IEnumerator UploadFileTypeFileCoroutine(VERAColumnDefinition fileTypeDef, string filePath)
+        {
+            string fileTypeId = fileTypeDef.fileType.fileTypeId;
+            string fileTypeName = fileTypeDef.fileType.name;
+            string participantUUID = activeParticipant.participantUUID;
+            string host = VERAHost.hostUrl;
+            string url = $"{host}/api/participants/{participantUUID}/filetypes/{fileTypeId}/files";
+
+            VERADebugger.Log($"Uploading file \"{filePath}\" to file type \"{fileTypeName}\"...", "VERA Logger", DebugPreference.Informative);
+
+            byte[] fileData = null;
+            yield return ReadBinaryDataFile(filePath, (result) => fileData = result);
+
+            if (fileData == null)
+            {
+                VERADebugger.LogError($"Failed to read file \"{filePath}\" for upload.", "VERA Logger");
+                yield break;
+            }
+
+            string fileName = Path.GetFileName(filePath);
+            string fileExtension = Path.GetExtension(filePath);
+            string mimeType = MimeTypes.MimeTypeMap.GetMimeType(fileExtension);
+
+            WWWForm form = new WWWForm();
+            form.AddField("experiment_UUID", experimentUUID);
+            form.AddField("participant_UUID", participantUUID);
+            form.AddField("site_UUID", siteUUID);
+            form.AddBinaryData("fileUpload", fileData, fileName, mimeType);
+
+            UnityWebRequest request = UnityWebRequest.Post(url, form);
+            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                VERADebugger.Log($"Successfully uploaded \"{fileName}\" to file type \"{fileTypeName}\".", "VERA Logger", DebugPreference.Informative);
+            }
+            else
+            {
+                VERADebugger.LogError($"Failed to upload \"{fileName}\" to file type \"{fileTypeName}\": {request.error}", "VERA Logger");
+            }
+
+            request.Dispose();
         }
 
 

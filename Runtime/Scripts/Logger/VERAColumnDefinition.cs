@@ -22,6 +22,7 @@ namespace VERA
             public string fileTypeId;
             public string name;
             public string description;
+            public string extension; // The expected file extension for this file type (e.g., "csv", "json", "txt")
             public bool skipUpload; // When true, this file type is NOT uploaded via the standard file type API (e.g., survey responses use a dedicated API)
         }
 

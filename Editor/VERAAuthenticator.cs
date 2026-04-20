@@ -950,25 +950,24 @@ namespace VERA
                             if (normalizedNameCheck == "surveyresponses")
                                 continue;
 
+                            // Ensure the directory exists in the Packages folder before creating the asset
+                            string columnsPath = GetAbsoluteColumnsFilePath();
+                            if (!Directory.Exists(columnsPath))
+                            {
+                                Directory.CreateDirectory(columnsPath);
+                                AssetDatabase.Refresh();
+                            }
+
+                            // Sanitize the filename to remove any invalid characters
+                            string sanitizedName = Regex.Replace(fileTypes[i].name, @"[<>:""/\\|?*]", "_");
+                            string relativePath = GetRelativeColumnsFilePath() + "/VERA_" + sanitizedName + "_ColumnDefinition.asset";
+
                             if (fileTypes[i].extension == "csv" && fileTypes[i].columnDefinition != null)
                             {
                                 // This file type is a CSV file with an associated column definition.
                                 // Create the column definition asset for this filetype, for use by VERALogger
                                 columnDefs.Add(ScriptableObject.CreateInstance<VERAColumnDefinition>());
                                 int idx = columnDefs.Count - 1;
-
-                                // Ensure the directory exists in the Packages folder before creating the asset
-                                string columnsPath = GetAbsoluteColumnsFilePath();
-                                if (!Directory.Exists(columnsPath))
-                                {
-                                    Directory.CreateDirectory(columnsPath);
-                                    AssetDatabase.Refresh();
-                                }
-
-                                // Convert absolute path to relative path for AssetDatabase.CreateAsset
-                                // Sanitize the filename to remove any invalid characters
-                                string sanitizedName = Regex.Replace(fileTypes[i].name, @"[<>:""/\\|?*]", "_");
-                                string relativePath = GetRelativeColumnsFilePath() + "/VERA_" + sanitizedName + "_ColumnDefinition.asset";
 
                                 try
                                 {
@@ -1023,23 +1022,6 @@ namespace VERA
                                             break;
                                     }
 
-                                    // Enforce correct types for known telemetry columns regardless of server dataType
-                                    /*
-                                    string lowerName = (newCol.name ?? "").ToLower();
-                                    if (lowerName.Contains("_pos") || lowerName.Contains("trigger") || lowerName.Contains("grip"))
-                                    {
-                                        newCol.type = VERAColumnDefinition.DataType.Number;
-                                    }
-                                    else if (lowerName.EndsWith("rot"))
-                                    {
-                                        newCol.type = VERAColumnDefinition.DataType.String;
-                                    }
-                                    else if (lowerName.EndsWith("detected"))
-                                    {
-                                        newCol.type = VERAColumnDefinition.DataType.Boolean;
-                                    }
-                                    */
-
                                     columnDefs[idx].columns.Add(newCol);
                                 }
 
@@ -1048,11 +1030,45 @@ namespace VERA
                                 columnDefs[idx].fileType.fileTypeId = fileTypes[i]._id;
                                 columnDefs[idx].fileType.name = fileTypes[i].name;
                                 columnDefs[idx].fileType.description = fileTypes[i].description;
+                                columnDefs[idx].fileType.extension = fileTypes[i].extension;
 
                                 EditorUtility.SetDirty(columnDefs[idx]);
                                 AssetDatabase.SaveAssets();
 
                                 // Add define symbol for this column definition
+                                definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
+                            }
+                            else if (fileTypes[i].extension != "csv")
+                            {
+                                // This is a non-CSV file type. Create a column definition asset with file type info but no columns.
+                                // This will be used to generate an UploadFile wrapper instead of a CreateCsvEntry wrapper.
+                                columnDefs.Add(ScriptableObject.CreateInstance<VERAColumnDefinition>());
+                                int idx = columnDefs.Count - 1;
+
+                                try
+                                {
+                                    AssetDatabase.CreateAsset(columnDefs[idx], relativePath);
+                                }
+                                catch (System.Exception e)
+                                {
+                                    VERADebugger.LogError($"Failed to create asset at path '{relativePath}': {e.Message}", "VERA Authentication");
+                                    continue;
+                                }
+
+                                // No columns for non-CSV file types
+                                columnDefs[idx].columns.Clear();
+
+                                // Save file type info
+                                columnDefs[idx].fileType = new VERAColumnDefinition.FileType();
+                                columnDefs[idx].fileType.fileTypeId = fileTypes[i]._id;
+                                columnDefs[idx].fileType.name = fileTypes[i].name;
+                                columnDefs[idx].fileType.description = fileTypes[i].description;
+                                columnDefs[idx].fileType.extension = fileTypes[i].extension;
+
+                                EditorUtility.SetDirty(columnDefs[idx]);
+                                AssetDatabase.SaveAssets();
+
+                                // Add define symbol for this file type
                                 definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
                             }
                         }

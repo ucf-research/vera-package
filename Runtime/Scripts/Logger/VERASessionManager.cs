@@ -109,6 +109,30 @@ namespace VERA
         }
 
         /// <summary>
+        /// Uploads a file to a non-CSV file type on the VERA server.
+        /// The generated VERAFile_[FileName].UploadFile() methods call this internally.
+        /// </summary>
+        /// <param name="fileTypeName">The name of the file type to upload to.</param>
+        /// <param name="filePath">The full path to the file to upload.</param>
+        /// <param name="expectedExtension">The expected file extension (e.g., "json", "txt").</param>
+        public static void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
+        {
+            if (!initialized)
+            {
+                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized.", "VERASessionManager");
+                return;
+            }
+
+            if (!collecting)
+            {
+                VERADebugger.LogWarning("Cannot upload file because data collection is not active.", "VERASessionManager");
+                return;
+            }
+
+            VERALogger.Instance.UploadFileTypeFile(fileTypeName, filePath, expectedExtension);
+        }
+
+        /// <summary>
         /// Gets the currently selected condition value of the specified independent variable.
         /// It is highly recommended to use the generated VERAIV_[IVGroupName].GetSelectedValue() methods instead of this method,
         /// as those methods provide type safety and ensure correct value handling. Use this function only as a last resort.
