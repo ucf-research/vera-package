@@ -26,7 +26,7 @@ namespace VERA
         public string prolificID { get; private set; }
 
         // Participant state management
-        public enum ParticipantProgressState { RECRUITED, ACCEPTED, WAITLISTED, IN_EXPERIMENT, TERMINATED, INCOMPLETE, GHOSTED, COMPLETE };
+        public enum ParticipantProgressState { CREATED, PRE_VR, IN_VR, POST_VR, WITHDRAWN, INCOMPLETE, PROCESSING };
         public ParticipantProgressState currentParticipantProgressState { get; private set; }
         private int changeProgressMaxRetries = 3;
 
@@ -47,7 +47,7 @@ namespace VERA
             // Get the participant data from the server using the override ID, then push a new Unity ID to it, then set them as in experiment
             yield return GetParticipantFromOverrideId(overrideParticipantId);
             yield return PushUidToActiveParticipant(overrideParticipantId);
-            yield return RetryableChangeProgress(ParticipantProgressState.IN_EXPERIMENT);
+            yield return RetryableChangeProgress(ParticipantProgressState.IN_VR);
         }
 
 
@@ -423,8 +423,8 @@ namespace VERA
                     // On success, notify completion
                     VERADebugger.Log($"Successfully set participant's state to {state}.", "VERA Participant", DebugPreference.Verbose);
 
-                    // If the state is COMPLETE, mark the session as finalized
-                    if (state == ParticipantProgressState.COMPLETE)
+                    // If the state is POST_VR (VR session completed), mark the session as finalized
+                    if (state == ParticipantProgressState.POST_VR)
                         VERALogger.Instance.FinalizeSession();
 
                     request.Dispose();
@@ -445,12 +445,12 @@ namespace VERA
 
 
         // Returns whether this participant is in a "finalized" state (i.e., no new data should be recorded)
-        // Finalized states currently include complete, incomplete, and terminated
+        // Finalized states currently include post-VR (VR session completed), incomplete, and withdrawn
         public bool IsInFinalizedState()
         {
-            return (currentParticipantProgressState == ParticipantProgressState.COMPLETE ||
+            return (currentParticipantProgressState == ParticipantProgressState.POST_VR ||
                 currentParticipantProgressState == ParticipantProgressState.INCOMPLETE ||
-                currentParticipantProgressState == ParticipantProgressState.TERMINATED);
+                currentParticipantProgressState == ParticipantProgressState.WITHDRAWN);
         }
 
 

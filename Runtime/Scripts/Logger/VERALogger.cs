@@ -1012,7 +1012,7 @@ namespace VERA
             }
 
             if (!activeParticipant.IsInFinalizedState())
-                yield return StartCoroutine(activeParticipant.RetryableChangeProgress(VERAParticipantManager.ParticipantProgressState.COMPLETE));
+                yield return StartCoroutine(activeParticipant.RetryableChangeProgress(VERAParticipantManager.ParticipantProgressState.POST_VR));
             else
                 VERADebugger.LogWarning("Participant is already in a finalized state before session completion. No action taken.", "VERA Logger");
 

@@ -130,7 +130,7 @@ namespace VERA
                 {
                     var currentState = VERALogger.Instance.activeParticipant.currentParticipantProgressState;
 
-                    if (currentState == VERAParticipantManager.ParticipantProgressState.IN_EXPERIMENT)
+                    if (currentState == VERAParticipantManager.ParticipantProgressState.IN_VR)
                     {
                         StartBaselineLogging();
                         yield break; // Stop monitoring once we've started
@@ -175,7 +175,7 @@ namespace VERA
             if (VERALogger.Instance.activeParticipant != null)
             {
                 var currentState = VERALogger.Instance.activeParticipant.currentParticipantProgressState;
-                if (currentState == VERAParticipantManager.ParticipantProgressState.IN_EXPERIMENT)
+                if (currentState == VERAParticipantManager.ParticipantProgressState.IN_VR)
                 {
                     shouldStart = true;
                 }
