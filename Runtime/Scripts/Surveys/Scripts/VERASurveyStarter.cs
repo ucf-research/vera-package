@@ -9,6 +9,7 @@ namespace VERA
 
         private SurveyManager activeSurveyInterface;
         private GameObject spawnedSurveyLobby;
+        private bool webSurveyRunning = false;
 
         /// <summary>
         /// Starts a survey for the current participant session, based on the provided SurveyInfo.
@@ -16,12 +17,13 @@ namespace VERA
         /// Subscribes to the necessary events to manage the survey lifecycle and ensure proper logging of survey responses.
         /// </summary>
         /// <param name="surveyInfo">The SurveyInfo ScriptableObject containing all necessary information about the survey to start</param>
+        /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
         /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
         /// <param name="dimEnvironment">Whether to fade the surrounding environment slightly, to help focus on the survey. Default is true.</param>
         /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         /// <param name="onSurveyComplete">An optional callback Action that will be invoked when the survey is completed by the participant.</param>
-        public void StartSurvey(VERASurveyInfo surveyInfo, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, System.Action onSurveyComplete = null)
+        public void StartSurvey(VERASurveyInfo surveyInfo, bool runInWeb = false, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, System.Action onSurveyComplete = null)
         {
             if (surveyInfo == null)
             {
@@ -43,10 +45,42 @@ namespace VERA
 
             VERADebugger.Log("Starting survey: " + surveyInfo.surveyName, "VERASurveyStarter", DebugPreference.Verbose);
 
-            StartCoroutine(BeginSurveyCoroutine(surveyInfo, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete));
+            if (runInWeb)
+                StartCoroutine(BeginWebSurveyCoroutine(surveyInfo, onSurveyComplete));
+            else
+                StartCoroutine(BeginVrSurveyCoroutine(surveyInfo, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete));
         }
 
-        private IEnumerator BeginSurveyCoroutine(VERASurveyInfo surveyInfo, bool transportToLobby, bool dimEnvironment, float heightOffset, float distanceOffset, System.Action onSurveyComplete)
+        private IEnumerator BeginWebSurveyCoroutine(VERASurveyInfo surveyInfo, System.Action onSurveyComplete)
+        {
+            VERADebugger.Log("Starting web survey: " + surveyInfo.surveyName, "VERASurveyStarter", DebugPreference.Informative);
+            // If we are in a WebGL / browser build context we need to call out to the web survey / browser to run the survey
+#if UNITY_WEBGL && !UNITY_EDITOR
+            webSurveyRunning = true;
+            Application.ExternalEval("window.unityMessageHandler('SHOW_SURVEY', '" + surveyInfo.surveyId + "');");
+            yield return new WaitUntil(() => !webSurveyRunning);
+            onSurveyComplete?.Invoke();
+            yield break;
+#else
+            VERADebugger.LogWarning("Attempted to start a survey in the web context, but this build / platform " +
+            "is not WebGL. This call will work fine in final WebGL builds - but for now, the call will be skipped " +
+            "and the experiment will continue as if the participant successfully finished the survey.", "VERASurveyStarter");
+            onSurveyComplete?.Invoke();
+            yield break;
+#endif
+        }
+
+        // Called when the web survey that was launched via the browser / WebGL context has completed and returned data
+        public void OnWebSurveyCompleted(string data)
+        {
+            if (!webSurveyRunning)
+                return;
+
+            webSurveyRunning = false;
+        }
+
+        // Runs a survey in VR (spawns the survey interface / lobby transport flow)
+        private IEnumerator BeginVrSurveyCoroutine(VERASurveyInfo surveyInfo, bool transportToLobby, bool dimEnvironment, float heightOffset, float distanceOffset, System.Action onSurveyComplete)
         {
             // Get the VERAFadeCanvas reference; if it does not exist, spawn it in
             if (VERAFadeCanvas.Instance == null)

@@ -258,6 +258,9 @@ namespace VERA
             // Generate StartSurvey method
             GenerateStartSurveyMethod(sb, surveyInfos);
 
+            // Generate StartSurveyInWeb method
+            GenerateStartSurveyInWebMethod(sb);
+
             // Close class and namespace
             sb.AppendLine("\t}");
             sb.AppendLine("}");
@@ -385,12 +388,13 @@ namespace VERA
             sb.AppendLine("\t\t/// Starts the specified survey for the current participant.");
             sb.AppendLine("\t\t/// </summary>");
             sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
+            sb.AppendLine("\t\t/// <param name=\"runInWeb\">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>");
             sb.AppendLine("\t\t/// <param name=\"transportToLobby\">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>");
             sb.AppendLine("\t\t/// <param name=\"dimEnvironment\">Whether to dim the environment when transporting to the survey lobby. Default is true.</param>");
             sb.AppendLine("\t\t/// <param name=\"heightOffset\">How far the survey will be offset vertically from the user's head position. Default is 0.</param>");
             sb.AppendLine("\t\t/// <param name=\"distanceOffset\">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>");
             sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">An optional callback Action that will be invoked when the survey is completed by the participant.</param>");
-            sb.AppendLine("\t\tpublic static void StartSurvey(VERASurveyReference surveyToStart, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)");
+            sb.AppendLine("\t\tpublic static void StartSurvey(VERASurveyReference surveyToStart, bool runInWeb = false, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)");
             sb.AppendLine("\t\t{");
             sb.AppendLine("\t\t\t// Get the resource path for the selected survey");
             sb.AppendLine("\t\t\tstring resourcePath = surveyToStart switch");
@@ -420,7 +424,23 @@ namespace VERA
             sb.AppendLine("\t\t\t}");
             sb.AppendLine();
             sb.AppendLine("\t\t\t// Start the survey using VERASessionManager");
-            sb.AppendLine("\t\t\tVERASessionManager.StartSurvey(surveyInfo, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);");
+            sb.AppendLine("\t\t\tVERASessionManager.StartSurvey(surveyInfo, runInWeb, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+        }
+
+        // Generates the StartSurveyInWeb convenience method
+        private static void GenerateStartSurveyInWebMethod(StringBuilder sb)
+        {
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Starts the specified survey for the current participant in the web context.");
+            sb.AppendLine("\t\t/// <br/><br/>This is a convenience overload equivalent to calling StartSurvey with runInWeb = true.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">An optional callback Action that will be invoked when the survey is completed by the participant.</param>");
+            sb.AppendLine("\t\tpublic static void StartSurveyInWeb(VERASurveyReference surveyToStart, Action onSurveyComplete = null)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tStartSurvey(surveyToStart, runInWeb: true, onSurveyComplete: onSurveyComplete);");
             sb.AppendLine("\t\t}");
         }
 
