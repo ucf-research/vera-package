@@ -70,6 +70,10 @@ namespace VERA
                 return;
             }
 
+            // Determine if this is a CSV or non-CSV file type
+            bool isCsv = string.IsNullOrEmpty(columnDefinition.fileType.extension) ||
+                          columnDefinition.fileType.extension.Equals("csv", StringComparison.OrdinalIgnoreCase);
+
             // Use StringBuilder to create the code
             StringBuilder sb = new StringBuilder();
 
@@ -82,12 +86,23 @@ namespace VERA
             sb.AppendLine("{");
             sb.AppendLine("\t");
 
-            sb.AppendLine("\t/// <summary>");
-            sb.AppendLine($"\t/// Static class for recording new entries to the {fileName} CSV file.");
-            sb.AppendLine($"\t/// <br/><br/>This class has been generated based on the CSV file you have defined on the VERA portal.");
-            sb.AppendLine($"\t/// This class should be the only way you record new CSV entries to the {fileName} file.");
-            sb.AppendLine($"\t/// <br/><br/>Notably, use the CreateCsvEntry() method to create new entries in the {fileName} CSV log file.");
-            sb.AppendLine($"\t/// </summary>");
+            if (isCsv)
+            {
+                sb.AppendLine("\t/// <summary>");
+                sb.AppendLine($"\t/// Static class for recording new entries to the {fileName} CSV file.");
+                sb.AppendLine($"\t/// <br/><br/>This class has been generated based on the CSV file you have defined on the VERA portal.");
+                sb.AppendLine($"\t/// This class should be the only way you record new CSV entries to the {fileName} file.");
+                sb.AppendLine($"\t/// <br/><br/>Notably, use the CreateCsvEntry() method to create new entries in the {fileName} CSV log file.");
+                sb.AppendLine($"\t/// </summary>");
+            }
+            else
+            {
+                sb.AppendLine("\t/// <summary>");
+                sb.AppendLine($"\t/// Static class for uploading files to the {fileName} file type.");
+                sb.AppendLine($"\t/// <br/><br/>This class has been generated based on the file type you have defined on the VERA portal.");
+                sb.AppendLine($"\t/// Use the UploadFile() method to upload a {columnDefinition.fileType.extension} file to this file type.");
+                sb.AppendLine($"\t/// </summary>");
+            }
 
             sb.AppendLine("\tpublic static class VERAFile_" + fileName);
             sb.AppendLine("\t{");
@@ -95,8 +110,16 @@ namespace VERA
             sb.AppendLine("\t\tprivate const string fileName = \"" + fileName + "\";");
             sb.AppendLine("\t\t");
 
-            // Build logging function
-            GenerateCreateCSVEntryFunction(columnDefinition, sb);
+            if (isCsv)
+            {
+                // Build CSV logging function
+                GenerateCreateCSVEntryFunction(columnDefinition, sb);
+            }
+            else
+            {
+                // Build file upload function for non-CSV file types
+                GenerateUploadFileFunction(columnDefinition, sb);
+            }
             sb.AppendLine("\t\t");
 
             sb.AppendLine("\t}");
@@ -388,6 +411,23 @@ namespace VERA
                 if (col.name != null)
                     sb.AppendLine($"\t\t/// <param name=\"{col.name.Replace(" ", "")}\">{col.name.Replace(" ", "")}: Value for the '{col.name}' column, of type {typeString}.</param>");
             }
+        }
+
+        // Generates the UploadFile function for non-CSV file types
+        private static void GenerateUploadFileFunction(VERAColumnDefinition columnDefinition, StringBuilder sb)
+        {
+            string extension = columnDefinition.fileType.extension ?? "file";
+            string fileName = columnDefinition.fileType.name;
+
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine($"\t\t/// Uploads a file to the {fileName} file type on the VERA server.");
+            sb.AppendLine($"\t\t/// The file must have a .{extension} extension.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine($"\t\t/// <param name=\"filePath\">The full path to the .{extension} file to upload.</param>");
+            sb.AppendLine($"\t\tpublic static void UploadFile(string filePath)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine($"\t\t\tVERASessionManager.UploadFileTypeFile(fileName, filePath, \"{extension}\");");
+            sb.AppendLine("\t\t}");
         }
     }
 }
