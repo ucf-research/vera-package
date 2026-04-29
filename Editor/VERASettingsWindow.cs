@@ -675,7 +675,7 @@ namespace VERA
                 GUILayout.Space(5);
 
                 GUILayout.Label("Press the button below to automatically perform this build and upload " +
-                    "process.", EditorStyles.wordWrappedLabel);
+                    "process. A progress window will show the status of each step.", EditorStyles.wordWrappedLabel);
 
                 // Disable the button if on a preview account
                 EditorGUI.BeginDisabledGroup(isPreviewAccount);
