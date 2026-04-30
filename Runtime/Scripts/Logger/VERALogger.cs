@@ -1351,7 +1351,7 @@ namespace VERA
 
 
         // Starts a survey for the participant based on the provided survey info
-        public void StartSurvey(VERASurveyInfo surveyToStart, bool runInWeb = false, bool transportToLobby = true, bool dimEnvironment = true, float heightOffset = 0f, float distanceOffset = 3f, Action onSurveyComplete = null)
+        public void StartSurvey(VERASurveyInfo surveyToStart, System.Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
         {
             if (surveyStarter == null)
             {
@@ -1365,7 +1365,7 @@ namespace VERA
                 return;
             }
 
-            surveyStarter.StartSurvey(surveyToStart, runInWeb, transportToLobby, dimEnvironment, heightOffset, distanceOffset, onSurveyComplete);
+            surveyStarter.StartSurvey(surveyToStart, onSurveyComplete, runInWeb, transportToLobby, heightOffset, distanceOffset);
         }
 
         // Called when a web survey that was launched in web-mode has completed
