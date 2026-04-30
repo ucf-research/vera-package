@@ -11,7 +11,7 @@ namespace VERA
     {
         private const string PREFS_KEY = "VERA_RunMockTestOnPlay";
 
-        [MenuItem("VERA/Run Mock Participant Test")]
+        //[MenuItem("VERA/Run Mock Participant Test")]
         public static void RunMockParticipantTest()
         {
             // Check if we're already in Play mode
