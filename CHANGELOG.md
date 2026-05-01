@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1] - 2026-05-01
+
+### Added
+- Step-by-step progress bar for WebXR builds (https://github.com/ucf-research/vera-package/pull/26)
+
+### Adjusted
+- Adjusted survey visual display and backend structure (https://github.com/ucf-research/vera-package/pull/25)
+
 ## [0.3.0] - 2026-04-27
 
 ### Added
