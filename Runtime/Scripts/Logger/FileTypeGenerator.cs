@@ -46,7 +46,7 @@ namespace VERA
         }
 
         // Adds a Unity Editor menu item so developers can regenerate file type wrappers from the Editor
-        [MenuItem("VERA/Regenerate File Types")]
+        //[MenuItem("VERA/Regenerate File Types")]
         public static void MenuGenerateAllFileTypesCsCode()
         {
             GenerateAllFileTypesCsCode();

@@ -25,66 +25,109 @@ namespace VERA
 
         #region BUILD AND UPLOAD
 
+        // Step indices for the progress window
+        private const int STEP_WEBGL = 0;
+        private const int STEP_PACKAGES = 1;
+        private const int STEP_WEBXR_CFG = 2;
+        private const int STEP_BUILD = 3;
+        private const int STEP_ZIP = 4;
+        private const int STEP_UPLOAD = 5;
+
+        private static readonly string[] StepNames = new string[]
+        {
+            "Verifying WebGL Settings",
+            "Installing WebXR Packages",
+            "Configuring WebXR Settings",
+            "Building Project",
+            "Zipping Build Files",
+            "Uploading to VERA Portal"
+        };
 
         // Builds the experiment for WebXR and uploads to the portal
         public static async void BuildAndUploadExperiment()
         {
             VERADebugger.Log("Building and uploading experiment...", "VERA Build Uploader", DebugPreference.Minimal);
 
-            // Ensure WebGL build platform exists and is selected
-            bool webGLSettingsSuccess = EnsureWebGLSettings();
-            if (!webGLSettingsSuccess)
+            // Open the progress window
+            var progress = VERABuildProgressWindow.ShowProgressWindow();
+            progress.SetSteps(StepNames);
+
+            try
             {
-                // Error handled in EnsureWebGLSettings
-                return;
+                // --- Step 0: WebGL settings ---
+                progress.BeginStep(STEP_WEBGL);
+                bool webGLSettingsSuccess = EnsureWebGLSettings();
+                if (!webGLSettingsSuccess)
+                {
+                    progress.FailStep(STEP_WEBGL, "WebGL Build Support is missing or could not switch platform.");
+                    progress.Finish(false, "WebGL Build Support is missing. Please install it and try again.");
+                    return;
+                }
+                progress.CompleteStep(STEP_WEBGL);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                // --- Step 1: Packages ---
+                progress.BeginStep(STEP_PACKAGES);
+                bool webXRExportPackageSuccess = await EnsurePackageInstalled(
+                    "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr",
+                    "com.de-panther.webxr");
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                bool webXRInteractionsPackageSuccess = await EnsurePackageInstalled(
+                    "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr-interactions",
+                    "com.de-panther.webxr-interactions");
+
+                if (!webXRExportPackageSuccess || !webXRInteractionsPackageSuccess)
+                {
+                    VERADebugger.LogError("Build failed - could not ensure WebXR packages are installed. " +
+                        "Please try manually installing the WebXR packages, then try again. " +
+                        "Both the \"WebXR Export\" and \"WebXR Interactions\" packages are required to build the project for WebXR. " +
+                        "You can find instructions here: https://openupm.com/packages/com.de-panther.webxr/", "VERA Build Uploader");
+
+                    progress.FailStep(STEP_PACKAGES, "Could not install WebXR packages. Check the console for details.");
+                    progress.Finish(false, "Failed to install required WebXR packages.");
+                    return;
+                }
+                progress.CompleteStep(STEP_PACKAGES);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                // --- Step 2: WebXR config ---
+                progress.BeginStep(STEP_WEBXR_CFG);
+                EnsureWebXRSettings();
+                progress.CompleteStep(STEP_WEBXR_CFG);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                // --- Steps 3-5: Build, zip, upload ---
+                bool buildSuccess = await BuildProject(progress);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                if (!buildSuccess)
+                {
+                    VERADebugger.LogError("Build / upload failed - could not build / upload the project for WebXR. " +
+                        "Please check the console for details.", "VERA Build Uploader");
+                    progress.Finish(false, "Build or upload failed. Check the console for details.");
+                    return;
+                }
+
+                progress.Finish(true);
+                VERADebugger.Log("Experiment built and uploaded successfully!", "VERA Build Uploader", DebugPreference.Minimal);
             }
-
-            // Ensure the WebXR export and interactions packages are installed
-            bool webXRExportPackageSuccess = await EnsurePackageInstalled(
-                "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr",
-                "com.de-panther.webxr");
-            bool webXRInteractionsPackageSuccess = await EnsurePackageInstalled(
-                "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr-interactions",
-                "com.de-panther.webxr-interactions");
-
-            // If failed to ensure packages, show error and return
-            if (!webXRExportPackageSuccess || !webXRInteractionsPackageSuccess)
+            catch (Exception ex)
             {
-                VERADebugger.LogError("Build failed - could not ensure WebXR packages are installed. " +
-                    "Please try manually installing the WebXR packages, then try again. " +
-                    "Both the \"WebXR Export\" and \"WebXR Interactions\" packages are required to build the project for WebXR. " +
-                    "You can find instructions here: https://openupm.com/packages/com.de-panther.webxr/", "VERA Build Uploader");
-
-                EditorUtility.DisplayDialog("Build Failed",
-                    "Could not ensure WebXR packages are installed. Please check the console for details.",
-                    "Okay");
-                return;
+                VERADebugger.LogError($"Unexpected error during build and upload: {ex}", "VERA Build Uploader");
+                progress.Finish(false, "An unexpected error occurred. Check the console for details.");
             }
+        }
 
-            // Ensure WebXR settings are properly configured
-            EnsureWebXRSettings();
-
-            // Build the project
-            bool buildSuccess = await BuildProject();
-
-            if (!buildSuccess)
-            {
-                VERADebugger.LogError("Build / upload failed - could not build / upload the project for WebXR. " +
-                    "Please check the console for details.", "VERA Build Uploader");
-                EditorUtility.DisplayDialog("Build Failed",
-                    "Could not build or upload the project for WebXR. This is likely due to a general build error. " +
-                    "Please check the console for details.",
-                    "Okay");
-                return;
-            }
-
-            EditorUtility.DisplayDialog("Build Successful",
-                "Your experiment has been successfully built and uploaded to the VERA portal! " +
-                "This experiment may now be experienced on a headset by visiting your experiment's WebXR link. " +
-                "For more information, please visit the VERA documentation.",
-                "Okay");
-
-            VERADebugger.Log("Experiment built and uploaded successfully!", "VERA Build Uploader", DebugPreference.Minimal);
+        private static void HandleCancel(VERABuildProgressWindow progress)
+        {
+            VERADebugger.Log("Build and upload cancelled by user.", "VERA Build Uploader", DebugPreference.Minimal);
+            progress.Finish(false, "Cancelled by user.");
         }
 
 
@@ -482,7 +525,7 @@ namespace VERA
 
 
         // Builds the project for WebXR
-        public static async Task<bool> BuildProject()
+        public static async Task<bool> BuildProject(VERABuildProgressWindow progress = null)
         {
             // Build to a temporary directory, so the build doesn't actually exist in the end
             string tempBuildDir = Path.Combine(Path.GetTempPath(), $"VERA_WebXRBuild_{Guid.NewGuid():N}");
@@ -490,7 +533,8 @@ namespace VERA
 
             try
             {
-                // Build the project (using current build settings)
+                // --- Build ---
+                progress?.BeginStep(STEP_BUILD);
                 VERADebugger.Log($"Building project into temporary directory: {tempBuildDir}...", "VERA Build Uploader", DebugPreference.Informative);
                 BuildPlayerOptions bp = new BuildPlayerOptions
                 {
@@ -502,9 +546,16 @@ namespace VERA
 
                 BuildReport report = BuildPipeline.BuildPlayer(bp);
                 if (report.summary.result != BuildResult.Succeeded)
+                {
+                    progress?.FailStep(STEP_BUILD, $"Build failed: {report.summary.result}");
                     throw new Exception($"Build failed: {report.summary.result}");
+                }
+                progress?.CompleteStep(STEP_BUILD);
 
-                // Zip the build to a memory stream
+                if (progress != null && progress.IsCancelled) return false;
+
+                // --- Zip ---
+                progress?.BeginStep(STEP_ZIP);
                 VERADebugger.Log("Build succeeded! Zipping build files...", "VERA Build Uploader", DebugPreference.Informative);
                 byte[] zipBytes;
                 using (MemoryStream ms = new MemoryStream())
@@ -519,8 +570,12 @@ namespace VERA
                     }
                     zipBytes = ms.ToArray();
                 }
+                progress?.CompleteStep(STEP_ZIP);
 
-                // Upload the zip to the VERA portal
+                if (progress != null && progress.IsCancelled) return false;
+
+                // --- Upload ---
+                progress?.BeginStep(STEP_UPLOAD);
                 string url = $"{VERAHost.hostUrl}/api/experiments/{PlayerPrefs.GetString("VERA_ActiveExperiment")}/webxr";
                 string jwtToken = PlayerPrefs.GetString("VERA_UserAuthToken");
                 VERADebugger.Log($"Zip complete! Uploading to {url}, file size: {zipBytes.Length / 1024f:F1} KB...", "VERA Build Uploader", DebugPreference.Informative);
@@ -547,18 +602,18 @@ namespace VERA
                                 "This may be because you are using a preview account. " +
                                 "Please contact your administrator to upgrade your account permissions.";
                             VERADebugger.LogError(permissionError, "VERA Build Uploader");
-                            EditorUtility.DisplayDialog("Permission Denied",
-                                permissionError,
-                                "Okay");
+                            progress?.FailStep(STEP_UPLOAD, "Permission denied.");
                             return false;
                         }
 
                         // Log full response JSON for other errors
                         string errorMessage = $"Upload failed ({(int)resp.StatusCode}).\nFull response: {body}";
+                        progress?.FailStep(STEP_UPLOAD, errorMessage);
                         throw new Exception(errorMessage);
                     }
 
                     VERADebugger.Log("Upload complete! Response: " + body, "VERA Build Uploader", DebugPreference.Informative);
+                    progress?.CompleteStep(STEP_UPLOAD);
                 }
             }
             catch (Exception ex)
