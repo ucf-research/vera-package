@@ -22,6 +22,101 @@ namespace VERA
     internal class VERABuildUploader : MonoBehaviour
     {
 
+        // SessionState key used to survive domain reloads that occur after package installation.
+        // Set before installing any missing package; cleared once the full build completes or is cancelled.
+        private const string SESSION_RESUME_KEY = "VERA_BuildResumePending";
+
+
+        #region DOMAIN-RELOAD-SAFE RESUME MECHANISM
+
+        // After a domain reload caused by package installation, Unity runs every
+        // [InitializeOnLoad] static constructor.  We use this to detect that a build
+        // was in-flight and offer to continue automatically.
+        [InitializeOnLoad]
+        private static class BuildResumeHandler
+        {
+            static BuildResumeHandler()
+            {
+                if (SessionState.GetBool(VERABuildUploader.SESSION_RESUME_KEY, false))
+                {
+                    // Delay until Unity has finished all post-reload initialisation.
+                    EditorApplication.delayCall += PromptAndResume;
+                }
+            }
+
+            private static void PromptAndResume()
+            {
+                // Always clear the flag first — we don't want a second prompt on the
+                // next reload if the user cancels or if something goes wrong.
+                SessionState.SetBool(VERABuildUploader.SESSION_RESUME_KEY, false);
+
+                bool proceed = EditorUtility.DisplayDialog(
+                    "VERA Build — Resume",
+                    "The WebXR packages have been installed and Unity has finished reloading scripts.\n\n" +
+                    "Would you like to continue building and uploading the experiment?",
+                    "Continue Build",
+                    "Cancel");
+
+                if (proceed)
+                    VERABuildUploader.ContinueAfterPackageInstall();
+            }
+        }
+
+        // Runs after a domain reload triggered by WebXR package installation.
+        // Picks up the build pipeline from Step 2 (WebXR config) onwards.
+        private static async void ContinueAfterPackageInstall()
+        {
+            VERADebugger.Log("Resuming build after package installation and domain reload...", "VERA Build Uploader", DebugPreference.Minimal);
+
+            var progress = VERABuildProgressWindow.ShowProgressWindow();
+
+            // Unity's UI Toolkit calls CreateGUI() lazily on the first layout pass, not
+            // synchronously inside GetWindow/Show.  Poll until all UI references are ready
+            // before trying to populate the window — a single Task.Yield() is not enough.
+            while (!progress.IsUIReady)
+                await Task.Yield();
+
+            progress.SetSteps(StepNames);
+
+            // Mark the first two steps as already done (completed before the reload).
+            progress.BeginStep(STEP_WEBGL);
+            progress.CompleteStep(STEP_WEBGL);
+            progress.BeginStep(STEP_PACKAGES);
+            progress.CompleteStep(STEP_PACKAGES);
+
+            try
+            {
+                // --- Step 2: WebXR config ---
+                progress.BeginStep(STEP_WEBXR_CFG);
+                EnsureWebXRSettings();
+                progress.CompleteStep(STEP_WEBXR_CFG);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                // --- Steps 3-5: Build, zip, upload ---
+                bool buildSuccess = await BuildProject(progress);
+
+                if (progress.IsCancelled) { HandleCancel(progress); return; }
+
+                if (!buildSuccess)
+                {
+                    VERADebugger.LogError("Build / upload failed. Please check the console for details.", "VERA Build Uploader");
+                    progress.Finish(false, "Build or upload failed. Check the console for details.");
+                    return;
+                }
+
+                progress.Finish(true);
+                VERADebugger.Log("Experiment built and uploaded successfully!", "VERA Build Uploader", DebugPreference.Minimal);
+            }
+            catch (Exception ex)
+            {
+                VERADebugger.LogError($"Unexpected error during resumed build: {ex}", "VERA Build Uploader");
+                progress.Finish(false, "An unexpected error occurred. Check the console for details.");
+            }
+        }
+
+        #endregion
+
 
         #region BUILD AND UPLOAD
 
@@ -69,18 +164,40 @@ namespace VERA
 
                 // --- Step 1: Packages ---
                 progress.BeginStep(STEP_PACKAGES);
-                bool webXRExportPackageSuccess = await EnsurePackageInstalled(
+
+                // Check which packages are missing BEFORE attempting installation so we can set
+                // the domain-reload resume flag in advance.  Installing a missing package causes
+                // Unity to compile new scripts and perform a domain reload, which kills any running
+                // async task.  The BuildResumeHandler picks up automatically after the reload.
+                PackageInstallStatus webXRStatus = await EnsurePackageInstalled(
                     "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr",
                     "com.de-panther.webxr");
 
-                if (progress.IsCancelled) { HandleCancel(progress); return; }
+                if (webXRStatus == PackageInstallStatus.NewlyInstalled)
+                {
+                    // Set resume flag so the [InitializeOnLoad] handler can continue after reload.
+                    SessionState.SetBool(SESSION_RESUME_KEY, true);
+                }
 
-                bool webXRInteractionsPackageSuccess = await EnsurePackageInstalled(
+                if (progress.IsCancelled)
+                {
+                    SessionState.SetBool(SESSION_RESUME_KEY, false);
+                    HandleCancel(progress);
+                    return;
+                }
+
+                PackageInstallStatus webXRInteractionsStatus = await EnsurePackageInstalled(
                     "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr-interactions",
                     "com.de-panther.webxr-interactions");
 
-                if (!webXRExportPackageSuccess || !webXRInteractionsPackageSuccess)
+                if (webXRInteractionsStatus == PackageInstallStatus.NewlyInstalled)
                 {
+                    SessionState.SetBool(SESSION_RESUME_KEY, true);
+                }
+
+                if (webXRStatus == PackageInstallStatus.Failed || webXRInteractionsStatus == PackageInstallStatus.Failed)
+                {
+                    SessionState.SetBool(SESSION_RESUME_KEY, false);
                     VERADebugger.LogError("Build failed - could not ensure WebXR packages are installed. " +
                         "Please try manually installing the WebXR packages, then try again. " +
                         "Both the \"WebXR Export\" and \"WebXR Interactions\" packages are required to build the project for WebXR. " +
@@ -90,9 +207,29 @@ namespace VERA
                     progress.Finish(false, "Failed to install required WebXR packages.");
                     return;
                 }
+
                 progress.CompleteStep(STEP_PACKAGES);
 
-                if (progress.IsCancelled) { HandleCancel(progress); return; }
+                if (progress.IsCancelled)
+                {
+                    SessionState.SetBool(SESSION_RESUME_KEY, false);
+                    HandleCancel(progress);
+                    return;
+                }
+
+                // If any package was newly installed a domain reload is imminent.
+                // Show a holding message and return — the BuildResumeHandler will reopen
+                // the progress window and continue from Step 2 once Unity has reloaded.
+                if (webXRStatus == PackageInstallStatus.NewlyInstalled ||
+                    webXRInteractionsStatus == PackageInstallStatus.NewlyInstalled)
+                {
+                    VERADebugger.Log(
+                        "WebXR packages installed. Unity will reload scripts and continue the build automatically.",
+                        "VERA Build Uploader", DebugPreference.Minimal);
+                    progress.SetStatusMessage("Packages installed — Unity is reloading scripts. The build will resume automatically.");
+                    // The domain reload will close this window; BuildResumeHandler takes over.
+                    return;
+                }
 
                 // --- Step 2: WebXR config ---
                 progress.BeginStep(STEP_WEBXR_CFG);
@@ -205,10 +342,17 @@ namespace VERA
 
         #region PACKAGE INSTALLATION
 
+        /// <summary>Result of a package install check.</summary>
+        private enum PackageInstallStatus
+        {
+            AlreadyInstalled,  // Package was present; no installation was needed
+            NewlyInstalled,    // Package was missing and has just been installed (domain reload expected)
+            Failed             // Installation failed
+        }
 
         // Ensures a package is installed by git URL.
-        // Returns true if successfully installed or already exists, false otherwise.
-        public static async Task<bool> EnsurePackageInstalled(string gitUrl, string packageName)
+        // Returns AlreadyInstalled, NewlyInstalled, or Failed.
+        private static async Task<PackageInstallStatus> EnsurePackageInstalled(string gitUrl, string packageName)
         {
             // Create a package request to check if the package is already installed
             ListRequest list = Client.List(true);
@@ -218,12 +362,12 @@ namespace VERA
             if (list.Status == StatusCode.Failure)
             {
                 VERADebugger.LogError($"Package-list failed: {list.Error.message}", "VERA Build Uploader");
-                return false;
+                return PackageInstallStatus.Failed;
             }
 
             // Check if the package is already installed
             if (list.Result.Any(p => p.name == packageName))
-                return true;
+                return PackageInstallStatus.AlreadyInstalled;
 
             // Add the package if it doesn't exist yet
             VERADebugger.Log($"Installing package {packageName} from {gitUrl}...", "VERA Build Uploader", DebugPreference.Informative);
@@ -234,11 +378,11 @@ namespace VERA
             if (add.Status == StatusCode.Success)
             {
                 VERADebugger.Log($"Successfully installed {packageName}", "VERA Build Uploader", DebugPreference.Informative);
-                return true;
+                return PackageInstallStatus.NewlyInstalled;
             }
 
             VERADebugger.LogError($"Failed to install {packageName}: {add.Error.message}", "VERA Build Uploader");
-            return false;
+            return PackageInstallStatus.Failed;
         }
 
 

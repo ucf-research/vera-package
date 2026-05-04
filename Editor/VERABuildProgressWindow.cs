@@ -90,6 +90,14 @@ namespace VERA
         /// <summary>Whether the user has pressed cancel.</summary>
         public bool IsCancelled => cancelled;
 
+        /// <summary>
+        /// True once CreateGUI has run and all UI element references are initialized.
+        /// Callers that open the window programmatically should poll this before
+        /// calling SetSteps / BeginStep, because CreateGUI is invoked lazily by
+        /// Unity on the first layout pass — not synchronously inside Show().
+        /// </summary>
+        public bool IsUIReady => stepsContainer != null && progressBarFill != null && statusLabel != null;
+
         private void OnEnable()
         {
             EditorApplication.update += AnimationTick;
@@ -309,7 +317,8 @@ namespace VERA
             steps[index].status = StepStatus.InProgress;
             RefreshStepUI(steps[index]);
             UpdateOverallProgress();
-            statusLabel.text = steps[index].name + "...";
+            if (statusLabel != null)
+                statusLabel.text = steps[index].name + "...";
         }
 
         /// <summary>Mark a step as completed.</summary>
@@ -338,6 +347,13 @@ namespace VERA
             steps[index].status = StepStatus.Skipped;
             RefreshStepUI(steps[index]);
             UpdateOverallProgress();
+        }
+
+        /// <summary>Updates the status label text without changing any step state.</summary>
+        public void SetStatusMessage(string message)
+        {
+            if (statusLabel != null)
+                statusLabel.text = message;
         }
 
         /// <summary>Called when the entire process finishes (success or failure).</summary>
@@ -415,7 +431,7 @@ namespace VERA
             entry.nameLabel = nameLabel;
             entry.statusLabel = sl;
 
-            stepsContainer.Add(row);
+            stepsContainer?.Add(row);
         }
 
         private void RefreshStepUI(StepEntry entry)
@@ -502,8 +518,10 @@ namespace VERA
             }
 
             float pct = Mathf.Clamp01(progress / steps.Count) * 100f;
-            progressBarFill.style.width = new StyleLength(new Length(pct, LengthUnit.Percent));
-            progressLabel.text = $"{Mathf.RoundToInt(pct)}%";
+            if (progressBarFill != null)
+                progressBarFill.style.width = new StyleLength(new Length(pct, LengthUnit.Percent));
+            if (progressLabel != null)
+                progressLabel.text = $"{Mathf.RoundToInt(pct)}%";
         }
 
         private static string GetIcon(StepStatus status)
