@@ -62,7 +62,6 @@ namespace VERA
                     return;
                 }
 
-                ClearAllConditionCsCode();
                 GenerateAllConditionCsCode(active);
                 VERADebugger.Log("Condition generation complete.", "VERA Condition Generator", DebugPreference.Verbose);
             });
@@ -77,14 +76,42 @@ namespace VERA
                 return;
             }
 
-            ClearAllConditionCsCode();
+            string fullPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", generatedCsPath));
+            if (!Directory.Exists(fullPath))
+                Directory.CreateDirectory(fullPath);
 
+            // Build the set of file names the current experiment needs
+            HashSet<string> expectedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in experiment.conditions)
+            {
+                if (group != null && !string.IsNullOrEmpty(group.ivName))
+                    expectedFileNames.Add($"VERAIV_{group.ivName}.cs");
+            }
+
+            // Delete files for IV groups that no longer exist; only refresh if something was actually deleted
+            bool anyDeleted = false;
+            foreach (string existingFile in Directory.GetFiles(fullPath, "*.cs"))
+            {
+                if (!expectedFileNames.Contains(Path.GetFileName(existingFile)))
+                {
+                    File.Delete(existingFile);
+                    anyDeleted = true;
+                }
+            }
+
+            // Write each condition group's file only if the content has changed
             foreach (var group in experiment.conditions)
             {
                 GenerateConditionGroupCode(group);
             }
+
+            // Update define symbols only for what actually changed
             VERAAuthenticator.UpdateConditionGroupDefineSymbols(experiment.conditions);
-            AssetDatabase.Refresh();
+
+            // Only trigger a broad refresh if obsolete files were deleted;
+            // new/modified files are imported individually by GenerateConditionGroupCode
+            if (anyDeleted)
+                AssetDatabase.Refresh();
         }
 
         // Generates a C# code file for the given condition group

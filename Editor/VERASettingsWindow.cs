@@ -275,12 +275,9 @@ namespace VERA
             // When refreshed, get all user experiments from web
             VERAAuthenticator.GetUserExperiments((result) =>
             {
-                string oldActiveId;
-                string oldActiveSiteId;
-
-                // Store old active id, to set active experiment to it (if applicable)
-                oldActiveId = PlayerPrefs.GetString("VERA_ActiveExperiment");
-                oldActiveSiteId = PlayerPrefs.GetString("VERA_ActiveSite");
+                // Store old active IDs so we can detect whether anything actually changed
+                string oldActiveId = PlayerPrefs.GetString("VERA_ActiveExperiment");
+                string oldActiveSiteId = PlayerPrefs.GetString("VERA_ActiveSite");
 
                 // Set the list, and add an option for no active experiment
                 experimentList = result;
@@ -297,26 +294,28 @@ namespace VERA
                         }
                     }
 
+                    // Track whether the active experiment actually changed
+                    bool experimentChanged = selectedExperimentIndex == -1;
+
                     if (selectedExperimentIndex == -1)
                     {
-                        // Element not found, update active experiment to a default value (first element)
+                        // Previous experiment not found in the new list — fall back to the first one
                         selectedExperimentIndex = 0;
+                    }
 
-                        // Check if the selected experiment is real
-                        if (experimentList != null && experimentList.Count > 0 && experimentList[selectedExperimentIndex] != null)
+                    // Only call ChangeActiveExperiment if the experiment actually changed;
+                    // this avoids UpdateColumnDefs / GetBuildAuthToken / survey regeneration
+                    // (and the recompile that can come with them) when nothing has changed.
+                    if (experimentChanged)
+                    {
+                        if (experimentList[selectedExperimentIndex] != null)
                         {
-                            // Update the active experiment to the real experiment
                             VERAAuthenticator.ChangeActiveExperiment(experimentList[selectedExperimentIndex]._id, experimentList[selectedExperimentIndex].name, experimentList[selectedExperimentIndex].isMultiSite, experimentList[selectedExperimentIndex].webXrBuildNumber);
                         }
-                        // If the selected experiment is not real, change the active experiment to nothing
                         else
                         {
                             VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
                         }
-                    }
-                    else
-                    {
-                        VERAAuthenticator.ChangeActiveExperiment(experimentList[selectedExperimentIndex]._id, experimentList[selectedExperimentIndex].name, experimentList[selectedExperimentIndex].isMultiSite, experimentList[selectedExperimentIndex].webXrBuildNumber);
                     }
 
                     // Find the index of the old selected site
@@ -331,13 +330,18 @@ namespace VERA
                         }
                     }
 
+                    bool siteChanged = selectedSiteIndex == -1;
                     if (selectedSiteIndex == -1)
                     {
-                        // Element not found, update active site to a default value (first element; can be empty site)
+                        // Previous site not found — fall back to the first one
                         selectedSiteIndex = 0;
                     }
 
-                    VERAAuthenticator.ChangeActiveSite(experimentList[selectedExperimentIndex].sites[selectedSiteIndex]._id, experimentList[selectedExperimentIndex].sites[selectedSiteIndex].name);
+                    // Only call ChangeActiveSite if the site (or experiment) actually changed
+                    if (experimentChanged || siteChanged)
+                    {
+                        VERAAuthenticator.ChangeActiveSite(experimentList[selectedExperimentIndex].sites[selectedSiteIndex]._id, experimentList[selectedExperimentIndex].sites[selectedSiteIndex].name);
+                    }
                 }
                 else
                 {
@@ -350,7 +354,8 @@ namespace VERA
                 timeExperimentsLastRefreshed = DateTime.Now.ToString("MMMM dd, h:mm:ss tt");
                 SaveSettings();
 
-                // Generate condition code for the selected experiment
+                // Regenerate conditions for the selected experiment; content-checked so no
+                // recompile occurs when conditions haven't changed.
                 if (experimentList != null && experimentList.Count > 0 && selectedExperimentIndex >= 0)
                 {
                     ConditionGenerator.GenerateAllConditionCsCode(experimentList[selectedExperimentIndex]);
@@ -387,24 +392,12 @@ namespace VERA
             selectedExperimentIndex = PlayerPrefs.GetInt("VERA_SelectedExperimentIndex", 0);
             selectedSiteIndex = PlayerPrefs.GetInt("VERA_SelectedSiteIndex", 0);
 
-            // Load and generate conditions if we have an experiment list saved
+            // Load experiment list from cache if available
             string experimentListJson = PlayerPrefs.GetString("VERA_ExperimentList", null);
             if (!string.IsNullOrEmpty(experimentListJson))
             {
                 SerializableList<Experiment> list = JsonUtility.FromJson<SerializableList<Experiment>>(experimentListJson);
                 experimentList = list?.List;
-                if (experimentList != null && experimentList.Count > 0 && selectedExperimentIndex >= 0)
-                {
-                    ConditionGenerator.GenerateAllConditionCsCode(experimentList[selectedExperimentIndex]);
-                }
-            }
-
-            // Load experimentList from JSON string
-            string storedJson = PlayerPrefs.GetString("VERA_ExperimentList", null);
-            if (!string.IsNullOrEmpty(storedJson))
-            {
-                var deserializedList = JsonUtility.FromJson<SerializableList<Experiment>>(storedJson);
-                experimentList = deserializedList?.List;
             }
 
             RefreshExperiments();
