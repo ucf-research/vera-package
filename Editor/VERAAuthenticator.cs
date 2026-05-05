@@ -653,32 +653,10 @@ namespace VERA
             // Update all column definition assets to this new experiment
             UpdateColumnDefs();
 
-            // Get this experiment's information and generate condition code
-            if (!string.IsNullOrEmpty(activeExperimentId))
-            {
-                GetUserExperiments((experiments) =>
-                {
-                    if (experiments != null)
-                    {
-                        var activeExperiment = experiments.Find(e => e._id == activeExperimentId);
-                        if (activeExperiment != null)
-                        {
-                            // Generate condition code
-                            ConditionGenerator.ClearAllConditionCsCode();
-                            ConditionGenerator.GenerateAllConditionCsCode(activeExperiment);
-                        }
-                    }
-                });
-            }
-            else
-            {
-                // Clear generated condition code if no active experiment
-                ConditionGenerator.ClearAllConditionCsCode();
-            }
-
-            // Clear build authentication if no active experiment
+            // Clear generated condition code and build authentication if no active experiment
             if (string.IsNullOrEmpty(activeExperimentId))
             {
+                ConditionGenerator.ClearAllConditionCsCode();
                 ClearBuildAuthentication();
                 return;
             }
