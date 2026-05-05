@@ -33,17 +33,17 @@ namespace VERA
         // Colors
         public static readonly Color BACKGROUND_COLOR = ColorUtility.TryParseHtmlString("#08080A", out var c) ? c : Color.black;
         public static readonly Color HIGH_BACKGROUND_COLOR = ColorUtility.TryParseHtmlString("#14131A", out var c) ? c : Color.black;
-        public static readonly Color ELEMENT_COLOR = ColorUtility.TryParseHtmlString("#292733", out var c) ? c : Color.darkGray;
-        public static readonly Color HIGHLIGHT_COLOR = ColorUtility.TryParseHtmlString("#4F46E5", out var c) ? c : Color.blueViolet;
+        public static readonly Color ELEMENT_COLOR = ColorUtility.TryParseHtmlString("#292733", out var c) ? c : Color.black;
+        public static readonly Color HIGHLIGHT_COLOR = ColorUtility.TryParseHtmlString("#4F46E5", out var c) ? c : Color.black;
 
-        public static readonly Color TEXT_PRIMARY_COLOR = ColorUtility.TryParseHtmlString("#FFFFFF", out var c) ? c : Color.white;
-        public static readonly Color TEXT_SECONDARY_COLOR = ColorUtility.TryParseHtmlString("#B0B0B0", out var c) ? c : Color.gray;
+        public static readonly Color TEXT_PRIMARY_COLOR = ColorUtility.TryParseHtmlString("#FFFFFF", out var c) ? c : Color.black;
+        public static readonly Color TEXT_SECONDARY_COLOR = ColorUtility.TryParseHtmlString("#B0B0B0", out var c) ? c : Color.black;
 
-        public static readonly Color BUTTON_ACTIVE_COLOR = ColorUtility.TryParseHtmlString("#292733", out var c) ? c : Color.blueViolet;
-        public static readonly Color BUTTON_HOVER_COLOR = ColorUtility.TryParseHtmlString("#332B52", out var c) ? c : Color.blueViolet;
-        public static readonly Color BUTTON_INACTIVE_COLOR = ColorUtility.TryParseHtmlString("#000000", out var c) ? c : Color.blueViolet;
-        public static readonly Color BUTTON_SELECTED_COLOR = ColorUtility.TryParseHtmlString("#4F46E5", out var c) ? c : Color.blueViolet;
-        public static readonly Color BUTTON_SELECTED_HOVER_COLOR = ColorUtility.TryParseHtmlString("#5c57c4", out var c) ? c : Color.blueViolet;
+        public static readonly Color BUTTON_ACTIVE_COLOR = ColorUtility.TryParseHtmlString("#292733", out var c) ? c : Color.black;
+        public static readonly Color BUTTON_HOVER_COLOR = ColorUtility.TryParseHtmlString("#332B52", out var c) ? c : Color.black;
+        public static readonly Color BUTTON_INACTIVE_COLOR = ColorUtility.TryParseHtmlString("#000000", out var c) ? c : Color.black;
+        public static readonly Color BUTTON_SELECTED_COLOR = ColorUtility.TryParseHtmlString("#4F46E5", out var c) ? c : Color.black;
+        public static readonly Color BUTTON_SELECTED_HOVER_COLOR = ColorUtility.TryParseHtmlString("#5c57c4", out var c) ? c : Color.black;
 
 
         #endregion
