@@ -1,13 +1,13 @@
 {
   "name": "com.vera.vera",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "displayName": "VERA",
   "description": "VERA (Virtual Experience Research Accelerator) is a platform for conducting XR experiments at scale with flexible participant groups and study settings.",
   "unity": "6000.0",
   "author": {
     "name": "VERA",
     "email": "veraccel@ucf.edu",
-    "url": "https://sreal.ucf.edu/vera/"
+    "url": "https://vera-xr.io"
   },
   "keywords": [
     "VR",
@@ -26,9 +26,9 @@
   },
   "samples": [
     {
-      "displayName": "VERA Demo Scene",
-      "description": "A sample scene demonstrating VERA's core functionalities.",
-      "path": "Samples~/DemoScene"
+      "displayName": "VERA Sandbox Demo",
+      "description": "A hands-on demo showcasing VERA's capabilities.",
+      "path": "Samples~/VERASandboxDemo"
     }
   ],
   "documentationUrl": "https://vera-xr.io/documentation",
