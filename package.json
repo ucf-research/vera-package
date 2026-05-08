@@ -1,6 +1,6 @@
 {
   "name": "com.vera.vera",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "displayName": "VERA",
   "description": "VERA (Virtual Experience Research Accelerator) is a platform for conducting XR experiments at scale with flexible participant groups and study settings.",
   "unity": "6000.0",
