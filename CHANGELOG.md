@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.2] - 2026-05-08
+
+### Added
+- Replaced simple demo scene with the VERA Sandbox Demo (https://github.com/ucf-research/vera-package/pull/29)
+
+### Fixed
+- Automatic code recompile optimizations (https://github.com/ucf-research/vera-package/pull/27)
+- Fix WebXR build interruptions (https://github.com/ucf-research/vera-package/pull/28)
+
 ## [0.3.1] - 2026-05-01
 
 ### Added
