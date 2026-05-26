@@ -191,9 +191,18 @@ namespace VERA
                         onComplete?.Invoke(result);
                         yield break;
                     }
-                    else if (currentRequest.responseCode == 404 || currentRequest.responseCode == 401 || currentRequest.responseCode == 403)
+                    else if (currentRequest.responseCode == 404)
                     {
-                        // Don't retry on client errors
+                        // Don't retry on 404 — let each caller handle messaging (may be expected, e.g. no workflow defined)
+                        result.success = false;
+                        result.error = currentRequest.error;
+                        result.responseCode = (int)currentRequest.responseCode;
+                        onComplete?.Invoke(result);
+                        yield break;
+                    }
+                    else if (currentRequest.responseCode == 401 || currentRequest.responseCode == 403)
+                    {
+                        // Don't retry on auth errors
                         result.success = false;
                         result.error = currentRequest.error;
                         result.responseCode = (int)currentRequest.responseCode;
@@ -1999,7 +2008,14 @@ namespace VERA
             }
             else
             {
-                VERADebugger.LogError($"[VERA Trial Workflow] Failed to fetch workflow: {result?.error ?? "Unknown error"}");
+                if (result?.responseCode == 404)
+                {
+                    VERADebugger.LogWarning("[VERA Trial Workflow] No trial workflow was found for this experiment. If you have not defined a trial workflow in the VERA portal, this is expected — the session will continue normally.");
+                }
+                else
+                {
+                    VERADebugger.LogError($"[VERA Trial Workflow] Failed to fetch workflow: {result?.error ?? "Unknown error"}");
+                }
             }
         }
 
@@ -2520,7 +2536,7 @@ namespace VERA
 
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
-                VERADebugger.LogWarning("[VERA Trial Workflow] Cannot resume progress: workflow is empty.");
+                VERADebugger.LogWarning("[VERA Trial Workflow] No trial workflow is loaded — if you have not defined a workflow in the VERA portal, this is expected and the session will continue normally.");
                 yield break;
             }
 

@@ -1179,10 +1179,13 @@ namespace VERA
             }
 
             // Sync to server if requested (not needed for trial-based workflows where execution order defines conditions)
+            // Skip server syncing - legacy feature that is no longer supported
+            /*
             if (syncToServer)
             {
                 StartCoroutine(SyncParticipantCondition(ivName));
             }
+            */
 
             return ivValue;
         }
