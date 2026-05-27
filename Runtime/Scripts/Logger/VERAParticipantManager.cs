@@ -46,7 +46,8 @@ namespace VERA
 
             // Get the participant data from the server using the override ID, then push a new Unity ID to it, then set them as in experiment
             yield return GetParticipantFromOverrideId(overrideParticipantId);
-            yield return PushUidToActiveParticipant(overrideParticipantId);
+            // [LEGACY - Active Participant Workflow]
+            // yield return PushUidToActiveParticipant(overrideParticipantId);
             yield return RetryableChangeProgress(ParticipantProgressState.IN_VR);
         }
 
@@ -76,39 +77,45 @@ namespace VERA
                     break;
                 case DataRecordingType.RecordLocallyAndLive:
                 default:
-                    // Ensure a participant exists to record data to
-                    yield return EnsureParticipant();
+                    // Create a new participant directly
+                    yield return CreateParticipantCoroutine();
 
-                    // If after ensuring the participant we don't have a valid short ID, attempt creation retries
-                    int attempts = 0;
-                    int maxAttempts = 3;
-                    while ((participantShortId == 0) && attempts < maxAttempts)
-                    {
-                        attempts++;
-                        VERADebugger.LogWarning($"participantShortId is {participantShortId} after EnsureParticipant(); attempting creation attempt {attempts}/{maxAttempts}...", "VERA Participant");
-                        yield return CreateParticipantCoroutine();
-
-                        if (participantShortId > 0)
-                        {
-                            VERADebugger.Log("Participant creation succeeded on retry.", "VERA Participant", DebugPreference.Informative);
-                            yield break;
-                        }
-
-                        // small delay before next attempt
-                        yield return new WaitForSeconds(1f);
-                    }
-
-                    if (participantShortId == 0)
-                    {
-                        VERADebugger.LogError("Unable to obtain a valid participant short ID after retries. Local recording will continue but uploads may not attach to the correct participant on the server.", "VERA Participant");
-                    }
+                    // [LEGACY - Active Participant Workflow] Previously checked for an existing active
+                    // participant at the site before creating a new one. See EnsureParticipant() below.
+                    // yield return EnsureParticipant();
+                    //
+                    // // If after ensuring the participant we don't have a valid short ID, attempt creation retries
+                    // int attempts = 0;
+                    // int maxAttempts = 3;
+                    // while ((participantShortId == 0) && attempts < maxAttempts)
+                    // {
+                    //     attempts++;
+                    //     VERADebugger.LogWarning($"participantShortId is {participantShortId} after EnsureParticipant(); attempting creation attempt {attempts}/{maxAttempts}...", "VERA Participant");
+                    //     yield return CreateParticipantCoroutine();
+                    //
+                    //     if (participantShortId > 0)
+                    //     {
+                    //         VERADebugger.Log("Participant creation succeeded on retry.", "VERA Participant", DebugPreference.Informative);
+                    //         yield break;
+                    //     }
+                    //
+                    //     // small delay before next attempt
+                    //     yield return new WaitForSeconds(1f);
+                    // }
+                    //
+                    // if (participantShortId == 0)
+                    // {
+                    //     VERADebugger.LogError("Unable to obtain a valid participant short ID after retries. Local recording will continue but uploads may not attach to the correct participant on the server.", "VERA Participant");
+                    // }
                     break;
             }
         }
 
 
+        // [LEGACY - Active Participant Workflow]
         // Ensure the participant entity is created
         // Uses site's active participant if it exists, otherwise creates a new one
+#if false
         private IEnumerator EnsureParticipant()
         {
             // Check if the site has an active participant
@@ -197,6 +204,7 @@ namespace VERA
             yield return CreateParticipantCoroutine();
             yield break;
         }
+#endif
 
 
         // Creates the participant and uploads to the site
@@ -338,7 +346,9 @@ namespace VERA
         }
 
 
+        // [LEGACY - Active Participant Workflow]
         // Pushes a new Unity ID to an existing active participant in the database
+#if false
         private IEnumerator PushUidToActiveParticipant(string databaseId)
         {
             // Create a new UUID
@@ -373,6 +383,7 @@ namespace VERA
 
             request.Dispose();
         }
+#endif
 
 
         #endregion

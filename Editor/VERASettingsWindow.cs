@@ -671,7 +671,7 @@ namespace VERA
                     "process. A progress window will show the status of each step.", EditorStyles.wordWrappedLabel);
 
                 // Disable the button if on a preview account
-                EditorGUI.BeginDisabledGroup(isPreviewAccount);
+                //EditorGUI.BeginDisabledGroup(isPreviewAccount);
                 if (GUILayout.Button("Build and Upload Experiment"))
                 {
                     // Display a confirmation dialog before proceeding
@@ -685,14 +685,16 @@ namespace VERA
                         VERABuildUploader.BuildAndUploadExperiment();
                     }
                 }
-                EditorGUI.EndDisabledGroup();
+                //EditorGUI.EndDisabledGroup();
 
+                /*
                 if (isPreviewAccount)
                 {
                     GUILayout.Space(5);
                     EditorGUILayout.HelpBox("You are logged in with an early-access preview account. Preview accounts do not have permission to build and upload experiments for WebXR. " +
                         "Please contact the VERA team if you need to upload experiments.", MessageType.Warning);
                 }
+                */
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
