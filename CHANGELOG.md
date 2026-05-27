@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3] - 2026-05-27
+
+### Adjusted
+* Preview accounts may now upload WebXR builds (https://github.com/ucf-research/vera-package/pull/30)
+
+### Fixed
+* Defunct 404 debug logs relating to conditions, trials, and active participants (https://github.com/ucf-research/vera-package/pull/30)
+* Survey vertical scaling issue on spawn (https://github.com/ucf-research/vera-package/pull/30)
+
 ## [0.3.2] - 2026-05-08
 
 ### Added
