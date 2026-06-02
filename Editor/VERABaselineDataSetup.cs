@@ -12,13 +12,13 @@ namespace VERA
     [InitializeOnLoad]
     internal static class VERABaselineDataSetup
     {
-        private const string TELEMETRY_SYMBOL = "VERAFile_Experiment_Telemetry";
+        private const string TELEMETRY_SYMBOL = "VERAFile_" + VERAExperimentTelemetrySchema.Name;
 
         static VERABaselineDataSetup()
         {
             // Check if column definition exists (either from baseline setup or authenticator)
-            var columnDef = Resources.Load<VERAColumnDefinition>("Experiment_TelemetryColumnDefinition");
-            var authColumnDef = Resources.Load<VERAColumnDefinition>("VERA_Experiment_Telemetry_ColumnDefinition");
+            var columnDef = Resources.Load<VERAColumnDefinition>(VERAExperimentTelemetrySchema.Name + "ColumnDefinition");
+            var authColumnDef = Resources.Load<VERAColumnDefinition>("VERA_" + VERAExperimentTelemetrySchema.Name + "_ColumnDefinition");
 
             if (columnDef == null && authColumnDef == null)
             {
@@ -67,8 +67,8 @@ namespace VERA
             AddScriptingDefineSymbol();
 
             VERADebugger.Log("✓ VERA Baseline Data setup complete!", "VERABaselineDataSetup");
-            VERADebugger.Log($"  - Column definition: Assets/VERA/Resources/Experiment_TelemetryColumnDefinition.asset", "VERABaselineDataSetup");
-            VERADebugger.Log($"  - Generated code: {generatedCodePath}/VERAFile_Experiment_Telemetry.cs", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Column definition: Assets/VERA/Resources/{VERAExperimentTelemetrySchema.Name}ColumnDefinition.asset", "VERABaselineDataSetup");
+            VERADebugger.Log($"  - Generated code: {generatedCodePath}/VERAFile_{VERAExperimentTelemetrySchema.Name}.cs", "VERABaselineDataSetup");
             VERADebugger.Log($"  - Scripting symbol: {TELEMETRY_SYMBOL}", "VERABaselineDataSetup");
             VERADebugger.Log("Unity will now recompile. Please wait...", "VERABaselineDataSetup");
         }

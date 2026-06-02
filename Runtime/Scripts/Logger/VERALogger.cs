@@ -583,7 +583,7 @@ namespace VERA
             {
                 foreach (var handler in csvHandlers)
                 {
-                    if (handler?.columnDefinition?.fileType?.name == "Experiment_Telemetry")
+                    if (handler?.columnDefinition?.fileType?.name == VERAExperimentTelemetrySchema.Name)
                     {
                         baselineHandler = handler;
                         break;
@@ -600,7 +600,7 @@ namespace VERA
             // Skip fetch if already have a valid ID (not a known placeholder)
             string existingId = baselineHandler.columnDefinition.fileType.fileTypeId;
             bool isPlaceholder = string.IsNullOrEmpty(existingId)
-                || existingId == "Experiment_Telemetry"
+                || existingId == VERAExperimentTelemetrySchema.Name
                 || existingId == "baseline-data";
 
             if (!isPlaceholder)
@@ -608,6 +608,8 @@ namespace VERA
                 VERADebugger.Log($"Experiment_Telemetry already has valid file type ID: {existingId}", "VERA Logger");
                 yield break;
             }
+
+            yield break;
 
             string url = $"{VERAHost.hostUrl}/api/experiments/{experimentUUID}/filetypes/baseline-data";
             VERADebugger.Log($"Fetching Experiment_Telemetry file type ID from: {url}", "VERA Logger");

@@ -919,7 +919,7 @@ namespace VERA
                             // Skip Experiment_Telemetry — its column definition is managed by
                             // VERABaselineDataSetup with hardcoded correct types. We only need
                             // to update its fileTypeId (handled below this loop).
-                            if (fileTypes[i].name == "Experiment_Telemetry")
+                            if (fileTypes[i].name == VERAExperimentTelemetrySchema.Name)
                             {
                                 continue;
                             }
@@ -1096,7 +1096,7 @@ namespace VERA
                             }
                             if (normalizedName == "experimenttelemetry")
                             {
-                                var baselineColumnDef = Resources.Load<VERAColumnDefinition>("Experiment_TelemetryColumnDefinition");
+                                var baselineColumnDef = Resources.Load<VERAColumnDefinition>(VERAExperimentTelemetrySchema.Name + "ColumnDefinition");
                                 if (baselineColumnDef != null)
                                 {
                                     baselineColumnDef.fileType.fileTypeId = fileTypes[i]._id;
