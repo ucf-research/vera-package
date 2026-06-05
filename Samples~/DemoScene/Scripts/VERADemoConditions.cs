@@ -60,10 +60,10 @@ namespace VERA
         {
 #if VERAIV_MyIndependentVariable
             // Get the participant ID from the VERA session manager
-            int participantID = VERASessionManager.participantID;
+            int participantNumber = VERASessionManager.participantNumber;
 
-            // If the participant ID is even, assign one value; if odd, assign the other value.
-            if (participantID % 2 == 0)
+            // If the participant number is even, assign one value; if odd, assign the other value.
+            if (participantNumber % 2 == 0)
             {
                 // This line sets the independent variable "MyIndependentVariable" to the value "ValueA".
                 // For example, if your independent variable is "Weather" and you want to set it to "Sunny",

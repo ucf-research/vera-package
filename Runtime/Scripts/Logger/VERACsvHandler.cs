@@ -221,7 +221,7 @@ namespace VERA
             if (!skipAuto)
             {
                 // Add pID, conditions, timestamp (except for baseline telemetry)
-                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(VERALogger.Instance.activeParticipant.participantShortId ?? "");
                 entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
                 entry.Add(Convert.ToString(Time.realtimeSinceStartup));
 

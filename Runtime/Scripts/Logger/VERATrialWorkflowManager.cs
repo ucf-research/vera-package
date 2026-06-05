@@ -1439,7 +1439,7 @@ namespace VERA
         /// better validation and error handling.
         /// </summary>
         /// <param name="participantNumber">The participant's sequential number (0-indexed).
-        /// Use VERALogger.Instance.activeParticipant.participantShortId or your own counter.</param>
+        /// Use VERALogger.Instance.activeParticipant.GetNumericParticipantShortId() or your own counter.</param>
         public void ApplyLatinSquareOrdering(int participantNumber)
         {
             // Delegate to the version without totalParticipants validation

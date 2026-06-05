@@ -306,7 +306,7 @@ public class Example : MonoBehaviour
         VERASessionManager.onInitialized.AddListener(() =>
         {
             // Get the participant's ID
-            int participantID = VERASessionManager.participantID;
+            string participantID = VERASessionManager.participantID;
 
             // Finalize the participant's session (e.g. when the experiment is over)
             VERASessionManager.FinalizeSession();

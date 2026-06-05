@@ -153,7 +153,7 @@ namespace VERA
 
             // Initialize trial workflow manager (pass participant info for between-subjects assignment and checkpointing)
             trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
-            int participantNum = activeParticipant != null ? activeParticipant.participantShortId : -1;
+            int participantNum = activeParticipant != null ? activeParticipant.GetNumericParticipantShortId() : -1;
             string participantId = activeParticipant != null ? activeParticipant.participantUUID : null;
 
             // Allow for manual between-subjects assignments (set via SetBetweenSubjectsAssignment before initialization)
@@ -1614,7 +1614,7 @@ namespace VERA
         /// Example usage:
         ///   if (VERALogger.Instance.RequiresLatinSquareOrdering)
         ///   {
-        ///       int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///       int participantNum = VERALogger.Instance.activeParticipant.GetNumericParticipantShortId();
         ///       VERALogger.Instance.ApplyLatinSquareOrdering(participantNum);
         ///   }
         /// </summary>
@@ -1640,7 +1640,7 @@ namespace VERA
         ///
         /// Example usage:
         ///   // For a study with 30 total participants
-        ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///   int participantNum = VERALogger.Instance.activeParticipant.GetNumericParticipantShortId();
         ///   bool success = VERALogger.Instance.ApplyLatinSquareOrdering(participantNum, 30);
         ///   if (!success) {
         ///       VERADebugger.LogError("Failed to apply Latin square ordering! Check console for details.", "VERA Logger");
@@ -1885,7 +1885,7 @@ namespace VERA
         private string BuildHierarchicalDirectoryPath()
         {
             VERABuildAuthInfo authInfo = buildAuthInfo;
-            string participantShortId = activeParticipant.participantShortId.ToString();
+            string participantShortId = activeParticipant.participantShortId;
 
             // Start with the base directory from baseFilePath
             string baseDirectory = Path.GetDirectoryName(baseFilePath);

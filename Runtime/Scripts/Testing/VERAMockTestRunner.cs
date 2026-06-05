@@ -340,7 +340,7 @@ namespace VERA
         {
             try
             {
-                int pID = VERALogger.Instance.activeParticipant.participantShortId;
+                string pID = VERALogger.Instance.activeParticipant.participantShortId;
                 string ts = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
                 string studyId = VERALogger.Instance.experimentUUID;
                 string instanceId = System.Guid.NewGuid().ToString();

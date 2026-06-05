@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -24,9 +26,18 @@ namespace VERA
         private static bool isRunning = false;
 
         private const string listenUrl = "http://localhost:8080/auth";
+        private const int authListenPort = 8080;
+        private const int maxServerStartAttempts = 5;
 
         private const string userAuthFileName = "VERAUserAuthentication.json";
         private const string buildAuthFileName = "VERABuildAuthentication.json";
+
+        [InitializeOnLoadMethod]
+        private static void RegisterAuthServerCleanup()
+        {
+            EditorApplication.quitting += StopUserAuthServer;
+            AssemblyReloadEvents.beforeAssemblyReload += StopUserAuthServer;
+        }
 
 
         #region AUTHENTICATION SERVER CALLS
@@ -34,23 +45,51 @@ namespace VERA
 
         public static void StartUserAuthentication()
         {
+            if (!StartUserAuthServer())
+            {
+                VERADebugger.LogError(
+                    $"Could not start the local authentication server on port {authListenPort}. " +
+                    "Please wait a moment and try again.",
+                    "VERA Authentication");
+                return;
+            }
 
-            // Start the server
-            StartUserAuthServer();
             // Open the authentication URL in the default browser
             Application.OpenURL(VERAHost.hostUrl + "/Authenticate");
         }
 
         // Starts the server
-        private static void StartUserAuthServer()
+        private static bool StartUserAuthServer()
         {
             StopUserAuthServer();
 
-            listener = new HttpListener();
-            listener.Prefixes.Add(listenUrl + "/");
-            listener.Start();
-            isRunning = true;
-            listener.BeginGetContext(HandleAuthenticationRequest, listener);
+            for (int attempt = 0; attempt < maxServerStartAttempts; attempt++)
+            {
+                try
+                {
+                    listener = new HttpListener();
+                    listener.Prefixes.Add(listenUrl + "/");
+                    listener.Start();
+                    isRunning = true;
+                    listener.BeginGetContext(HandleAuthenticationRequest, listener);
+                    return true;
+                }
+                catch (Exception ex) when (IsAddressInUseException(ex))
+                {
+                    StopUserAuthServer();
+                    Thread.Sleep(100 * (attempt + 1));
+                }
+                catch (Exception ex)
+                {
+                    StopUserAuthServer();
+                    VERADebugger.LogError(
+                        $"Failed to start authentication server: {ex.Message}",
+                        "VERA Authentication");
+                    return false;
+                }
+            }
+
+            return false;
         }
 
         // Stops the server
@@ -61,20 +100,102 @@ namespace VERA
             if (listener == null)
                 return;
 
-            listener.Stop();
-            listener.Close();
+            HttpListener activeListener = listener;
             listener = null;
+
+            try
+            {
+                activeListener.Abort();
+            }
+            catch (Exception)
+            {
+                try
+                {
+                    activeListener.Stop();
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            try
+            {
+                activeListener.Close();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static bool IsAddressInUseException(Exception ex)
+        {
+            for (Exception current = ex; current != null; current = current.InnerException)
+            {
+                if (current is SocketException socketException &&
+                    socketException.SocketErrorCode == SocketError.AddressAlreadyInUse)
+                {
+                    return true;
+                }
+
+                if (current is HttpListenerException httpListenerException &&
+                    httpListenerException.Message.IndexOf("Only one usage", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void QueueNextAuthenticationRequest()
+        {
+            if (!isRunning || listener == null)
+                return;
+
+            try
+            {
+                listener.BeginGetContext(HandleAuthenticationRequest, listener);
+            }
+            catch (Exception ex)
+            {
+                EditorApplication.delayCall += () =>
+                    VERADebugger.LogError(
+                        $"Authentication server stopped listening: {ex.Message}",
+                        "VERA Authentication");
+                StopUserAuthServer();
+            }
         }
 
         // Handles the authentication request
         private static void HandleAuthenticationRequest(IAsyncResult result)
         {
-            if (!isRunning) return;
+            if (!isRunning || listener == null)
+                return;
+
+            HttpListenerContext context = null;
+
+            try
+            {
+                context = listener.EndGetContext(result);
+            }
+            catch (Exception ex)
+            {
+                if (isRunning)
+                {
+                    EditorApplication.delayCall += () =>
+                        VERADebugger.LogError(
+                            $"Authentication server request failed: {ex.Message}",
+                            "VERA Authentication");
+                }
+
+                StopUserAuthServer();
+                return;
+            }
 
             EditorApplication.delayCall += () => VERADebugger.Log($"Sending request for authentication to the VERA portal...", "VERA Authentication", DebugPreference.None);
 
-            var context = listener.EndGetContext(result);
             var request = context.Request;
+            bool keepListening = true;
 
             // Enable CORS
             context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
@@ -86,12 +207,8 @@ namespace VERA
             {
                 context.Response.StatusCode = (int)HttpStatusCode.OK;
                 context.Response.Close();
-                listener.BeginGetContext(HandleAuthenticationRequest, listener);
-                return;
             }
-
-            // Process POST request
-            if (request.HttpMethod == "POST")
+            else if (request.HttpMethod == "POST")
             {
                 try
                 {
@@ -110,39 +227,41 @@ namespace VERA
                             context.Response.ContentLength64 = errorBytes.Length;
                             context.Response.OutputStream.Write(errorBytes, 0, errorBytes.Length);
                             context.Response.Close();
-                            return;
                         }
-
-                        string token = response.token;
-                        string userId = response.user._id;
-                        string userName = response.user.firstName + " " + response.user.lastName;
-                        bool isPreviewAccount = response.user.previewAccount;
-                        EditorApplication.delayCall += () => VERADebugger.Log($"USERS RESPONSE: {response.user}, previewAccount: {response.user.previewAccount}", "VERA Authentication", DebugPreference.Informative);
-                        EditorApplication.delayCall += () => VERADebugger.Log($"Parsed data; name: {userName}, previewAccount: {isPreviewAccount}. Returning success to VERA portal...", "VERA Authentication", DebugPreference.Informative);
-
-                        // Save
-                        EditorApplication.delayCall += () =>
+                        else
                         {
-                            try
+                            string token = response.token;
+                            string userId = response.user._id;
+                            string userName = response.user.firstName + " " + response.user.lastName;
+                            bool isPreviewAccount = response.user.previewAccount;
+                            EditorApplication.delayCall += () => VERADebugger.Log($"USERS RESPONSE: {response.user}, previewAccount: {response.user.previewAccount}", "VERA Authentication", DebugPreference.Informative);
+                            EditorApplication.delayCall += () => VERADebugger.Log($"Parsed data; name: {userName}, previewAccount: {isPreviewAccount}. Returning success to VERA portal...", "VERA Authentication", DebugPreference.Informative);
+
+                            // Save
+                            EditorApplication.delayCall += () =>
                             {
-                                SaveUserAuthentication(token, userId, userName, isPreviewAccount);
-                                VERADebugger.Log("[VERA Connection] You are successfully authenticated and connected to the VERA portal.\n", "VERA Authentication", DebugPreference.Informative);
-                            }
-                            catch (Exception ex)
-                            {
-                                VERADebugger.LogError($"Failed to save authentication: {ex.Message}", "VERA Authentication");
-                            }
-                        };
+                                try
+                                {
+                                    SaveUserAuthentication(token, userId, userName, isPreviewAccount);
+                                    VERADebugger.Log("[VERA Connection] You are successfully authenticated and connected to the VERA portal.\n", "VERA Authentication", DebugPreference.Informative);
+                                }
+                                catch (Exception ex)
+                                {
+                                    VERADebugger.LogError($"Failed to save authentication: {ex.Message}", "VERA Authentication");
+                                }
+                            };
+
+                            // Respond with success
+                            byte[] responseBytes = Encoding.UTF8.GetBytes("Token received");
+                            context.Response.ContentLength64 = responseBytes.Length;
+                            context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+                            context.Response.Close();
+
+                            // Stop the server after receiving the token
+                            StopUserAuthServer();
+                            keepListening = false;
+                        }
                     }
-
-                    // Respond with success
-                    byte[] responseBytes = Encoding.UTF8.GetBytes("Token received");
-                    context.Response.ContentLength64 = responseBytes.Length;
-                    context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
-                    context.Response.Close();
-
-                    // Stop the server after receiving the token
-                    StopUserAuthServer();
                 }
                 catch (Exception ex)
                 {
@@ -155,10 +274,9 @@ namespace VERA
                 }
             }
 
-            // Listen for the next request if still running
-            if (isRunning)
+            if (keepListening)
             {
-                listener.BeginGetContext(HandleAuthenticationRequest, listener);
+                QueueNextAuthenticationRequest();
             }
         }
 
