@@ -16,6 +16,15 @@ namespace VERA
         public string prolificID;
     }
 
+    [System.Serializable]
+    internal class ParticipantCreationErrorResponse
+    {
+        public bool success;
+        public string code;
+        public string activationStatus;
+        public string message;
+    }
+
     internal class VERAParticipantManager : MonoBehaviour
     {
 
@@ -59,6 +68,39 @@ namespace VERA
 
             participantShortId = pID;
             return true;
+        }
+
+        private static bool IsExperimentUnavailableErrorCode(string code)
+        {
+            return code == "EXPERIMENT_PAUSED"
+                || code == "EXPERIMENT_INACTIVE"
+                || code == "EXPERIMENT_FULL";
+        }
+
+        private static bool TryParseExperimentUnavailableError(UnityWebRequest request, out ParticipantCreationErrorResponse errorResponse)
+        {
+            errorResponse = null;
+
+            if (request.responseCode != 403)
+                return false;
+
+            string responseText = request.downloadHandler?.text;
+            if (string.IsNullOrEmpty(responseText))
+                return false;
+
+            try
+            {
+                errorResponse = JsonUtility.FromJson<ParticipantCreationErrorResponse>(responseText);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return errorResponse != null
+                && !errorResponse.success
+                && IsExperimentUnavailableErrorCode(errorResponse.code)
+                && !string.IsNullOrEmpty(errorResponse.message);
         }
 
         // Participant state management
@@ -299,7 +341,20 @@ namespace VERA
             }
             else
             {
+                if (TryParseExperimentUnavailableError(request, out ParticipantCreationErrorResponse errorResponse))
+                {
+                    participantUUID = null;
+                    participantShortId = null;
+                    request.Dispose();
+                    VERADebugger.LogError(errorResponse.message, "VERA Participant");
+                    throw new VERAExperimentUnavailableException(
+                        errorResponse.code,
+                        errorResponse.activationStatus,
+                        errorResponse.message);
+                }
+
                 VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Clearing participantShortId to allow local recording.", "VERA Participant");
+                participantUUID = null;
                 participantShortId = null;
             }
 
