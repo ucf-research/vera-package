@@ -170,7 +170,7 @@ namespace VERA
             List<string> parameterNames = new List<string>();
 
             // Determine if this is baseline telemetry
-            bool isBaseline = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
+            bool isBaseline = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == VERAExperimentTelemetrySchema.Name;
 
             // Add eventId only for non-baseline
             // eventId disabled while its necessity is evaluated
@@ -290,7 +290,7 @@ namespace VERA
             sb.AppendLine("\t\t/// Creates a new row entry in the " + columnDefinition.fileType.name + " CSV log file.");
 
             // If this is an automatic baseline or Experiment_Telemetry file, say such and be less verbose
-            if (columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry")
+            if (columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == VERAExperimentTelemetrySchema.Name)
             {
                 sb.AppendLine("\t\t/// This file is automatically populated and handled by VERA; researchers should NOT need to call this function directly.");
 

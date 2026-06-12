@@ -425,45 +425,41 @@ namespace VERA
                 ts = DateTime.UtcNow
             };
 
-            // Headset data
+            // --- Headset ---
             bool isHeadsetPresent = headDevices.Count > 0;
             data.headsetDetected = isHeadsetPresent;
 
-            // Only populate position/rotation when an XR device is present and we have a transform
+            // Virtual pose from scene transform
             if (isHeadsetPresent && headsetCamera != null)
             {
-                data.headsetPosX = headsetCamera.transform.position.x;
-                data.headsetPosY = headsetCamera.transform.position.y;
-                data.headsetPosZ = headsetCamera.transform.position.z;
-                data.headsetRot = FormatQuaternionToCSV(headsetCamera.transform.rotation);
-            }
-            else
-            {
-                data.headsetPosX = 0f;
-                data.headsetPosY = 0f;
-                data.headsetPosZ = 0f;
-                data.headsetRot = "NA";
+                PopulateVirtualPose(headsetCamera.transform,
+                    out data.headsetVirtualPosX, out data.headsetVirtualPosY, out data.headsetVirtualPosZ,
+                    out data.headsetVirtualRotEulerX, out data.headsetVirtualRotEulerY, out data.headsetVirtualRotEulerZ,
+                    out data.headsetVirtualRotQuatX, out data.headsetVirtualRotQuatY, out data.headsetVirtualRotQuatZ, out data.headsetVirtualRotQuatW);
             }
 
-            // Left controller data
+            // Tracking pose from XR device (physical space)
+            PopulateTrackingPose(headDevices,
+                out data.headsetTrackingPosX, out data.headsetTrackingPosY, out data.headsetTrackingPosZ,
+                out data.headsetTrackingRotEulerX, out data.headsetTrackingRotEulerY, out data.headsetTrackingRotEulerZ,
+                out data.headsetTrackingRotQuatX, out data.headsetTrackingRotQuatY, out data.headsetTrackingRotQuatZ, out data.headsetTrackingRotQuatW);
+
+            // --- Left controller ---
             bool isLeftPresent = leftHandDevices.Count > 0;
             data.leftDetected = isLeftPresent;
 
-            // Only populate position/rotation when an XR device is present and we have a transform
             if (isLeftPresent && leftController != null)
             {
-                data.leftControllerPosX = leftController.position.x;
-                data.leftControllerPosY = leftController.position.y;
-                data.leftControllerPosZ = leftController.position.z;
-                data.leftControllerRot = FormatQuaternionToCSV(leftController.rotation);
+                PopulateVirtualPose(leftController,
+                    out data.leftControllerVirtualPosX, out data.leftControllerVirtualPosY, out data.leftControllerVirtualPosZ,
+                    out data.leftControllerVirtualRotEulerX, out data.leftControllerVirtualRotEulerY, out data.leftControllerVirtualRotEulerZ,
+                    out data.leftControllerVirtualRotQuatX, out data.leftControllerVirtualRotQuatY, out data.leftControllerVirtualRotQuatZ, out data.leftControllerVirtualRotQuatW);
             }
-            else
-            {
-                data.leftControllerPosX = 0f;
-                data.leftControllerPosY = 0f;
-                data.leftControllerPosZ = 0f;
-                data.leftControllerRot = "NA";
-            }
+
+            PopulateTrackingPose(leftHandDevices,
+                out data.leftControllerTrackingPosX, out data.leftControllerTrackingPosY, out data.leftControllerTrackingPosZ,
+                out data.leftControllerTrackingRotEulerX, out data.leftControllerTrackingRotEulerY, out data.leftControllerTrackingRotEulerZ,
+                out data.leftControllerTrackingRotQuatX, out data.leftControllerTrackingRotQuatY, out data.leftControllerTrackingRotQuatZ, out data.leftControllerTrackingRotQuatW);
 
             // Left controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
@@ -495,7 +491,6 @@ namespace VERA
             data.leftThumbstickX = leftAxis.x;
             data.leftThumbstickY = leftAxis.y;
 #else
-            // Fallback to XR device input
             data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
             data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
             data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
@@ -506,25 +501,22 @@ namespace VERA
             data.leftThumbstickY = leftAxisFallback.y;
 #endif
 
-            // Right controller data
+            // --- Right controller ---
             bool isRightPresent = rightHandDevices.Count > 0;
             data.rightDetected = isRightPresent;
 
-            // Only populate position/rotation when an XR device is present and we have a transform
             if (isRightPresent && rightController != null)
             {
-                data.rightControllerPosX = rightController.position.x;
-                data.rightControllerPosY = rightController.position.y;
-                data.rightControllerPosZ = rightController.position.z;
-                data.rightControllerRot = FormatQuaternionToCSV(rightController.rotation);
+                PopulateVirtualPose(rightController,
+                    out data.rightControllerVirtualPosX, out data.rightControllerVirtualPosY, out data.rightControllerVirtualPosZ,
+                    out data.rightControllerVirtualRotEulerX, out data.rightControllerVirtualRotEulerY, out data.rightControllerVirtualRotEulerZ,
+                    out data.rightControllerVirtualRotQuatX, out data.rightControllerVirtualRotQuatY, out data.rightControllerVirtualRotQuatZ, out data.rightControllerVirtualRotQuatW);
             }
-            else
-            {
-                data.rightControllerPosX = 0f;
-                data.rightControllerPosY = 0f;
-                data.rightControllerPosZ = 0f;
-                data.rightControllerRot = "NA";
-            }
+
+            PopulateTrackingPose(rightHandDevices,
+                out data.rightControllerTrackingPosX, out data.rightControllerTrackingPosY, out data.rightControllerTrackingPosZ,
+                out data.rightControllerTrackingRotEulerX, out data.rightControllerTrackingRotEulerY, out data.rightControllerTrackingRotEulerZ,
+                out data.rightControllerTrackingRotQuatX, out data.rightControllerTrackingRotQuatY, out data.rightControllerTrackingRotQuatZ, out data.rightControllerTrackingRotQuatW);
 
             // Right controller input states - try Input System first, fallback to XR devices
 #if ENABLE_INPUT_SYSTEM
@@ -556,9 +548,8 @@ namespace VERA
             data.rightThumbstickX = rightAxis.x;
             data.rightThumbstickY = rightAxis.y;
 #else
-            // Fallback to XR device input
             data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
-            data.rightGrip = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
+            data.rightGrip = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
             data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
             data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
             data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
@@ -580,19 +571,58 @@ namespace VERA
 
             try
             {
-                // Log baseline data directly to VERA
+                // Log baseline data directly to VERA - column order must match VERAExperimentTelemetrySchema
                 VERASessionManager.CreateArbitraryCsvEntry(
-                    "Experiment_Telemetry",
+                    VERAExperimentTelemetrySchema.Name,
+                    // Headset
                     data.headsetDetected,
-                    data.headsetPosX,
-                    data.headsetPosY,
-                    data.headsetPosZ,
-                    data.headsetRot,
+                    // Headset virtual pose
+                    data.headsetVirtualPosX,
+                    data.headsetVirtualPosY,
+                    data.headsetVirtualPosZ,
+                    data.headsetVirtualRotEulerX,
+                    data.headsetVirtualRotEulerY,
+                    data.headsetVirtualRotEulerZ,
+                    data.headsetVirtualRotQuatX,
+                    data.headsetVirtualRotQuatY,
+                    data.headsetVirtualRotQuatZ,
+                    data.headsetVirtualRotQuatW,
+                    // Headset tracking pose
+                    data.headsetTrackingPosX,
+                    data.headsetTrackingPosY,
+                    data.headsetTrackingPosZ,
+                    data.headsetTrackingRotEulerX,
+                    data.headsetTrackingRotEulerY,
+                    data.headsetTrackingRotEulerZ,
+                    data.headsetTrackingRotQuatX,
+                    data.headsetTrackingRotQuatY,
+                    data.headsetTrackingRotQuatZ,
+                    data.headsetTrackingRotQuatW,
+                    // Left controller
                     data.leftDetected,
-                    data.leftControllerPosX,
-                    data.leftControllerPosY,
-                    data.leftControllerPosZ,
-                    data.leftControllerRot,
+                    // Left virtual pose
+                    data.leftControllerVirtualPosX,
+                    data.leftControllerVirtualPosY,
+                    data.leftControllerVirtualPosZ,
+                    data.leftControllerVirtualRotEulerX,
+                    data.leftControllerVirtualRotEulerY,
+                    data.leftControllerVirtualRotEulerZ,
+                    data.leftControllerVirtualRotQuatX,
+                    data.leftControllerVirtualRotQuatY,
+                    data.leftControllerVirtualRotQuatZ,
+                    data.leftControllerVirtualRotQuatW,
+                    // Left tracking pose
+                    data.leftControllerTrackingPosX,
+                    data.leftControllerTrackingPosY,
+                    data.leftControllerTrackingPosZ,
+                    data.leftControllerTrackingRotEulerX,
+                    data.leftControllerTrackingRotEulerY,
+                    data.leftControllerTrackingRotEulerZ,
+                    data.leftControllerTrackingRotQuatX,
+                    data.leftControllerTrackingRotQuatY,
+                    data.leftControllerTrackingRotQuatZ,
+                    data.leftControllerTrackingRotQuatW,
+                    // Left input
                     data.leftTrigger,
                     data.leftGrip,
                     data.leftPrimaryButton,
@@ -600,11 +630,31 @@ namespace VERA
                     data.leftPrimary2DAxisClick,
                     data.leftThumbstickX,
                     data.leftThumbstickY,
+                    // Right controller
                     data.rightDetected,
-                    data.rightControllerPosX,
-                    data.rightControllerPosY,
-                    data.rightControllerPosZ,
-                    data.rightControllerRot,
+                    // Right virtual pose
+                    data.rightControllerVirtualPosX,
+                    data.rightControllerVirtualPosY,
+                    data.rightControllerVirtualPosZ,
+                    data.rightControllerVirtualRotEulerX,
+                    data.rightControllerVirtualRotEulerY,
+                    data.rightControllerVirtualRotEulerZ,
+                    data.rightControllerVirtualRotQuatX,
+                    data.rightControllerVirtualRotQuatY,
+                    data.rightControllerVirtualRotQuatZ,
+                    data.rightControllerVirtualRotQuatW,
+                    // Right tracking pose
+                    data.rightControllerTrackingPosX,
+                    data.rightControllerTrackingPosY,
+                    data.rightControllerTrackingPosZ,
+                    data.rightControllerTrackingRotEulerX,
+                    data.rightControllerTrackingRotEulerY,
+                    data.rightControllerTrackingRotEulerZ,
+                    data.rightControllerTrackingRotQuatX,
+                    data.rightControllerTrackingRotQuatY,
+                    data.rightControllerTrackingRotQuatZ,
+                    data.rightControllerTrackingRotQuatW,
+                    // Right input
                     data.rightTrigger,
                     data.rightGrip,
                     data.rightPrimaryButton,
@@ -618,20 +668,49 @@ namespace VERA
             {
                 VERADebugger.LogError($"Exception in LogToVERASystem: {e.Message}", "VERABaselineDataLogger");
                 VERADebugger.LogError($"Stack trace: {e.StackTrace}", "VERABaselineDataLogger");
-                // Server-only logging - no fallback to local CSV
             }
         }
 
-        private string FormatVector3ToCSV(Vector3 vector)
+        private void PopulateVirtualPose(
+            Transform t,
+            out float posX, out float posY, out float posZ,
+            out float eulerX, out float eulerY, out float eulerZ,
+            out float quatX, out float quatY, out float quatZ, out float quatW)
         {
-            // Format Vector3 as CSV string with precision
-            return $"{vector.x:F4},{vector.y:F4},{vector.z:F4}";
+            Vector3 pos = t.position;
+            Vector3 euler = t.eulerAngles;
+            Quaternion q = t.rotation;
+            posX = pos.x; posY = pos.y; posZ = pos.z;
+            eulerX = euler.x; eulerY = euler.y; eulerZ = euler.z;
+            quatX = q.x; quatY = q.y; quatZ = q.z; quatW = q.w;
         }
 
-        private string FormatQuaternionToCSV(Quaternion quaternion)
+        private void PopulateTrackingPose(
+            List<UnityEngine.XR.InputDevice> devices,
+            out float posX, out float posY, out float posZ,
+            out float eulerX, out float eulerY, out float eulerZ,
+            out float quatX, out float quatY, out float quatZ, out float quatW)
         {
-            // Format Quaternion as CSV string in parentheses
-            return $"({quaternion.x:F4},{quaternion.y:F4},{quaternion.z:F4},{quaternion.w:F4})";
+            posX = posY = posZ = 0f;
+            eulerX = eulerY = eulerZ = 0f;
+            quatX = quatY = quatZ = 0f; quatW = 1f;
+
+            if (devices.Count == 0) return;
+
+            foreach (var device in devices)
+            {
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 pos))
+                {
+                    posX = pos.x; posY = pos.y; posZ = pos.z;
+                }
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion q))
+                {
+                    Vector3 euler = q.eulerAngles;
+                    eulerX = euler.x; eulerY = euler.y; eulerZ = euler.z;
+                    quatX = q.x; quatY = q.y; quatZ = q.z; quatW = q.w;
+                }
+                break; // use the first device
+            }
         }
 
         private float GetFloatInputState(InputActionProperty actionProperty)
@@ -782,37 +861,54 @@ namespace VERA
         [System.Serializable]
         public class BaselineDataEntry
         {
-            public DateTime ts;              // Timestamp
-            // Detection flags
-            public bool headsetDetected = false;     // true = present, false = absent
-            public float headsetPosX;        // Headset position X
-            public float headsetPosY;        // Headset position Y
-            public float headsetPosZ;        // Headset position Z
-            public string headsetRot;        // Rotation as quaternion string
-            public bool leftDetected = false;        // true = present, false = absent
-            public float leftControllerPosX; // Left controller position X
-            public float leftControllerPosY; // Left controller position Y
-            public float leftControllerPosZ; // Left controller position Z
-            public string leftControllerRot; // Left rotation as quaternion string
-            public float leftTrigger;        // Trigger value 0-1
-            public float leftGrip;           // Grip value 0-1
-            public int leftPrimaryButton;    // 1/0/-1 for pressed/released/NA
-            public int leftSecondaryButton;  // 1/0/-1 for pressed/released/NA
-            public int leftPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
-            public float leftThumbstickX;    // -1 to 1 axis; -2 for NA
-            public float leftThumbstickY;    // -1 to 1 axis; -2 for NA
-            public bool rightDetected = false;       // true = present, false = absent
-            public float rightControllerPosX; // Right controller position X
-            public float rightControllerPosY; // Right controller position Y
-            public float rightControllerPosZ; // Right controller position Z
-            public string rightControllerRot; // Right rotation as quaternion string
-            public float rightTrigger;       // Trigger value 0-1
-            public float rightGrip;          // Grip value 0-1
-            public int rightPrimaryButton;   // 1/0/-1 for pressed/released/NA
-            public int rightSecondaryButton; // 1/0/-1 for pressed/released/NA
-            public int rightPrimary2DAxisClick; // 1/0/-1 for pressed/released/NA
-            public float rightThumbstickX;   // -1 to 1 axis; -2 for NA
-            public float rightThumbstickY;   // -1 to 1 axis; -2 for NA
+            public DateTime ts;
+
+            // Headset
+            public bool headsetDetected;
+            // Virtual pose (scene transform)
+            public float headsetVirtualPosX, headsetVirtualPosY, headsetVirtualPosZ;
+            public float headsetVirtualRotEulerX, headsetVirtualRotEulerY, headsetVirtualRotEulerZ;
+            public float headsetVirtualRotQuatX, headsetVirtualRotQuatY, headsetVirtualRotQuatZ, headsetVirtualRotQuatW;
+            // Tracking pose (physical space)
+            public float headsetTrackingPosX, headsetTrackingPosY, headsetTrackingPosZ;
+            public float headsetTrackingRotEulerX, headsetTrackingRotEulerY, headsetTrackingRotEulerZ;
+            public float headsetTrackingRotQuatX, headsetTrackingRotQuatY, headsetTrackingRotQuatZ, headsetTrackingRotQuatW;
+
+            // Left controller
+            public bool leftDetected;
+            // Virtual pose
+            public float leftControllerVirtualPosX, leftControllerVirtualPosY, leftControllerVirtualPosZ;
+            public float leftControllerVirtualRotEulerX, leftControllerVirtualRotEulerY, leftControllerVirtualRotEulerZ;
+            public float leftControllerVirtualRotQuatX, leftControllerVirtualRotQuatY, leftControllerVirtualRotQuatZ, leftControllerVirtualRotQuatW;
+            // Tracking pose
+            public float leftControllerTrackingPosX, leftControllerTrackingPosY, leftControllerTrackingPosZ;
+            public float leftControllerTrackingRotEulerX, leftControllerTrackingRotEulerY, leftControllerTrackingRotEulerZ;
+            public float leftControllerTrackingRotQuatX, leftControllerTrackingRotQuatY, leftControllerTrackingRotQuatZ, leftControllerTrackingRotQuatW;
+            // Input
+            public float leftTrigger;
+            public float leftGrip;
+            public int leftPrimaryButton;
+            public int leftSecondaryButton;
+            public int leftPrimary2DAxisClick;
+            public float leftThumbstickX, leftThumbstickY;
+
+            // Right controller
+            public bool rightDetected;
+            // Virtual pose
+            public float rightControllerVirtualPosX, rightControllerVirtualPosY, rightControllerVirtualPosZ;
+            public float rightControllerVirtualRotEulerX, rightControllerVirtualRotEulerY, rightControllerVirtualRotEulerZ;
+            public float rightControllerVirtualRotQuatX, rightControllerVirtualRotQuatY, rightControllerVirtualRotQuatZ, rightControllerVirtualRotQuatW;
+            // Tracking pose
+            public float rightControllerTrackingPosX, rightControllerTrackingPosY, rightControllerTrackingPosZ;
+            public float rightControllerTrackingRotEulerX, rightControllerTrackingRotEulerY, rightControllerTrackingRotEulerZ;
+            public float rightControllerTrackingRotQuatX, rightControllerTrackingRotQuatY, rightControllerTrackingRotQuatZ, rightControllerTrackingRotQuatW;
+            // Input
+            public float rightTrigger;
+            public float rightGrip;
+            public int rightPrimaryButton;
+            public int rightSecondaryButton;
+            public int rightPrimary2DAxisClick;
+            public float rightThumbstickX, rightThumbstickY;
         }
 
         #region Public API
@@ -837,66 +933,6 @@ namespace VERA
         public void SetHeadsetCamera(Camera camera)
         {
             headsetCamera = camera;
-        }
-
-        private Transform CreateTempTransformFromString(string positionString)
-        {
-            if (string.IsNullOrEmpty(positionString) || positionString == "NA")
-                return null;
-
-            try
-            {
-                string[] parts = positionString.Replace("\"", "").Split(',');
-                if (parts.Length >= 3)
-                {
-                    GameObject tempObj = new GameObject("TempTransform");
-                    tempObj.transform.position = new Vector3(
-                        float.Parse(parts[0]),
-                        float.Parse(parts[1]),
-                        float.Parse(parts[2])
-                    );
-                    return tempObj.transform;
-                }
-            }
-            catch (System.Exception)
-            {
-                // Could not parse position string - return null
-            }
-            return null;
-        }
-
-        private Transform CreateTempTransformFromRotationString(string rotationString)
-        {
-            if (string.IsNullOrEmpty(rotationString) || rotationString == "NA")
-                return null;
-
-            try
-            {
-                string[] parts = rotationString.Replace("\"", "").Split(',');
-                if (parts.Length >= 3)
-                {
-                    GameObject tempObj = new GameObject("TempTransform");
-                    tempObj.transform.eulerAngles = new Vector3(
-                        float.Parse(parts[0]),
-                        float.Parse(parts[1]),
-                        float.Parse(parts[2])
-                    );
-                    return tempObj.transform;
-                }
-            }
-            catch (System.Exception)
-            {
-                // Could not parse rotation string - return null
-            }
-            return null;
-        }
-
-        private void CleanupTempTransform(Transform tempTransform)
-        {
-            if (tempTransform != null)
-            {
-                DestroyImmediate(tempTransform.gameObject);
-            }
         }
 
         #endregion

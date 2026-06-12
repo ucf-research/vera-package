@@ -99,12 +99,13 @@ public class ExperimentManager : MonoBehaviour
         //----------------------------------------------------//
         // VERA SANDBOX NOTE 2: PARTICIPANT IDS
         // You can use VERA to get the current participant's ID:
-        //     * VERASessionManager.participantID - an integer representing the participant's unique ID for the session.
+        //     * VERASessionManager.participantID - the participant's short ID for the session (e.g. "1", "P1").
+        //     * VERASessionManager.participantNumber - the numeric portion of that ID for counterbalancing.
         // For this demo, we are using the participant ID to assign participants to different firing mode conditions 
         // (good aim vs. bad aim) in a balanced way - i.e., even ID's get one condition, odd ID's get the other
 
         // WITH VERA, we can assign conditions based on participant ID:
-        //bool useBadAim = VERASessionManager.participantID % 2 == 0;
+        //bool useBadAim = VERASessionManager.participantNumber % 2 == 0;
 
         // WITHOUT VERA, we can simply randomize condition assignment:
         bool useBadAim = UnityEngine.Random.value > 0.5f;

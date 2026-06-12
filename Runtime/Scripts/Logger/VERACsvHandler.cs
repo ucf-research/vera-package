@@ -205,7 +205,7 @@ namespace VERA
 
             // check baseline data file (omits eventId column)
             // eventId disabled while its necessity is evaluated
-            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == "Experiment_Telemetry";
+            bool isBaselineTelemetry = columnDefinition.fileType.fileTypeId == "baseline-data" || columnDefinition.fileType.name == VERAExperimentTelemetrySchema.Name;
             int autoColumnCount = 3;
 
             if (values.Length != columnDefinition.columns.Count - autoColumnCount)
@@ -221,7 +221,7 @@ namespace VERA
             if (!skipAuto)
             {
                 // Add pID, conditions, timestamp (except for baseline telemetry)
-                entry.Add(Convert.ToString(VERALogger.Instance.activeParticipant.participantShortId));
+                entry.Add(VERALogger.Instance.activeParticipant.participantShortId ?? "");
                 entry.Add(FormatValueForCsv(VERALogger.Instance.GetExperimentConditions()));
                 entry.Add(Convert.ToString(Time.realtimeSinceStartup));
 

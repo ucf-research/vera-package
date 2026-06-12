@@ -32,7 +32,7 @@ namespace VERA
                     continue;
 
                 string fileTypeName = columnDef.fileType.name;
-                bool isBaseline = columnDef.fileType.fileTypeId == "baseline-data" || fileTypeName == "Experiment_Telemetry";
+                bool isBaseline = columnDef.fileType.fileTypeId == "baseline-data" || fileTypeName == VERAExperimentTelemetrySchema.Name;
 
                 // Validate that this column definition has the required VERA auto-columns
                 if (!ValidateRequiredColumns(columnDef, out string validationError))
@@ -54,15 +54,14 @@ namespace VERA
                 // For Experiment_Telemetry, also validate that data columns match the canonical schema.
                 // This catches cases where the saved asset was created with an older version of the logger
                 // that had fewer columns, causing a runtime column count mismatch error.
-                if (isBaseline && fileTypeName == "Experiment_Telemetry")
+                if (isBaseline && fileTypeName == VERAExperimentTelemetrySchema.Name)
                 {
-                    var canonical = VERABaselineDataColumnDefinition.CreateBaselineDataColumnDefinition();
-                    if (columnDef.columns.Count != canonical.columns.Count)
+                    if (columnDef.columns.Count != VERAExperimentTelemetrySchema.Columns.Count)
                     {
                         int prevCount = columnDef.columns.Count;
-                        columnDef.columns = canonical.columns;
+                        columnDef.columns = new List<VERAColumnDefinition.Column>(VERAExperimentTelemetrySchema.Columns);
                         foundIssues = true;
-                        issuesFound.Add($"{fileTypeName}: Schema updated from {prevCount} to {canonical.columns.Count} columns to match current logger");
+                        issuesFound.Add($"{fileTypeName}: Schema updated from {prevCount} to {VERAExperimentTelemetrySchema.Columns.Count} columns to match current logger");
 
 #if UNITY_EDITOR
                         UnityEditor.EditorUtility.SetDirty(columnDef);
@@ -109,7 +108,7 @@ namespace VERA
 
             // Check for required auto-columns that VERA always adds
             // Determine baseline here as this method may be called independently
-            bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == "Experiment_Telemetry");
+            bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == VERAExperimentTelemetrySchema.Name);
             // Baseline telemetry (Experiment_Telemetry or fileTypeId == "baseline-data")
             // eventId disabled while its necessity is evaluated
             /*
@@ -158,7 +157,7 @@ namespace VERA
                 // Get existing data columns (non-auto columns)
                 List<VERAColumnDefinition.Column> dataColumns = new List<VERAColumnDefinition.Column>();
                 // Determine baseline for this columnDef
-                bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == "Experiment_Telemetry");
+                bool isBaseline = columnDef.fileType != null && (columnDef.fileType.fileTypeId == "baseline-data" || columnDef.fileType.name == VERAExperimentTelemetrySchema.Name);
                 // Baseline doesn't include eventId as an auto column
                 // eventId disabled while its necessity is evaluated
                 /*

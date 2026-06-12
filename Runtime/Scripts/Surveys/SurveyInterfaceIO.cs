@@ -43,7 +43,7 @@ namespace VERA
         // Creates and uploads a CSV file for this specific survey instance
         private IEnumerator UploadSurveyInstanceFile(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
         {
-            int pID = VERALogger.Instance.activeParticipant.participantShortId;
+            string pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
             string studyId = VERALogger.Instance.experimentUUID;
             string surveyId = surveyToOutput.surveyId;
@@ -193,7 +193,7 @@ namespace VERA
 
         // Records responses to the shared Survey_Responses CSV (backup/fallback)
         private void RecordToSharedCsv(VERACsvHandler csvHandler, KeyValuePair<string, string>[] surveyResults,
-            int pID, string ts, string studyId, string surveyId, string surveyName, string instanceId,
+            string pID, string ts, string studyId, string surveyId, string surveyName, string instanceId,
             Dictionary<string, string> questionTextLookup)
         {
             foreach (var response in surveyResults)
@@ -225,7 +225,7 @@ namespace VERA
         // Legacy method - records survey responses to the shared Survey_Responses CSV file type via VERACsvHandler
         private void RecordSurveyResponses(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
         {
-            int pID = VERALogger.Instance.activeParticipant.participantShortId;
+            string pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
             string studyId = VERALogger.Instance.experimentUUID;
             string surveyId = surveyToOutput.surveyId;

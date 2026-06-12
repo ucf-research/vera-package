@@ -13,9 +13,15 @@ namespace VERA
     {
 
         /// <summary>
-        /// The current participant's ID.
+        /// The current participant's short ID as assigned by the server (e.g. "1", "P1").
         /// </summary>
-        public static int participantID { get { return VERALogger.Instance.activeParticipant.participantShortId; } }
+        public static string participantID { get { return VERALogger.Instance.activeParticipant.participantShortId; } }
+
+        /// <summary>
+        /// The numeric portion of the participant short ID (e.g. 1 for "1" or "P1").
+        /// Returns -1 if the short ID is missing or invalid.
+        /// </summary>
+        public static int participantNumber { get { return VERALogger.Instance.activeParticipant.GetNumericParticipantShortId(); } }
 
         /// <summary>
         /// Whether VERA has been initialized for the current session, and is ready to log data.
@@ -346,7 +352,7 @@ namespace VERA
                 VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
                 return;
             }
-            int participantId = VERALogger.Instance.activeParticipant.participantShortId;
+            int participantId = VERALogger.Instance.activeParticipant.GetNumericParticipantShortId();
             VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantId);
         }
 
@@ -377,7 +383,7 @@ namespace VERA
         ///
         /// Example:
         ///   // For a study with 30 total participants
-        ///   int participantNum = VERALogger.Instance.activeParticipant.participantShortId;
+        ///   int participantNum = VERALogger.Instance.activeParticipant.GetNumericParticipantShortId();
         ///   bool success = VERASessionManager.ApplyLatinSquareCounterbalancing(participantNum, 30);
         ///   if (!success) VERADebugger.LogError("Latin square failed - check console!");
         /// </summary>
