@@ -4,10 +4,10 @@ using UnityEngine;
 
 namespace VERA
 {
-    public static class VERATween
+    internal static class VERATween
     {
         private static readonly List<ITweenInstance> ActiveTweens = new List<ITweenInstance>();
-        private static readonly Dictionary<GameObject, List<ITweenInstance>> TweensByTarget = new Dictionary<GameObject, List<ITweenInstance>>();
+        private static readonly Dictionary<int, List<ITweenInstance>> TweensByTargetId = new Dictionary<int, List<ITweenInstance>>();
         private static VERATweenRunner _runner;
         private static int _nextId = 1;
 
@@ -38,7 +38,10 @@ namespace VERA
 
         public static void Cancel(GameObject target)
         {
-            if (target == null || !TweensByTarget.TryGetValue(target, out List<ITweenInstance> tweens))
+            if (target == null)
+                return;
+
+            if (!TweensByTargetId.TryGetValue(target.GetInstanceID(), out List<ITweenInstance> tweens))
                 return;
 
             for (int i = tweens.Count - 1; i >= 0; i--)
@@ -49,11 +52,14 @@ namespace VERA
 
         private static void Unregister(ITweenInstance tween)
         {
-            if (tween.Target != null && TweensByTarget.TryGetValue(tween.Target, out List<ITweenInstance> tweens))
+            if (!tween.HasTarget)
+                return;
+
+            if (TweensByTargetId.TryGetValue(tween.TargetId, out List<ITweenInstance> tweens))
             {
                 tweens.Remove(tween);
                 if (tweens.Count == 0)
-                    TweensByTarget.Remove(tween.Target);
+                    TweensByTargetId.Remove(tween.TargetId);
             }
         }
 
@@ -70,6 +76,8 @@ namespace VERA
             {
                 Id = _nextId++,
                 Target = target,
+                HasTarget = target != null,
+                TargetId = target != null ? target.GetInstanceID() : 0,
                 From = from,
                 To = to,
                 Duration = Mathf.Max(0f, duration),
@@ -80,10 +88,10 @@ namespace VERA
 
             if (target != null)
             {
-                if (!TweensByTarget.TryGetValue(target, out List<ITweenInstance> tweens))
+                if (!TweensByTargetId.TryGetValue(tween.TargetId, out List<ITweenInstance> tweens))
                 {
                     tweens = new List<ITweenInstance>();
-                    TweensByTarget[target] = tweens;
+                    TweensByTargetId[tween.TargetId] = tweens;
                 }
 
                 tweens.Add(tween);
@@ -118,6 +126,8 @@ namespace VERA
         internal interface ITweenInstance
         {
             GameObject Target { get; }
+            bool HasTarget { get; }
+            int TargetId { get; }
             float Duration { get; }
             float Delay { get; set; }
             VERAEaseType Ease { get; set; }
@@ -129,6 +139,8 @@ namespace VERA
         {
             public int Id;
             public GameObject Target { get; set; }
+            public bool HasTarget { get; set; }
+            public int TargetId { get; set; }
             public float Duration { get; set; }
             public float Delay { get; set; }
             public float Elapsed;
@@ -143,6 +155,9 @@ namespace VERA
             public bool Step(float deltaTime)
             {
                 if (IsCancelled)
+                    return false;
+
+                if (HasTarget && Target == null)
                     return false;
 
                 if (Delay > 0f)

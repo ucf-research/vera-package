@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace VERA
 {
-    public static class VERATweenExtensions
+    internal static class VERATweenExtensions
     {
         public static VERATween.TweenHandle<float> TweenAlpha(this CanvasGroup canvasGroup, float to, float duration)
         {

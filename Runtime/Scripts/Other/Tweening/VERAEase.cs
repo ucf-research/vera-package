@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace VERA
 {
-    public enum VERAEaseType
+    internal enum VERAEaseType
     {
         Linear,
         InQuad,
@@ -37,7 +37,7 @@ namespace VERA
         InOutBounce
     }
 
-    public static class VERAEase
+    internal static class VERAEase
     {
         private const float BackOvershoot = 1.70158f;
         private const float TwoPi = Mathf.PI * 2f;
