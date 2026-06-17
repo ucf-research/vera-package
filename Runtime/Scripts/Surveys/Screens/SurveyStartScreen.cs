@@ -35,7 +35,7 @@ namespace VERA
             descriptionText.text = description;
 
             mainCanvasGroup.alpha = 0f;
-            mainCanvasGroup.LeanAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
+            mainCanvasGroup.TweenAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
         }
 
 

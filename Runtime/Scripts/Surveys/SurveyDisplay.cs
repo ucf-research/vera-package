@@ -128,8 +128,8 @@ namespace VERA
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         public void StartSurvey(VERASurveyInfo surveyToStart, Action onSurveyComplete, float heightOffset = 0f, float distanceOffset = 3f)
         {
-            LeanTween.cancel(surveyComponents.mainCanvasGroup.gameObject);
-            surveyComponents.mainCanvasGroup.LeanAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
+            VERATween.Cancel(surveyComponents.mainCanvasGroup.gameObject);
+            surveyComponents.mainCanvasGroup.TweenAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
 
             activeSurveyInfo = surveyToStart;
             this.onSurveyComplete = onSurveyComplete;
@@ -158,8 +158,8 @@ namespace VERA
             {
                 onSurveyComplete.Invoke();
 
-                LeanTween.cancel(surveyComponents.mainCanvasGroup.gameObject);
-                surveyComponents.mainCanvasGroup.LeanAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).setOnComplete(() => Destroy(gameObject));
+                VERATween.Cancel(surveyComponents.mainCanvasGroup.gameObject);
+                surveyComponents.mainCanvasGroup.TweenAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).SetOnComplete(() => Destroy(gameObject));
             }
         }
 
@@ -375,12 +375,12 @@ namespace VERA
                     surveyComponents.progressText.alpha = 0f;
                     surveyComponents.miniNameText.gameObject.SetActive(true);
                     surveyComponents.miniNameText.alpha = 0f;
-                    LeanTween.cancel(surveyComponents.progressText.gameObject);
-                    LeanTween.cancel(surveyComponents.miniNameText.gameObject);
-                    LeanTween.value(surveyComponents.progressText.alpha, 1f, SCREEN_FADE_DURATION)
-                        .setOnUpdate((float val) => surveyComponents.progressText.alpha = val);
-                    LeanTween.value(surveyComponents.miniNameText.alpha, 1f, SCREEN_FADE_DURATION)
-                        .setOnUpdate((float val) => surveyComponents.miniNameText.alpha = val);
+                    VERATween.Cancel(surveyComponents.progressText.gameObject);
+                    VERATween.Cancel(surveyComponents.miniNameText.gameObject);
+                    VERATween.Value(surveyComponents.progressText.gameObject, surveyComponents.progressText.alpha, 1f, SCREEN_FADE_DURATION)
+                        .SetOnUpdate(val => surveyComponents.progressText.alpha = val);
+                    VERATween.Value(surveyComponents.miniNameText.gameObject, surveyComponents.miniNameText.alpha, 1f, SCREEN_FADE_DURATION)
+                        .SetOnUpdate(val => surveyComponents.miniNameText.alpha = val);
                 }
 
                 surveyComponents.miniNameText.text = activeSurveyInfo.surveyName;
@@ -390,14 +390,14 @@ namespace VERA
             {
                 if (surveyComponents.progressText.gameObject.activeSelf == true)
                 {
-                    LeanTween.cancel(surveyComponents.progressText.gameObject);
-                    LeanTween.cancel(surveyComponents.miniNameText.gameObject);
-                    LeanTween.value(surveyComponents.progressText.alpha, 0f, SCREEN_FADE_DURATION)
-                        .setOnUpdate((float val) => surveyComponents.progressText.alpha = val)
-                        .setOnComplete(() => surveyComponents.progressText.gameObject.SetActive(false));
-                    LeanTween.value(surveyComponents.miniNameText.alpha, 0f, SCREEN_FADE_DURATION)
-                        .setOnUpdate((float val) => surveyComponents.miniNameText.alpha = val)
-                        .setOnComplete(() => surveyComponents.miniNameText.gameObject.SetActive(false));
+                    VERATween.Cancel(surveyComponents.progressText.gameObject);
+                    VERATween.Cancel(surveyComponents.miniNameText.gameObject);
+                    VERATween.Value(surveyComponents.progressText.gameObject, surveyComponents.progressText.alpha, 0f, SCREEN_FADE_DURATION)
+                        .SetOnUpdate(val => surveyComponents.progressText.alpha = val)
+                        .SetOnComplete(() => surveyComponents.progressText.gameObject.SetActive(false));
+                    VERATween.Value(surveyComponents.miniNameText.gameObject, surveyComponents.miniNameText.alpha, 0f, SCREEN_FADE_DURATION)
+                        .SetOnUpdate(val => surveyComponents.miniNameText.alpha = val)
+                        .SetOnComplete(() => surveyComponents.miniNameText.gameObject.SetActive(false));
                 }
             }
         }
@@ -419,25 +419,25 @@ namespace VERA
             Vector3 originalPos = warningRect.localPosition;
 
             // Cancel any in-progress warning animations
-            LeanTween.cancel(warning.gameObject);
+            VERATween.Cancel(warning.gameObject);
 
             // Snap visible and shake
             warning.alpha = 1f;
-            LeanTween.value(warning.gameObject, 0f, 1f, WARNING_SHAKE_DURATION)
-                .setOnUpdate((float t) =>
+            VERATween.Value(warning.gameObject, 0f, 1f, WARNING_SHAKE_DURATION)
+                .SetOnUpdate(t =>
                 {
                     float decay = 1f - t;
                     float offsetX = Mathf.Sin(t * Mathf.PI * 6f) * WARNING_SHAKE_MAGNITUDE * decay;
                     warningRect.localPosition = originalPos + new Vector3(offsetX, 0f, 0f);
                 })
-                .setOnComplete(() =>
+                .SetOnComplete(() =>
                 {
                     warningRect.localPosition = originalPos;
 
                     // Hold briefly, then fade out
-                    LeanTween.value(warning.gameObject, 1f, 0f, SCREEN_FADE_DURATION)
-                        .setDelay(WARNING_DISPLAY_DURATION)
-                        .setOnUpdate((float val) => warning.alpha = val);
+                    VERATween.Value(warning.gameObject, 1f, 0f, SCREEN_FADE_DURATION)
+                        .SetDelay(WARNING_DISPLAY_DURATION)
+                        .SetOnUpdate(val => warning.alpha = val);
                 });
         }
 
