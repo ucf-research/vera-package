@@ -29,19 +29,19 @@ namespace VERA
         // Fades the canvas in over the specified duration
         public void FadeIn(float duration)
         {
-            canvasGroup.LeanAlpha(1f, duration);
+            canvasGroup.TweenAlpha(1f, duration);
         }
 
         // Fades the canvas out over the specified duration
         public void FadeOut(float duration)
         {
-            canvasGroup.LeanAlpha(0f, duration);
+            canvasGroup.TweenAlpha(0f, duration);
         }
 
         // Fades the canvas to a specific alpha value over the specified duration
         public void FadeTo(float targetAlpha, float duration)
         {
-            canvasGroup.LeanAlpha(targetAlpha, duration);
+            canvasGroup.TweenAlpha(targetAlpha, duration);
         }
     }
 }

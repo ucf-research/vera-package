@@ -25,7 +25,7 @@ namespace VERA
         /// </summary>
         public virtual void HideScreen()
         {
-            mainCanvasGroup.LeanAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).setOnComplete(() => gameObject.SetActive(false));
+            mainCanvasGroup.TweenAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).SetOnComplete(() => gameObject.SetActive(false));
         }
 
 

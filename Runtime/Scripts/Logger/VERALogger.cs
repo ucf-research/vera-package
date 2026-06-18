@@ -610,6 +610,7 @@ namespace VERA
             }
 
             yield break;
+            /*
 
             string url = $"{VERAHost.hostUrl}/api/experiments/{experimentUUID}/filetypes/baseline-data";
             VERADebugger.Log($"Fetching Experiment_Telemetry file type ID from: {url}", "VERA Logger");
@@ -647,6 +648,7 @@ namespace VERA
                     VERADebugger.LogWarning($"Failed to fetch Experiment_Telemetry file type (HTTP {request.responseCode}): {request.error}. Upload URL may be invalid.", "VERA Logger");
                 }
             }
+            */
         }
 
 

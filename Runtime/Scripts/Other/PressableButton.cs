@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using VERA;
 
 public class PressableButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler, IPointerClickHandler
 {
@@ -153,7 +154,8 @@ public class PressableButton : MonoBehaviour, IPointerEnterHandler, IPointerExit
             target = normalColor;
 
         if (colorTransitionDuration > 0f)
-            LeanTween.value(targetImage.gameObject, targetImage.color, target, colorTransitionDuration).setOnUpdate((Color val) => targetImage.color = val);
+            VERATween.Value(targetImage.gameObject, targetImage.color, target, colorTransitionDuration)
+                .SetOnUpdate(val => targetImage.color = val);
         else
             targetImage.color = target;
     }

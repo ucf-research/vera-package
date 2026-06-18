@@ -53,7 +53,7 @@ namespace VERA
         /// </summary>
         public void FadeIn()
         {
-            canvasGroup.LeanAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
+            canvasGroup.TweenAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
         }
 
 
@@ -62,7 +62,7 @@ namespace VERA
         /// </summary>
         public void FadeOutAndDestroy()
         {
-            canvasGroup.LeanAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).setOnComplete(() => Destroy(gameObject));
+            canvasGroup.TweenAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).SetOnComplete(() => Destroy(gameObject));
         }
 
 
@@ -187,16 +187,16 @@ namespace VERA
         private void ShowScrollWarning()
         {
             if (scrollWarning == null) return;
-            LeanTween.cancel(scrollWarning.gameObject);
-            scrollWarning.LeanAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
+            VERATween.Cancel(scrollWarning.gameObject);
+            scrollWarning.TweenAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
         }
 
 
         private void HideScrollWarning()
         {
             if (scrollWarning == null) return;
-            LeanTween.cancel(scrollWarning.gameObject);
-            scrollWarning.LeanAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION);
+            VERATween.Cancel(scrollWarning.gameObject);
+            scrollWarning.TweenAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION);
         }
 
 
