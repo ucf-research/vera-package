@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.4] - 2026-06-24
+
+### Adjusted
+* Adjusted structure to meet activation flow requirements (https://github.com/ucf-research/vera-package/pull/33)
+* Adjusted structure to meet new pilot/draft flow requirements (https://github.com/ucf-research/vera-package/pull/32
+
+### Added
+* Sessions now record participant preview metrics (https://github.com/ucf-research/vera-package/pull/31)
+
+### Removed
+* Temporarily removed the VLAT locomotion tools for open beta release (https://github.com/ucf-research/vera-package/pull/34)
+
 ## [0.3.3] - 2026-05-27
 
 ### Adjusted
