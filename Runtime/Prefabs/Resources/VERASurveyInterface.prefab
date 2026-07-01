@@ -856,7 +856,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: SURVEY
+  m_text: QUESTIONNAIRE
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -1006,7 +1006,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: SURVEY
+  m_text: QUESTIONNAIRE
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -1157,7 +1157,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: You've completed all questions in this survey. If you continue, you won't
+  m_text: You've completed all questions in this questionnaire. If you continue, you won't
     be able to change your responses.
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -1704,7 +1704,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Survey Title Here
+  m_text: Questionnaire Title Here
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -2268,7 +2268,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Survey Title Here
+  m_text: Questionnaire Title Here
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -2515,7 +2515,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Survey Description Here
+  m_text: Questionnaire Description Here
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}

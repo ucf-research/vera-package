@@ -5,7 +5,7 @@ using UnityEngine;
 namespace VERA
 {
     [System.Serializable]
-    [CreateAssetMenu(fileName = "SurveyInfo", menuName = "VERA/Survey Info")]
+    [CreateAssetMenu(fileName = "SurveyInfo", menuName = "VERA/Questionnaire Info")]
     public class VERASurveyInfo : ScriptableObject
     {
 
@@ -52,7 +52,7 @@ namespace VERA
             "Slider - presented with a slider which may be adjusted between a minimum and maximum value; " +
             "Matrix - presented with a matrix table, of which may be populated with options and scale choices")]
         public VERASurveyQuestionType questionType;
-        [Tooltip("The question's displayed text, written as should be displayed to the survey taker")]
+        [Tooltip("The question's displayed text, written as should be displayed to the questionnaire taker")]
         [TextArea] public string questionText;
 
         // For internal database conversion use; not necessary for direct Unity implementation.
@@ -68,7 +68,7 @@ namespace VERA
 
         // Multiple choice / selection
         [Header("Multiple Choice / Selection")]
-        [Tooltip("The options the survey taker may choose from, written as should be displayed to the survey taker")]
+        [Tooltip("The options the questionnaire taker may choose from, written as should be displayed to the questionnaire taker")]
         public string[] selectionOptions;
 
         #endregion

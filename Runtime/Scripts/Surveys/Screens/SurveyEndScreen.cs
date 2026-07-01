@@ -22,7 +22,7 @@ namespace VERA
         [SerializeField] private SurveyInterfaceIO surveyInterfaceIO;
 
         private const string END_SCREEN_TITLE = "Ready to Continue?";
-        private const string END_SCREEN_DESCRIPTION = "You've completed all questions in this survey. Continue to upload your responses (you won't be able to change your answers later).";
+        private const string END_SCREEN_DESCRIPTION = "You've completed all questions in this questionnaire. Continue to upload your responses (you won't be able to change your answers later).";
 
         private const string UPLOADING_TITLE = "Uploading Responses...";
         private const string UPLOADING_DESCRIPTION = "Please wait while we upload your responses...";
