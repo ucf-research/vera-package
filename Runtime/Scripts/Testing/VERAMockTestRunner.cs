@@ -18,7 +18,7 @@ namespace VERA
         [Tooltip("Time in seconds to simulate trial logic")]
         public float trialSimulationDelay = 3f;
 
-        [Tooltip("Time in seconds to simulate survey completion")]
+        [Tooltip("Time in seconds to simulate questionnaire completion")]
         public float surveySimulationDelay = 2f;
 
         [Tooltip("Enable verbose logging for debugging")]
