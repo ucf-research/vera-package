@@ -66,7 +66,7 @@ namespace VERA
             // Empty state
             if (trialWorkflow == null || trialWorkflow.Count == 0)
             {
-                EditorGUILayout.HelpBox("No trials or surveys found in the workflow. Make sure your experiment has a trial workflow configured in the VERA portal.", MessageType.Info);
+                EditorGUILayout.HelpBox("No trials or questionnaires found in the workflow. Make sure your experiment has a trial workflow configured in the VERA portal.", MessageType.Info);
                 return;
             }
 
@@ -128,11 +128,11 @@ namespace VERA
             {
                 if (!string.IsNullOrEmpty(trial.surveyName))
                 {
-                    EditorGUILayout.LabelField("Survey Name", trial.surveyName);
+                    EditorGUILayout.LabelField("Questionnaire Name", trial.surveyName);
                 }
                 if (!string.IsNullOrEmpty(trial.surveyId))
                 {
-                    EditorGUILayout.LabelField("Survey ID", trial.surveyId);
+                    EditorGUILayout.LabelField("Questionnaire ID", trial.surveyId);
                 }
                 if (!string.IsNullOrEmpty(trial.instanceId))
                 {
@@ -143,7 +143,7 @@ namespace VERA
                 if (trial.survey != null)
                 {
                     EditorGUILayout.Space(5);
-                    EditorGUILayout.LabelField("Survey Details:", EditorStyles.miniBoldLabel);
+                    EditorGUILayout.LabelField("Questionnaire Details:", EditorStyles.miniBoldLabel);
                     EditorGUI.indentLevel++;
 
                     if (!string.IsNullOrEmpty(trial.survey.surveyName))
@@ -221,7 +221,7 @@ namespace VERA
                 {
                     surveyInfo += $" ({trial.surveyPosition} trial)";
                 }
-                EditorGUILayout.LabelField("Attached Survey", surveyInfo);
+                EditorGUILayout.LabelField("Attached Questionnaire", surveyInfo);
             }
 
             EditorGUI.indentLevel--;
@@ -251,7 +251,7 @@ namespace VERA
                 case "consent": return "Consent";
                 case "entry": return "Entry";
                 case "completion": return "Completion";
-                case "survey": return "Survey";
+                case "survey": return "Questionnaire";
                 default: return type;
             }
         }

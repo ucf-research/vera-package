@@ -253,11 +253,11 @@ public class Example : MonoBehaviour
 
         private void AddSurveysSection()
         {
-            VisualElement section = CreateSection("Starting Surveys With VERA");
+            VisualElement section = CreateSection("Starting Questionnaires With VERA");
 
             section.Add(CreateParagraph(
-                "After you have defined a survey on the VERA web portal, it will be added to the static VERASurveyHelper C# class. " +
-                "You can use this class to start surveys at any point during your experiment:"
+                "After you have defined a questionnaire on the VERA web portal, it will be added to the static VERASurveyHelper C# class. " +
+                "You can use this class to start questionnaires at any point during your experiment:"
             ));
 
             string surveysCode = @"// Example: Starting surveys in Unity
@@ -280,7 +280,7 @@ public class Example : MonoBehaviour
             section.Add(CreateCodeBlock(surveysCode));
 
             section.Add(CreateTipBox(
-                "When running a survey using VERA, the survey display, navigation, and response recording will be handled automatically for you."
+                "When running a questionnaire using VERA, the questionnaire display, navigation, and response recording will be handled automatically for you."
             ));
 
             scrollView.Add(section);
@@ -320,7 +320,7 @@ public class Example : MonoBehaviour
             ));
 
             section.Add(CreateTipBox(
-                "Any code which interacts with VERA (data logs, surveys, session management) should be executed after VERA has been initialized."
+                "Any code which interacts with VERA (data logs, questionnaires, session management) should be executed after VERA has been initialized."
             ));
 
             scrollView.Add(section);
