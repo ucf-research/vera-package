@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0] - 2026-07-02 (OPEN BETA RELEASE)
+
+### Adjusted
+* Update nomenclature of "surveys" to "questionnaires" to adhere with terminology guide (https://github.com/ucf-research/vera-package/pull/35)
+
 ## [0.3.4] - 2026-06-24
 
 ### Adjusted
