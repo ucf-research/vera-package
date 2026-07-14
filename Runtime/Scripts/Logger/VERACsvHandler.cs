@@ -603,6 +603,15 @@ namespace VERA
                 yield break;
             }
 
+            if (string.IsNullOrEmpty(experimentUUID) || string.IsNullOrEmpty(participantUUID) || string.IsNullOrEmpty(siteUUID))
+            {
+                VERADebugger.LogError(
+                    $"Cannot upload \"{columnDefinition.fileType.name}\" because a required ID is missing " +
+                    $"(experiment={experimentUUID ?? "null"}, participant={participantUUID ?? "null"}, site={siteUUID ?? "null"}).",
+                    "VERACsvHandler");
+                yield break;
+            }
+
             // Set up the request
             WWWForm form = new WWWForm();
             form.AddField("experiment_UUID", experimentUUID);

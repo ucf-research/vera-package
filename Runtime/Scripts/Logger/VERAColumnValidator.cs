@@ -19,6 +19,10 @@ namespace VERA
                 return;
             }
 
+            // AssetDatabase.SaveAssets/Refresh during play freezes the editor (busy spinner, no further frames).
+            // Still apply in-memory fixes while playing so logging can continue; persist/regenerate only in edit mode.
+            bool canPersistEditorChanges = !Application.isPlaying;
+
             bool foundIssues = false;
             List<string> issuesFound = new List<string>();
 
@@ -41,7 +45,7 @@ namespace VERA
                     issuesFound.Add($"{fileTypeName}: {validationError}");
 
                     // Attempt to fix the column definition
-                    if (FixColumnDefinition(columnDef))
+                    if (FixColumnDefinition(columnDef, canPersistEditorChanges))
                     {
                         VERADebugger.Log($"Fixed column definition for {fileTypeName}", "VERAColumnValidator", DebugPreference.Verbose);
                     }
@@ -64,8 +68,11 @@ namespace VERA
                         issuesFound.Add($"{fileTypeName}: Schema updated from {prevCount} to {VERAExperimentTelemetrySchema.Columns.Count} columns to match current logger");
 
 #if UNITY_EDITOR
-                        UnityEditor.EditorUtility.SetDirty(columnDef);
-                        UnityEditor.AssetDatabase.SaveAssets();
+                        if (canPersistEditorChanges)
+                        {
+                            UnityEditor.EditorUtility.SetDirty(columnDef);
+                            UnityEditor.AssetDatabase.SaveAssets();
+                        }
 #endif
                     }
                 }
@@ -79,12 +86,21 @@ namespace VERA
                     VERADebugger.LogWarning($"  - {issue}", "VERAColumnValidator");
                 }
 
-                // Regenerate code files to match fixed column definitions
-                VERADebugger.Log("Regenerating file type code to match corrected column definitions...", "VERAColumnValidator", DebugPreference.Verbose);
-
 #if UNITY_EDITOR
-                FileTypeGenerator.GenerateAllFileTypesCsCode();
-                VERADebugger.Log("File types regenerated successfully!", "VERAColumnValidator", DebugPreference.Verbose);
+                if (canPersistEditorChanges)
+                {
+                    // Regenerate code files to match fixed column definitions (edit mode only)
+                    VERADebugger.Log("Regenerating file type code to match corrected column definitions...", "VERAColumnValidator", DebugPreference.Verbose);
+                    FileTypeGenerator.GenerateAllFileTypesCsCode();
+                    VERADebugger.Log("File types regenerated successfully!", "VERAColumnValidator", DebugPreference.Verbose);
+                }
+                else
+                {
+                    VERADebugger.LogWarning(
+                        "Column definition fixes were applied in-memory only (play mode). " +
+                        "Exit play mode and re-authenticate / regenerate file types so changes persist.",
+                        "VERAColumnValidator");
+                }
 #else
                 VERADebugger.LogWarning("Code regeneration is only available in the Unity Editor. " +
                     "Please regenerate file types using the VERA menu in the editor.", "VERAColumnValidator");
@@ -147,7 +163,7 @@ namespace VERA
             return true;
         }
 
-        private static bool FixColumnDefinition(VERAColumnDefinition columnDef)
+        private static bool FixColumnDefinition(VERAColumnDefinition columnDef, bool persistEditorChanges = true)
         {
             try
             {
@@ -224,9 +240,12 @@ namespace VERA
                 }
 
 #if UNITY_EDITOR
-                // Mark the asset as dirty so Unity saves the changes
-                UnityEditor.EditorUtility.SetDirty(columnDef);
-                UnityEditor.AssetDatabase.SaveAssets();
+                // Never SaveAssets during play mode — it freezes the editor.
+                if (persistEditorChanges)
+                {
+                    UnityEditor.EditorUtility.SetDirty(columnDef);
+                    UnityEditor.AssetDatabase.SaveAssets();
+                }
 #endif
 
                 return true;

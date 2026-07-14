@@ -24,9 +24,15 @@ namespace VERA
         public static int participantNumber { get { return VERALogger.Instance.activeParticipant.GetNumericParticipantShortId(); } }
 
         /// <summary>
+        /// Whether the VERA logger singleton exists and session APIs can be accessed.
+        /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
+        /// </summary>
+        public static bool IsReady => VERALogger.Instance != null;
+
+        /// <summary>
         /// Whether VERA has been initialized for the current session, and is ready to log data.
         /// </summary>
-        public static bool initialized { get { return VERALogger.Instance.initialized; } }
+        public static bool initialized { get { return VERALogger.Instance != null && VERALogger.Instance.initialized; } }
 
         /// <summary>
         /// Event that is invoked when VERA has been successfully initialized for this session and is ready to log data.
@@ -551,6 +557,30 @@ namespace VERA
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWithinBlocks(blockSize);
+        }
+
+        /// <summary>
+        /// Fetches the current participant's accessibility settings from the VERA server.
+        /// </summary>
+        /// <param name="onSuccess">Called with the participant's accessibility settings when the request succeeds.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void FetchAccessibilitySettings(Action<VERAAccessibilitySettings> onSuccess, Action<string> onFailure = null)
+        {
+            if (!initialized)
+            {
+                VERADebugger.LogWarning("Cannot fetch accessibility settings because VERA is not initialized.", "VERASessionManager");
+                onFailure?.Invoke("VERA is not initialized.");
+                return;
+            }
+
+            if (VERALogger.Instance?.activeParticipant == null)
+            {
+                onFailure?.Invoke("No active participant is available.");
+                return;
+            }
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.FetchAccessibilitySettings(onSuccess, onFailure));
         }
 
         /// <summary>
