@@ -18,6 +18,31 @@ namespace VERA
         public static string participantID { get { return VERALogger.Instance.activeParticipant.participantShortId; } }
 
         /// <summary>
+        /// The numeric portion of the participant short ID (e.g. 1 for both "1" or "P1").
+        /// Returns -1 if the short ID is missing or invalid.
+        /// </summary>
+        public static int participantIDInt
+        {
+            get
+            {
+                int id;
+                if (int.TryParse(participantID, out id))
+                {
+                    return id;
+                }
+                else if (participantID.StartsWith("P") && int.TryParse(participantID.Substring(1), out id))
+                {
+                    return id;
+                }
+                else
+                {
+                    VERADebugger.LogWarning($"Participant ID '{participantID}' is not a valid integer or prefixed with 'P'. Returning -1.", "VERASessionManager");
+                    return -1;
+                }
+            }
+        }
+
+        /// <summary>
         /// The numeric portion of the participant short ID (e.g. 1 for "1" or "P1").
         /// Returns -1 if the short ID is missing or invalid.
         /// </summary>
