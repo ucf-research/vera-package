@@ -31,6 +31,7 @@ namespace VERA
         // VERAParticipantManager handles the creation, ID, state change, etc. of the active participant
 
         public string participantUUID { get; private set; }
+        public string participantDatabaseId { get; private set; }
         public string participantShortId { get; private set; }
         public string prolificID { get; private set; }
 
@@ -331,6 +332,9 @@ namespace VERA
 
                 if (parseSuccess && response != null && TryAssignParticipantShortId(response.pID))
                 {
+                    if (!string.IsNullOrEmpty(response.databaseID))
+                        participantDatabaseId = response.databaseID;
+
                     VERADebugger.Log("Assigned participant short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
                 }
                 else
@@ -353,8 +357,9 @@ namespace VERA
                         errorResponse.message);
                 }
 
-                VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Clearing participantShortId to allow local recording.", "VERA Participant");
-                participantUUID = null;
+                // Keep the locally generated participantUUID so CSV paths / form fields stay valid for local recording.
+                // Uploads to the server will still fail until a participant is successfully created.
+                VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Keeping generated participant UUID and clearing short ID to allow local recording.", "VERA Participant");
                 participantShortId = null;
             }
 
@@ -366,6 +371,8 @@ namespace VERA
         private IEnumerator GetParticipantFromOverrideId(string overrideParticipantId)
         {
             VERADebugger.Log("Using override participant ID; attempting to retrieve existing participant...", "VERA Participant", DebugPreference.Informative);
+
+            participantDatabaseId = overrideParticipantId;
 
             string expId = VERALogger.Instance.experimentUUID;
             string siteId = VERALogger.Instance.siteUUID;
@@ -400,6 +407,9 @@ namespace VERA
 
                 if (parseSuccess && response != null && TryAssignParticipantShortId(response.pID))
                 {
+                    if (!string.IsNullOrEmpty(response.databaseID))
+                        participantDatabaseId = response.databaseID;
+
                     if (!string.IsNullOrEmpty(response.prolificID))
                     {
                         prolificID = response.prolificID;
@@ -542,6 +552,87 @@ namespace VERA
             return (currentParticipantProgressState == ParticipantProgressState.POST_VR ||
                 currentParticipantProgressState == ParticipantProgressState.INCOMPLETE ||
                 currentParticipantProgressState == ParticipantProgressState.WITHDRAWN);
+        }
+
+
+        #endregion
+
+
+        #region ACCESSIBILITY SETTINGS
+
+
+        /// <summary>
+        /// Fetches the participant's accessibility settings from the VERA server.
+        /// </summary>
+        public IEnumerator FetchAccessibilitySettings(Action<VERAAccessibilitySettings> onSuccess, Action<string> onFailure = null)
+        {
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType != DataRecordingType.RecordLocallyAndLive)
+            {
+                onFailure?.Invoke("Accessibility settings are only available when recording to the server.");
+                yield break;
+            }
+
+            string participantId = GetParticipantIdForAccessibilityApi();
+            if (string.IsNullOrEmpty(participantId))
+            {
+                onFailure?.Invoke("No participant ID available.");
+                yield break;
+            }
+
+            string apiKey = VERALogger.Instance.apiKey;
+            string url = $"{VERAHost.hostUrl}/api/participants/{participantId}/accessibility-settings";
+            VERADebugger.Log("Fetching accessibility settings from " + url, "VERA Participant", DebugPreference.Verbose);
+
+            UnityWebRequest request = UnityWebRequest.Get(url);
+            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string error = $"Failed to fetch accessibility settings: {request.error}";
+                VERADebugger.LogWarning(error, "VERA Participant");
+                onFailure?.Invoke(error);
+                request.Dispose();
+                yield break;
+            }
+
+            string responseText = request.downloadHandler?.text;
+            request.Dispose();
+
+            if (string.IsNullOrEmpty(responseText))
+            {
+                onFailure?.Invoke("Accessibility settings response was empty.");
+                yield break;
+            }
+
+            VERAAccessibilitySettingsResponse response = null;
+            try
+            {
+                response = JsonUtility.FromJson<VERAAccessibilitySettingsResponse>(responseText);
+            }
+            catch (Exception ex)
+            {
+                onFailure?.Invoke($"Failed to parse accessibility settings response: {ex.Message}");
+                yield break;
+            }
+
+            if (response == null || !response.success || response.accessibilitySettings == null)
+            {
+                onFailure?.Invoke("Accessibility settings response was invalid.");
+                yield break;
+            }
+
+            onSuccess?.Invoke(response.accessibilitySettings);
+        }
+
+
+        private string GetParticipantIdForAccessibilityApi()
+        {
+            if (!string.IsNullOrEmpty(participantDatabaseId))
+                return participantDatabaseId;
+
+            return participantUUID;
         }
 
 

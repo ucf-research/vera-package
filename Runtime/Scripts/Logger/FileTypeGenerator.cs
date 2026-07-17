@@ -33,6 +33,15 @@ namespace VERA
         // Generates .cs files for every column definition currently in the columns folder
         public static void GenerateAllFileTypesCsCode()
         {
+            // Regenerating/refreshing assets while playing freezes the editor.
+            if (Application.isPlaying)
+            {
+                VERADebugger.LogWarning(
+                    "Skipped file type code generation because play mode is active.",
+                    "VERA FileTypeGenerator");
+                return;
+            }
+
             // Get all items
             VERAColumnDefinition[] columnDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
 
