@@ -123,8 +123,20 @@ namespace VERA
                 yield break;
             }
 
-            // Get the participant data from the server using the override ID, then push a new Unity ID to it, then set them as in experiment
+            // Get the participant data from the server using the override ID, then set them as in experiment.
+            // WebXR builds pass the portal/database participant ID here; that participant often has no
+            // unityID yet, so we fall back to the portal ID for session APIs.
             yield return GetParticipantFromOverrideId(overrideParticipantId);
+            EnsureParticipantIdForSessionApis(overrideParticipantId);
+
+            if (string.IsNullOrEmpty(GetParticipantIdForSessionApis()))
+            {
+                VERADebugger.LogError(
+                    "Cannot set IN_VR progress after override participant lookup: no participant ID is available.",
+                    "VERA Participant");
+                yield break;
+            }
+
             // [LEGACY - Active Participant Workflow]
             // yield return PushUidToActiveParticipant(overrideParticipantId);
             yield return RetryableChangeProgress(ParticipantProgressState.IN_VR);
@@ -205,6 +217,7 @@ namespace VERA
             VERADebugger.Log("Checking for active participant at url " + url, "VERA Participant", DebugPreference.Verbose);
 
             UnityWebRequest request = UnityWebRequest.Get(url);
+            VERAHost.ApplyUserAgent(request);
             yield return request.SendWebRequest();
 
             // Check success
@@ -305,7 +318,7 @@ namespace VERA
 
             // Send the request
             UnityWebRequest request = UnityWebRequest.Post(url, form);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             // Check success
@@ -382,7 +395,7 @@ namespace VERA
 
             string urlGet = host + "/api/participants/" + overrideParticipantId;
             UnityWebRequest getRequest = UnityWebRequest.Get(urlGet);
-            getRequest.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(getRequest, apiKey);
             yield return getRequest.SendWebRequest();
 
             // Check success
@@ -417,6 +430,16 @@ namespace VERA
                     if (!string.IsNullOrEmpty(response.unityID))
                     {
                         participantUUID = response.unityID;
+                    }
+                    else
+                    {
+                        // Portal/WebXR participants frequently have no unityID. Use the portal
+                        // database ID so progress/upload URLs are not built with an empty segment.
+                        EnsureParticipantIdForSessionApis(overrideParticipantId);
+                        VERADebugger.LogWarning(
+                            $"Retrieved participant short ID {participantShortId}, but unityID was empty. " +
+                            $"Using portal participant ID '{GetParticipantIdForSessionApis()}' for session APIs.",
+                            "VERA Participant");
                     }
                     VERADebugger.Log("Retrieved existing participant with short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
                     getRequest.Dispose();
@@ -457,7 +480,7 @@ namespace VERA
 
             // Send the request
             UnityWebRequest request = UnityWebRequest.Put(url, bodyRaw);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             request.SetRequestHeader("Content-Type", "application/json");
             yield return request.SendWebRequest();
 
@@ -501,6 +524,16 @@ namespace VERA
                 yield break;
             }
 
+            string progressParticipantId = GetParticipantIdForSessionApis();
+            if (string.IsNullOrEmpty(progressParticipantId))
+            {
+                VERADebugger.LogError(
+                    $"Cannot update participant state to {state}: participant ID is empty " +
+                    $"(unityID='{participantUUID ?? ""}', databaseID='{participantDatabaseId ?? ""}').",
+                    "VERA Participant");
+                yield break;
+            }
+
             VERADebugger.Log("Updating current participant's state to \"" + state.ToString() + "\"...", "VERA Participant", DebugPreference.Verbose);
 
             // Try multiple times to send the request, in case of failure
@@ -513,10 +546,10 @@ namespace VERA
 
                 // Send the request
                 UnityWebRequest request = UnityWebRequest.Put(
-                  $"{VERAHost.hostUrl}/api/participants/progress/{expId}/{siteId}/{participantUUID}/{state.ToString()}",
+                  $"{VERAHost.hostUrl}/api/participants/progress/{expId}/{siteId}/{progressParticipantId}/{state.ToString()}",
                   new byte[0]
                 );
-                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                VERAHost.ApplyBearerAuth(request, apiKey);
                 yield return request.SendWebRequest();
 
                 if (request.result == UnityWebRequest.Result.Success)
@@ -585,7 +618,7 @@ namespace VERA
             VERADebugger.Log("Fetching accessibility settings from " + url, "VERA Participant", DebugPreference.Verbose);
 
             UnityWebRequest request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             if (request.result != UnityWebRequest.Result.Success)
@@ -629,10 +662,49 @@ namespace VERA
 
         private string GetParticipantIdForAccessibilityApi()
         {
+            // Accessibility settings are keyed by the portal/database participant ID when available.
             if (!string.IsNullOrEmpty(participantDatabaseId))
                 return participantDatabaseId;
 
             return participantUUID;
+        }
+
+        /// <summary>
+        /// Resolves the participant identifier used in progress APIs.
+        /// Prefers unityID when present; otherwise falls back to the portal/database participant ID
+        /// used by WebXR override initialization.
+        /// </summary>
+        private string GetParticipantIdForSessionApis()
+        {
+            if (!string.IsNullOrEmpty(participantUUID))
+                return participantUUID;
+
+            if (!string.IsNullOrEmpty(participantDatabaseId))
+                return participantDatabaseId;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Ensures participantUUID is populated for runtime APIs when a portal participant was loaded
+        /// without a unityID (common in WebXR builds).
+        /// </summary>
+        private void EnsureParticipantIdForSessionApis(string fallbackOverrideId = null)
+        {
+            if (!string.IsNullOrEmpty(participantUUID))
+                return;
+
+            if (!string.IsNullOrEmpty(participantDatabaseId))
+            {
+                participantUUID = participantDatabaseId;
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(fallbackOverrideId))
+            {
+                participantDatabaseId = fallbackOverrideId;
+                participantUUID = fallbackOverrideId;
+            }
         }
 
 

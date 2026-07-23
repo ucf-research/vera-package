@@ -264,6 +264,8 @@ namespace VERA
             if (!string.IsNullOrEmpty(headers))
                 clone.SetRequestHeader("Content-Type", headers);
 
+            VERAHost.ApplyUserAgent(clone);
+
             return clone;
         }
 
@@ -1933,7 +1935,7 @@ namespace VERA
             string url = $"{host}/api/experiments/{experimentUUID}/trials/execution-order";
 
             UnityWebRequest request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
 
             bool requestComplete = false;
             VERAWebRequestResult result = null;
@@ -2494,7 +2496,7 @@ namespace VERA
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
 
             bool requestComplete = false;
             VERAWebRequestResult result = null;
@@ -2544,7 +2546,7 @@ namespace VERA
             string url = $"{host}/api/participants/{participantUUID}/experiments/{experimentUUID}/checkpoint";
 
             UnityWebRequest request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
 
             bool requestComplete = false;
             VERAWebRequestResult result = null;

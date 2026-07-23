@@ -139,7 +139,7 @@ namespace VERA
 
             // Send the request
             UnityWebRequest request = UnityWebRequest.Post(url, form);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
 
             // Send the request
             var operation = request.SendWebRequest();
@@ -256,7 +256,7 @@ namespace VERA
 
             // Send the request
             UnityWebRequest request = UnityWebRequest.Post(url, form);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             var operation = request.SendWebRequest();
 
             // Use EditorApplication.update to check the request's progress
@@ -317,7 +317,7 @@ namespace VERA
                   $"{VERAParticipantManager.ParticipantProgressState.COMPLETE.ToString()}",
                   new byte[0]
                 );
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
 
             var operation = request.SendWebRequest();
 
