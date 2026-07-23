@@ -288,6 +288,7 @@ namespace VERA
             string url = $"{VERAHost.hostUrl}/api/experiments/{experimentId}/trials/execution-order";
 
             UnityWebRequest request = UnityWebRequest.Get(url);
+            VERAHost.ApplyUserAgent(request);
 
             var operation = request.SendWebRequest();
 

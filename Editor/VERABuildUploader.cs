@@ -732,6 +732,8 @@ namespace VERA
                     zipContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
                     content.Add(zipContent, "webxrZip", "webxr.zip");
 
+                    // AWS WAF CommonRuleSet blocks requests with no User-Agent (NoUserAgent_HEADER).
+                    http.DefaultRequestHeaders.UserAgent.ParseAdd(VERAHost.UserAgent);
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
 
                     HttpResponseMessage resp = await http.PostAsync(url, content);
