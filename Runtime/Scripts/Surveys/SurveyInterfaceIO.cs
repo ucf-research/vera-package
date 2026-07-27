@@ -162,7 +162,7 @@ namespace VERA
 
             using (UnityWebRequest request = UnityWebRequest.Post(url, form))
             {
-                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                VERAHost.ApplyBearerAuth(request, apiKey);
                 yield return request.SendWebRequest();
 
                 if (request.result == UnityWebRequest.Result.Success)
@@ -307,6 +307,7 @@ namespace VERA
                 instanceRequest.uploadHandler = new UploadHandlerRaw(instanceBodyRaw);
                 instanceRequest.downloadHandler = new DownloadHandlerBuffer();
                 instanceRequest.SetRequestHeader("Content-Type", "application/json");
+                VERAHost.ApplyUserAgent(instanceRequest);
 
                 // Send the request and wait for a response
                 yield return instanceRequest.SendWebRequest();
@@ -343,6 +344,7 @@ namespace VERA
                     responseRequest.uploadHandler = new UploadHandlerRaw(responseBodyRaw);
                     responseRequest.downloadHandler = new DownloadHandlerBuffer();
                     responseRequest.SetRequestHeader("Content-Type", "application/json");
+                    VERAHost.ApplyUserAgent(responseRequest);
 
                     yield return responseRequest.SendWebRequest();
 

@@ -621,7 +621,7 @@ namespace VERA
 
             // Send the request
             activeWebRequest = UnityWebRequest.Post(url, form);
-            activeWebRequest.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(activeWebRequest, apiKey);
             yield return activeWebRequest.SendWebRequest();
 
             // Check success and log server response

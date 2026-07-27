@@ -282,7 +282,7 @@ namespace VERA
             string url = host + "/api/";
 
             UnityWebRequest www = UnityWebRequest.Get(url);
-            www.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(www, apiKey);
             yield return www.SendWebRequest();
 
             if (www.result == UnityWebRequest.Result.Success)
@@ -325,7 +325,7 @@ namespace VERA
         public IEnumerator SendGetRequestCoroutine(string url, System.Action<VERAWebRequestResult> onComplete)
         {
             UnityWebRequest request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             VERAWebRequestResult result = new VERAWebRequestResult
@@ -535,7 +535,7 @@ namespace VERA
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
-                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                VERAHost.ApplyBearerAuth(request, apiKey);
 
                 yield return request.SendWebRequest();
 
@@ -617,7 +617,7 @@ namespace VERA
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
-                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                VERAHost.ApplyBearerAuth(request, apiKey);
                 yield return request.SendWebRequest();
 
                 if (request.result == UnityWebRequest.Result.Success)
@@ -765,7 +765,7 @@ namespace VERA
             form.AddBinaryData("fileUpload", fileData, fileName, mimeType);
 
             UnityWebRequest request = UnityWebRequest.Post(url, form);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
@@ -992,7 +992,7 @@ namespace VERA
 
             // Send the request
             UnityWebRequest request = UnityWebRequest.Post(url, form);
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             // Check success
@@ -1292,7 +1292,7 @@ namespace VERA
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)

@@ -407,6 +407,7 @@ namespace VERA
             {
                 // Note: Survey fetch does not require authentication (matches SurveyInterfaceIO behavior)
                 // Surveys are publicly accessible as they need to work in the VR environment
+                VERAHost.ApplyUserAgent(request);
 
                 yield return request.SendWebRequest();
 

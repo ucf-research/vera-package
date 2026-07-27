@@ -71,7 +71,7 @@ namespace VERA
             UnityWebRequest request = new UnityWebRequest(url, "GET");
             request.downloadHandler = new DownloadHandlerBuffer();
 
-            request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            VERAHost.ApplyBearerAuth(request, apiKey);
             var operation = request.SendWebRequest();
 
             EditorApplication.update += EditorUpdate;

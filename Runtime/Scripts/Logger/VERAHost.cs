@@ -1,7 +1,6 @@
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
+using System;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace VERA
 {
@@ -16,6 +15,39 @@ namespace VERA
         // Set to localHost, testHost, or liveHost according to current needs.
 
         public const string hostUrl = liveHost;
+
+        /// <summary>
+        /// User-Agent sent on VERA API requests. Required so AWS WAF CommonRuleSet
+        /// (NoUserAgent_HEADER) does not block uploads and other portal calls.
+        /// </summary>
+        public static string UserAgent => $"VERA-Unity/{Application.unityVersion}";
+
+        /// <summary>
+        /// Sets a User-Agent header when the platform allows it.
+        /// </summary>
+        public static void ApplyUserAgent(UnityWebRequest request)
+        {
+            if (request == null) return;
+
+            try
+            {
+                request.SetRequestHeader("User-Agent", UserAgent);
+            }
+            catch (InvalidOperationException)
+            {
+                // Some platforms (notably WebGL) disallow overriding User-Agent.
+            }
+        }
+
+        /// <summary>
+        /// Applies User-Agent and Bearer Authorization headers for authenticated VERA API calls.
+        /// </summary>
+        public static void ApplyBearerAuth(UnityWebRequest request, string bearerToken)
+        {
+            ApplyUserAgent(request);
+            if (request == null || string.IsNullOrEmpty(bearerToken)) return;
+            request.SetRequestHeader("Authorization", "Bearer " + bearerToken);
+        }
 
     }
 }

@@ -546,7 +546,7 @@ namespace VERA
 
             // Set headers
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString("VERA_UserAuthToken"));
+            VERAHost.ApplyBearerAuth(request, PlayerPrefs.GetString("VERA_UserAuthToken"));
 
             // Send the request
             var operation = request.SendWebRequest();
@@ -594,7 +594,7 @@ namespace VERA
 
             // Set headers
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString("VERA_UserAuthToken"));
+            VERAHost.ApplyBearerAuth(request, PlayerPrefs.GetString("VERA_UserAuthToken"));
 
             // Send the request
             var operation = request.SendWebRequest();
@@ -679,7 +679,7 @@ namespace VERA
 
             // Set headers
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString("VERA_UserAuthToken"));
+            VERAHost.ApplyBearerAuth(request, PlayerPrefs.GetString("VERA_UserAuthToken"));
 
             // Send the request
             var operation = request.SendWebRequest();
@@ -906,7 +906,7 @@ namespace VERA
             request.downloadHandler = new DownloadHandlerBuffer();
             request.uploadHandler = new UploadHandlerRaw(new byte[0]);
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString("VERA_UserAuthToken"));
+            VERAHost.ApplyBearerAuth(request, PlayerPrefs.GetString("VERA_UserAuthToken"));
 
             var operation = request.SendWebRequest();
 
@@ -995,7 +995,7 @@ namespace VERA
 
             // Set headers
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString("VERA_UserAuthToken"));
+            VERAHost.ApplyBearerAuth(request, PlayerPrefs.GetString("VERA_UserAuthToken"));
 
             // Send the request
             var operation = request.SendWebRequest();
