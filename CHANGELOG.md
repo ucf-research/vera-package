@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] - 2026-07-27
+
+### Adjusted
+* Minor adjustments to support the VLAT toolkit (https://github.com/ucf-research/vera-package/pull/36)
+* Various adjustments to match AWS WAF policy restrictions (https://github.com/ucf-research/vera-package/pull/37)
+
 ## [0.4.0] - 2026-07-02 (OPEN BETA RELEASE)
 
 ### Adjusted
