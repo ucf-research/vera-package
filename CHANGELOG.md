@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.2] - 2026-08-13
+
+### Fixed
+* Fixed / made controller and input tracking more robust (https://github.com/ucf-research/vera-package/pull/38)
+
 ## [0.4.1] - 2026-07-27
 
 ### Adjusted
