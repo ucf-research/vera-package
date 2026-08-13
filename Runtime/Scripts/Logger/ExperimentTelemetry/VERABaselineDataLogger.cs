@@ -6,6 +6,8 @@ using UnityEngine.XR;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.XR;
 #endif
 
 #if UNITY_XR_INTERACTION_TOOLKIT
@@ -56,18 +58,41 @@ namespace VERA
         // Internal variables
         private int currentSampleIndex = 0;
         private bool isLogging = false;
-        // Separate timer to refresh device lists at a fixed interval (1s)
-        private float refreshTimer = 0f;
-
-        // XR device tracking
+        // XR device tracking (legacy InputDevices API — often empty under WebXR)
         private List<UnityEngine.XR.InputDevice> leftHandDevices = new List<UnityEngine.XR.InputDevice>();
         private List<UnityEngine.XR.InputDevice> rightHandDevices = new List<UnityEngine.XR.InputDevice>();
         private List<UnityEngine.XR.InputDevice> headDevices = new List<UnityEngine.XR.InputDevice>();
+
+        // Reused buffer for InputTracking.GetNodeStates fallback
+        private readonly List<XRNodeState> xrNodeStates = new List<XRNodeState>();
+
+        // Cached XR display subsystem list for IsXrDisplayRunning()
+        private readonly List<XRDisplaySubsystem> xrDisplaySubsystems = new List<XRDisplaySubsystem>();
 
         // Device detection cache
         private bool headsetDetected = false;
         private bool leftControllerDetected = false;
         private bool rightControllerDetected = false;
+
+        // WebXR / transform fallback: only treat scene transforms as live after they move
+        // while an XR display is running (avoids always-detected rest poses).
+        private bool hasLastHeadsetPose;
+        private Vector3 lastHeadsetPos;
+        private Quaternion lastHeadsetRot;
+        private bool headsetTransformLive;
+
+        private bool hasLastLeftPose;
+        private Vector3 lastLeftPos;
+        private Quaternion lastLeftRot;
+        private bool leftTransformLive;
+
+        private bool hasLastRightPose;
+        private Vector3 lastRightPos;
+        private Quaternion lastRightRot;
+        private bool rightTransformLive;
+
+        private const float TransformMotionPosEpsilonSqr = 1e-8f;
+        private const float TransformMotionRotEpsilonDeg = 0.05f;
 
         private void Start()
         {
@@ -94,6 +119,9 @@ namespace VERA
 
             // Auto-find components if not assigned
             AutoAssignComponents();
+
+            // Re-evaluate detection now that controller/camera refs are assigned.
+            RefreshDeviceLists();
         }
 
         private void AutoAssignComponents()
@@ -266,6 +294,13 @@ namespace VERA
             }
         }
 
+#if ENABLE_INPUT_SYSTEM
+        private static InputActionProperty PreferFloatAction(InputActionProperty preferred, InputActionProperty fallback)
+        {
+            return preferred.action != null ? preferred : fallback;
+        }
+#endif
+
         private void AutoDetectInputActions()
         {
 #if ENABLE_INPUT_SYSTEM && UNITY_XR_INTERACTION_TOOLKIT
@@ -307,13 +342,14 @@ namespace VERA
                     }
                 }
 
-                // Auto-assign left controller input actions if not manually set
+                // Auto-assign left controller input actions if not manually set.
+                // Prefer *ActionValue (float axis) over button actions when available.
                 if (isLeftController)
                 {
                     if (leftTriggerAction.action == null)
-                        leftTriggerAction = controller.selectAction;
+                        leftTriggerAction = PreferFloatAction(controller.selectActionValue, controller.selectAction);
                     if (leftGripAction.action == null)
-                        leftGripAction = controller.activateAction;
+                        leftGripAction = PreferFloatAction(controller.activateActionValue, controller.activateAction);
                     if (leftPrimaryButtonAction.action == null)
                         leftPrimaryButtonAction = controller.uiPressAction;
                     // Note: ActionBasedController doesn't have direct references to all buttons
@@ -324,9 +360,9 @@ namespace VERA
                 if (isRightController)
                 {
                     if (rightTriggerAction.action == null)
-                        rightTriggerAction = controller.selectAction;
+                        rightTriggerAction = PreferFloatAction(controller.selectActionValue, controller.selectAction);
                     if (rightGripAction.action == null)
-                        rightGripAction = controller.activateAction;
+                        rightGripAction = PreferFloatAction(controller.activateActionValue, controller.activateAction);
                     if (rightPrimaryButtonAction.action == null)
                         rightPrimaryButtonAction = controller.uiPressAction;
                 }
@@ -362,24 +398,19 @@ namespace VERA
                 return;
             }
 
+            // Refresh presence each frame while logging so WebXR Enter-VR / device
+            // attachment is picked up immediately (InputDevices + transform fallbacks).
+            RefreshDeviceLists();
+
             // Log data every frame for maximum fidelity
             if (logEveryFrame)
             {
                 LogBaselineData();
             }
-
-            // Update refresh timer independently so device lists refresh roughly once per second
-            refreshTimer += Time.deltaTime;
-            if (refreshTimer >= 1f)
-            {
-                RefreshDeviceLists();
-                refreshTimer = 0f;
-            }
         }
 
         private void RefreshDeviceLists()
         {
-            // Refresh device lists
             leftHandDevices.Clear();
             rightHandDevices.Clear();
             headDevices.Clear();
@@ -388,10 +419,151 @@ namespace VERA
             InputDevices.GetDevicesAtXRNode(XRNode.RightHand, rightHandDevices);
             InputDevices.GetDevicesAtXRNode(XRNode.Head, headDevices);
 
-            // Update detection status
-            headsetDetected = headDevices.Count > 0;
-            leftControllerDetected = leftHandDevices.Count > 0;
-            rightControllerDetected = rightHandDevices.Count > 0;
+            // Transform motion fallback is WebXR-oriented: Tracked Pose Driver can move
+            // scene transforms without InputDevices. On editor/native XR, rely on device APIs.
+#if UNITY_WEBGL && !UNITY_EDITOR
+            bool displayRunning = IsXrDisplayRunning() || XRSettings.isDeviceActive;
+            UpdateTransformLiveTracking(
+                headsetCamera != null ? headsetCamera.transform : null,
+                displayRunning,
+                ref hasLastHeadsetPose, ref lastHeadsetPos, ref lastHeadsetRot, ref headsetTransformLive);
+            UpdateTransformLiveTracking(
+                leftController,
+                displayRunning,
+                ref hasLastLeftPose, ref lastLeftPos, ref lastLeftRot, ref leftTransformLive);
+            UpdateTransformLiveTracking(
+                rightController,
+                displayRunning,
+                ref hasLastRightPose, ref lastRightPos, ref lastRightRot, ref rightTransformLive);
+#else
+            headsetTransformLive = false;
+            leftTransformLive = false;
+            rightTransformLive = false;
+            hasLastHeadsetPose = false;
+            hasLastLeftPose = false;
+            hasLastRightPose = false;
+#endif
+
+            headsetDetected =
+                AnyInputDeviceTracked(headDevices)
+                || HasTrackedNodeState(XRNode.Head)
+                || IsInputSystemNodeTracked(XRNode.Head)
+                || headsetTransformLive;
+
+            leftControllerDetected =
+                AnyInputDeviceTracked(leftHandDevices)
+                || HasTrackedNodeState(XRNode.LeftHand)
+                || IsInputSystemNodeTracked(XRNode.LeftHand)
+                || leftTransformLive;
+
+            rightControllerDetected =
+                AnyInputDeviceTracked(rightHandDevices)
+                || HasTrackedNodeState(XRNode.RightHand)
+                || IsInputSystemNodeTracked(XRNode.RightHand)
+                || rightTransformLive;
+        }
+
+        /// <summary>
+        /// True only when an XR display subsystem is actively running (immersive session).
+        /// </summary>
+        private bool IsXrDisplayRunning()
+        {
+            xrDisplaySubsystems.Clear();
+            SubsystemManager.GetSubsystems(xrDisplaySubsystems);
+            for (int i = 0; i < xrDisplaySubsystems.Count; i++)
+            {
+                if (xrDisplaySubsystems[i] != null && xrDisplaySubsystems[i].running)
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool AnyInputDeviceTracked(List<UnityEngine.XR.InputDevice> devices)
+        {
+            if (devices == null || devices.Count == 0)
+                return false;
+
+            bool sawUnsupportedIsTracked = false;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                UnityEngine.XR.InputDevice device = devices[i];
+                if (!device.isValid)
+                    continue;
+
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool isTracked))
+                {
+                    if (isTracked)
+                        return true;
+                }
+                else
+                {
+                    // Provider does not expose isTracked — preserve legacy "device present" behavior.
+                    sawUnsupportedIsTracked = true;
+                }
+            }
+
+            return sawUnsupportedIsTracked;
+        }
+
+        private bool HasTrackedNodeState(XRNode node)
+        {
+            xrNodeStates.Clear();
+            InputTracking.GetNodeStates(xrNodeStates);
+            for (int i = 0; i < xrNodeStates.Count; i++)
+            {
+                XRNodeState state = xrNodeStates[i];
+                if (state.nodeType == node && state.tracked)
+                    return true;
+            }
+            return false;
+        }
+
+        private static void UpdateTransformLiveTracking(
+            Transform t,
+            bool displayRunning,
+            ref bool hasLastPose,
+            ref Vector3 lastPos,
+            ref Quaternion lastRot,
+            ref bool transformLive)
+        {
+            if (t == null || !displayRunning)
+            {
+                hasLastPose = false;
+                transformLive = false;
+                return;
+            }
+
+            Vector3 pos = t.position;
+            Quaternion rot = t.rotation;
+
+            if (hasLastPose)
+            {
+                float posDeltaSqr = (pos - lastPos).sqrMagnitude;
+                float rotDeltaDeg = Quaternion.Angle(rot, lastRot);
+                if (posDeltaSqr > TransformMotionPosEpsilonSqr || rotDeltaDeg > TransformMotionRotEpsilonDeg)
+                {
+                    // Sticky while the XR display keeps running so held-still poses still count.
+                    transformLive = true;
+                }
+            }
+
+            lastPos = pos;
+            lastRot = rot;
+            hasLastPose = true;
+        }
+
+        private bool IsInputSystemNodeTracked(XRNode node)
+        {
+#if ENABLE_INPUT_SYSTEM
+            TrackedDevice tracked = FindTrackedDeviceForNode(node);
+            if (tracked == null || !tracked.added)
+                return false;
+
+            // isTracked is the reliable signal; do not treat an added-but-untracked device as present.
+            return tracked.isTracked.isPressed || tracked.isTracked.ReadValue() > 0.5f;
+#else
+            return false;
+#endif
         }
 
         private void LogBaselineData()
@@ -425,11 +597,15 @@ namespace VERA
                 ts = DateTime.UtcNow
             };
 
+            // Presence uses the broadened detection from RefreshDeviceLists (InputDevices,
+            // XRNodeState, or scene transform while XR is active). Virtual pose always
+            // comes from scene transforms when present — do not gate on InputDevices alone
+            // (WebXR commonly drives Tracked Pose Driver transforms without InputDevices).
+
             // --- Headset ---
-            bool isHeadsetPresent = headDevices.Count > 0;
+            bool isHeadsetPresent = headsetDetected;
             data.headsetDetected = isHeadsetPresent;
 
-            // Virtual pose from scene transform
             if (isHeadsetPresent && headsetCamera != null)
             {
                 PopulateVirtualPose(headsetCamera.transform,
@@ -438,14 +614,13 @@ namespace VERA
                     out data.headsetVirtualRotQuatX, out data.headsetVirtualRotQuatY, out data.headsetVirtualRotQuatZ, out data.headsetVirtualRotQuatW);
             }
 
-            // Tracking pose from XR device (physical space)
-            PopulateTrackingPose(headDevices,
+            PopulateTrackingPose(XRNode.Head, headDevices,
                 out data.headsetTrackingPosX, out data.headsetTrackingPosY, out data.headsetTrackingPosZ,
                 out data.headsetTrackingRotEulerX, out data.headsetTrackingRotEulerY, out data.headsetTrackingRotEulerZ,
                 out data.headsetTrackingRotQuatX, out data.headsetTrackingRotQuatY, out data.headsetTrackingRotQuatZ, out data.headsetTrackingRotQuatW);
 
             // --- Left controller ---
-            bool isLeftPresent = leftHandDevices.Count > 0;
+            bool isLeftPresent = leftControllerDetected;
             data.leftDetected = isLeftPresent;
 
             if (isLeftPresent && leftController != null)
@@ -456,38 +631,31 @@ namespace VERA
                     out data.leftControllerVirtualRotQuatX, out data.leftControllerVirtualRotQuatY, out data.leftControllerVirtualRotQuatZ, out data.leftControllerVirtualRotQuatW);
             }
 
-            PopulateTrackingPose(leftHandDevices,
+            PopulateTrackingPose(XRNode.LeftHand, leftHandDevices,
                 out data.leftControllerTrackingPosX, out data.leftControllerTrackingPosY, out data.leftControllerTrackingPosZ,
                 out data.leftControllerTrackingRotEulerX, out data.leftControllerTrackingRotEulerY, out data.leftControllerTrackingRotEulerZ,
                 out data.leftControllerTrackingRotQuatX, out data.leftControllerTrackingRotQuatY, out data.leftControllerTrackingRotQuatZ, out data.leftControllerTrackingRotQuatW);
 
-            // Left controller input states - try Input System first, fallback to XR devices
+            // Left controller inputs: Input Actions -> InputDevices -> Input System XR controls
 #if ENABLE_INPUT_SYSTEM
-            if (leftTriggerAction != null && leftTriggerAction.action != null)
-                data.leftTrigger = GetFloatInputState(leftTriggerAction);
-            else
-                data.leftTrigger = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.trigger);
-            if (leftGripAction != null && leftGripAction.action != null)
-                data.leftGrip = GetFloatInputState(leftGripAction);
-            else
-                data.leftGrip = GetFloatInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.grip);
-            if (leftPrimaryButtonAction != null && leftPrimaryButtonAction.action != null)
-                data.leftPrimaryButton = GetInputState(leftPrimaryButtonAction);
-            else
-                data.leftPrimaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
-            if (leftSecondaryButtonAction != null && leftSecondaryButtonAction.action != null)
-                data.leftSecondaryButton = GetInputState(leftSecondaryButtonAction);
-            else
-                data.leftSecondaryButton = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
-            if (leftPrimary2DAxisClickAction != null && leftPrimary2DAxisClickAction.action != null)
-                data.leftPrimary2DAxisClick = GetInputState(leftPrimary2DAxisClickAction);
-            else
-                data.leftPrimary2DAxisClick = GetInputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
-            Vector2 leftAxis;
-            if (leftThumbstickAction != null && leftThumbstickAction.action != null)
-                leftAxis = GetVector2InputState(leftThumbstickAction);
-            else
-                leftAxis = GetVector2InputStateFromDevice(leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.leftTrigger = ReadFloatControllerInput(
+                leftTriggerAction, leftHandDevices, UnityEngine.XR.CommonUsages.trigger, XRNode.LeftHand,
+                "trigger", "triggerButton");
+            data.leftGrip = ReadFloatControllerInput(
+                leftGripAction, leftHandDevices, UnityEngine.XR.CommonUsages.grip, XRNode.LeftHand,
+                "grip", "gripButton", "gripPressed");
+            data.leftPrimaryButton = ReadButtonControllerInput(
+                leftPrimaryButtonAction, leftHandDevices, UnityEngine.XR.CommonUsages.primaryButton, XRNode.LeftHand,
+                "primaryButton", "primaryPress");
+            data.leftSecondaryButton = ReadButtonControllerInput(
+                leftSecondaryButtonAction, leftHandDevices, UnityEngine.XR.CommonUsages.secondaryButton, XRNode.LeftHand,
+                "secondaryButton", "secondaryPress");
+            data.leftPrimary2DAxisClick = ReadButtonControllerInput(
+                leftPrimary2DAxisClickAction, leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick, XRNode.LeftHand,
+                "thumbstickClicked", "joystickClicked", "primary2DAxisClick");
+            Vector2 leftAxis = ReadVector2ControllerInput(
+                leftThumbstickAction, leftHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis, XRNode.LeftHand,
+                "thumbstick", "joystick", "primary2DAxis");
             data.leftThumbstickX = leftAxis.x;
             data.leftThumbstickY = leftAxis.y;
 #else
@@ -502,7 +670,7 @@ namespace VERA
 #endif
 
             // --- Right controller ---
-            bool isRightPresent = rightHandDevices.Count > 0;
+            bool isRightPresent = rightControllerDetected;
             data.rightDetected = isRightPresent;
 
             if (isRightPresent && rightController != null)
@@ -513,38 +681,31 @@ namespace VERA
                     out data.rightControllerVirtualRotQuatX, out data.rightControllerVirtualRotQuatY, out data.rightControllerVirtualRotQuatZ, out data.rightControllerVirtualRotQuatW);
             }
 
-            PopulateTrackingPose(rightHandDevices,
+            PopulateTrackingPose(XRNode.RightHand, rightHandDevices,
                 out data.rightControllerTrackingPosX, out data.rightControllerTrackingPosY, out data.rightControllerTrackingPosZ,
                 out data.rightControllerTrackingRotEulerX, out data.rightControllerTrackingRotEulerY, out data.rightControllerTrackingRotEulerZ,
                 out data.rightControllerTrackingRotQuatX, out data.rightControllerTrackingRotQuatY, out data.rightControllerTrackingRotQuatZ, out data.rightControllerTrackingRotQuatW);
 
-            // Right controller input states - try Input System first, fallback to XR devices
+            // Right controller inputs: Input Actions -> InputDevices -> Input System XR controls
 #if ENABLE_INPUT_SYSTEM
-            if (rightTriggerAction != null && rightTriggerAction.action != null)
-                data.rightTrigger = GetFloatInputState(rightTriggerAction);
-            else
-                data.rightTrigger = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.trigger);
-            if (rightGripAction != null && rightGripAction.action != null)
-                data.rightGrip = GetFloatInputState(rightGripAction);
-            else
-                data.rightGrip = GetFloatInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.grip);
-            if (rightPrimaryButtonAction != null && rightPrimaryButtonAction.action != null)
-                data.rightPrimaryButton = GetInputState(rightPrimaryButtonAction);
-            else
-                data.rightPrimaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton);
-            if (rightSecondaryButtonAction != null && rightSecondaryButtonAction.action != null)
-                data.rightSecondaryButton = GetInputState(rightSecondaryButtonAction);
-            else
-                data.rightSecondaryButton = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton);
-            if (rightPrimary2DAxisClickAction != null && rightPrimary2DAxisClickAction.action != null)
-                data.rightPrimary2DAxisClick = GetInputState(rightPrimary2DAxisClickAction);
-            else
-                data.rightPrimary2DAxisClick = GetInputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick);
-            Vector2 rightAxis;
-            if (rightThumbstickAction != null && rightThumbstickAction.action != null)
-                rightAxis = GetVector2InputState(rightThumbstickAction);
-            else
-                rightAxis = GetVector2InputStateFromDevice(rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis);
+            data.rightTrigger = ReadFloatControllerInput(
+                rightTriggerAction, rightHandDevices, UnityEngine.XR.CommonUsages.trigger, XRNode.RightHand,
+                "trigger", "triggerButton");
+            data.rightGrip = ReadFloatControllerInput(
+                rightGripAction, rightHandDevices, UnityEngine.XR.CommonUsages.grip, XRNode.RightHand,
+                "grip", "gripButton", "gripPressed");
+            data.rightPrimaryButton = ReadButtonControllerInput(
+                rightPrimaryButtonAction, rightHandDevices, UnityEngine.XR.CommonUsages.primaryButton, XRNode.RightHand,
+                "primaryButton", "primaryPress");
+            data.rightSecondaryButton = ReadButtonControllerInput(
+                rightSecondaryButtonAction, rightHandDevices, UnityEngine.XR.CommonUsages.secondaryButton, XRNode.RightHand,
+                "secondaryButton", "secondaryPress");
+            data.rightPrimary2DAxisClick = ReadButtonControllerInput(
+                rightPrimary2DAxisClickAction, rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxisClick, XRNode.RightHand,
+                "thumbstickClicked", "joystickClicked", "primary2DAxisClick");
+            Vector2 rightAxis = ReadVector2ControllerInput(
+                rightThumbstickAction, rightHandDevices, UnityEngine.XR.CommonUsages.primary2DAxis, XRNode.RightHand,
+                "thumbstick", "joystick", "primary2DAxis");
             data.rightThumbstickX = rightAxis.x;
             data.rightThumbstickY = rightAxis.y;
 #else
@@ -686,6 +847,7 @@ namespace VERA
         }
 
         private void PopulateTrackingPose(
+            XRNode node,
             List<UnityEngine.XR.InputDevice> devices,
             out float posX, out float posY, out float posZ,
             out float eulerX, out float eulerY, out float eulerZ,
@@ -695,48 +857,296 @@ namespace VERA
             eulerX = eulerY = eulerZ = 0f;
             quatX = quatY = quatZ = 0f; quatW = 1f;
 
-            if (devices.Count == 0) return;
-
+            // Prefer legacy InputDevices when available (editor / native XR).
             foreach (var device in devices)
             {
-                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 pos))
+                if (!device.isValid)
+                    continue;
+
+                // Skip explicitly untracked devices so default/identity poses do not win.
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool isTracked) && !isTracked)
+                    continue;
+
+                bool gotPos = device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 pos);
+                bool gotRot = device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion q);
+                if (gotPos)
                 {
                     posX = pos.x; posY = pos.y; posZ = pos.z;
                 }
-                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion q))
+                if (gotRot)
                 {
                     Vector3 euler = q.eulerAngles;
                     eulerX = euler.x; eulerY = euler.y; eulerZ = euler.z;
                     quatX = q.x; quatY = q.y; quatZ = q.z; quatW = q.w;
                 }
-                break; // use the first device
+                if (gotPos || gotRot)
+                    return;
+            }
+
+            // Fallback: InputTracking node states (sometimes populated when InputDevices is not).
+            if (TryPopulateTrackingPoseFromNodeState(node,
+                out posX, out posY, out posZ,
+                out eulerX, out eulerY, out eulerZ,
+                out quatX, out quatY, out quatZ, out quatW))
+            {
+                return;
+            }
+
+#if ENABLE_INPUT_SYSTEM
+            // Fallback: Input System XR controller / HMD devices.
+            TryPopulateTrackingPoseFromInputSystem(node,
+                out posX, out posY, out posZ,
+                out eulerX, out eulerY, out eulerZ,
+                out quatX, out quatY, out quatZ, out quatW);
+#endif
+        }
+
+        private bool TryPopulateTrackingPoseFromNodeState(
+            XRNode node,
+            out float posX, out float posY, out float posZ,
+            out float eulerX, out float eulerY, out float eulerZ,
+            out float quatX, out float quatY, out float quatZ, out float quatW)
+        {
+            posX = posY = posZ = 0f;
+            eulerX = eulerY = eulerZ = 0f;
+            quatX = quatY = quatZ = 0f; quatW = 1f;
+
+            xrNodeStates.Clear();
+            InputTracking.GetNodeStates(xrNodeStates);
+            for (int i = 0; i < xrNodeStates.Count; i++)
+            {
+                XRNodeState state = xrNodeStates[i];
+                if (state.nodeType != node || !state.tracked)
+                    continue;
+
+                bool gotPos = state.TryGetPosition(out Vector3 pos);
+                bool gotRot = state.TryGetRotation(out Quaternion q);
+                if (!gotPos && !gotRot)
+                    continue;
+
+                if (gotPos)
+                {
+                    posX = pos.x; posY = pos.y; posZ = pos.z;
+                }
+                if (gotRot)
+                {
+                    Vector3 euler = q.eulerAngles;
+                    eulerX = euler.x; eulerY = euler.y; eulerZ = euler.z;
+                    quatX = q.x; quatY = q.y; quatZ = q.z; quatW = q.w;
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        private bool TryPopulateTrackingPoseFromInputSystem(
+            XRNode node,
+            out float posX, out float posY, out float posZ,
+            out float eulerX, out float eulerY, out float eulerZ,
+            out float quatX, out float quatY, out float quatZ, out float quatW)
+        {
+            posX = posY = posZ = 0f;
+            eulerX = eulerY = eulerZ = 0f;
+            quatX = quatY = quatZ = 0f; quatW = 1f;
+
+            TrackedDevice tracked = FindTrackedDeviceForNode(node);
+            if (tracked == null || !tracked.added)
+                return false;
+            if (!(tracked.isTracked.isPressed || tracked.isTracked.ReadValue() > 0.5f))
+                return false;
+
+            Vector3 pos = tracked.devicePosition.ReadValue();
+            Quaternion q = tracked.deviceRotation.ReadValue();
+            Vector3 euler = q.eulerAngles;
+            posX = pos.x; posY = pos.y; posZ = pos.z;
+            eulerX = euler.x; eulerY = euler.y; eulerZ = euler.z;
+            quatX = q.x; quatY = q.y; quatZ = q.z; quatW = q.w;
+            return true;
+        }
+
+        private static TrackedDevice FindTrackedDeviceForNode(XRNode node)
+        {
+            switch (node)
+            {
+                case XRNode.LeftHand:
+                    return UnityEngine.InputSystem.XR.XRController.leftHand;
+                case XRNode.RightHand:
+                    return UnityEngine.InputSystem.XR.XRController.rightHand;
+                case XRNode.Head:
+                    // XRHMD.current is not available on all Input System versions.
+                    return FindFirstInputSystemDevice<XRHMD>();
+                default:
+                    return null;
             }
         }
+
+        private static TDevice FindFirstInputSystemDevice<TDevice>()
+            where TDevice : UnityEngine.InputSystem.InputDevice
+        {
+            foreach (UnityEngine.InputSystem.InputDevice device in InputSystem.devices)
+            {
+                if (device is TDevice typed && typed.added)
+                    return typed;
+            }
+            return null;
+        }
+#endif
+
+#if ENABLE_INPUT_SYSTEM
+        private float ReadFloatControllerInput(
+            InputActionProperty actionProperty,
+            List<UnityEngine.XR.InputDevice> devices,
+            InputFeatureUsage<float> deviceUsage,
+            XRNode node,
+            params string[] inputSystemControlNames)
+        {
+            float fromAction = GetFloatInputState(actionProperty);
+            if (fromAction >= 0f)
+                return fromAction;
+
+            float fromDevice = GetFloatInputStateFromDevice(devices, deviceUsage);
+            if (fromDevice >= 0f)
+                return fromDevice;
+
+            if (TryReadFloatFromInputSystemController(node, out float fromXr, inputSystemControlNames))
+                return fromXr;
+
+            // Controller is present but this axis is unavailable — log idle 0, not NA.
+            return IsControllerNodePresent(node) ? 0f : -1f;
+        }
+
+        private int ReadButtonControllerInput(
+            InputActionProperty actionProperty,
+            List<UnityEngine.XR.InputDevice> devices,
+            InputFeatureUsage<bool> deviceUsage,
+            XRNode node,
+            params string[] inputSystemControlNames)
+        {
+            int fromAction = GetInputState(actionProperty);
+            if (fromAction >= 0)
+                return fromAction;
+
+            int fromDevice = GetInputStateFromDevice(devices, deviceUsage);
+            if (fromDevice >= 0)
+                return fromDevice;
+
+            if (TryReadFloatFromInputSystemController(node, out float fromXr, inputSystemControlNames))
+                return fromXr > 0.5f ? 1 : 0;
+
+            return IsControllerNodePresent(node) ? 0 : -1;
+        }
+
+        private Vector2 ReadVector2ControllerInput(
+            InputActionProperty actionProperty,
+            List<UnityEngine.XR.InputDevice> devices,
+            InputFeatureUsage<Vector2> deviceUsage,
+            XRNode node,
+            params string[] inputSystemControlNames)
+        {
+            Vector2 fromAction = GetVector2InputState(actionProperty);
+            if (fromAction.x > -1.5f && fromAction.y > -1.5f)
+                return fromAction;
+
+            Vector2 fromDevice = GetVector2InputStateFromDevice(devices, deviceUsage);
+            if (fromDevice.x > -1.5f && fromDevice.y > -1.5f)
+                return fromDevice;
+
+            if (TryReadVector2FromInputSystemController(node, out Vector2 fromXr, inputSystemControlNames))
+                return fromXr;
+
+            return IsControllerNodePresent(node) ? Vector2.zero : new Vector2(-2f, -2f);
+        }
+
+        private bool IsControllerNodePresent(XRNode node)
+        {
+            switch (node)
+            {
+                case XRNode.LeftHand: return leftControllerDetected;
+                case XRNode.RightHand: return rightControllerDetected;
+                case XRNode.Head: return headsetDetected;
+                default: return false;
+            }
+        }
+
+        private bool TryReadFloatFromInputSystemController(XRNode node, out float value, params string[] controlNames)
+        {
+            value = 0f;
+            TrackedDevice tracked = FindTrackedDeviceForNode(node);
+            if (tracked == null || !tracked.added)
+                return false;
+
+            for (int i = 0; i < controlNames.Length; i++)
+            {
+                InputControl control = tracked.TryGetChildControl(controlNames[i]);
+                if (control == null)
+                    continue;
+
+                if (control is AxisControl axis)
+                {
+                    value = axis.ReadValue();
+                    return true;
+                }
+                if (control is ButtonControl button)
+                {
+                    value = button.ReadValue();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryReadVector2FromInputSystemController(XRNode node, out Vector2 value, params string[] controlNames)
+        {
+            value = Vector2.zero;
+            TrackedDevice tracked = FindTrackedDeviceForNode(node);
+            if (tracked == null || !tracked.added)
+                return false;
+
+            for (int i = 0; i < controlNames.Length; i++)
+            {
+                InputControl control = tracked.TryGetChildControl(controlNames[i]);
+                if (control is Vector2Control stick)
+                {
+                    value = stick.ReadValue();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+#endif
 
         private float GetFloatInputState(InputActionProperty actionProperty)
         {
 #if ENABLE_INPUT_SYSTEM
-            if (actionProperty.action == null)
+            InputAction action = actionProperty.action;
+            if (action == null)
                 return -1f; // NA when unknown
 
             try
             {
-                if (actionProperty.action.activeControl?.valueType == typeof(float))
-                {
-                    float value = actionProperty.action.ReadValue<float>();
-                    return value;
-                }
-                else
-                {
-                    return -1f; // NA for non-float inputs
-                }
+                if (!action.enabled)
+                    action.Enable();
+
+                // Do not require activeControl — it is null when the control is at rest,
+                // which previously made every sample look like "no input" (-1).
+                return action.ReadValue<float>();
             }
             catch
             {
-                return -1f; // NA when error occurs
+                try
+                {
+                    return action.IsPressed() ? 1f : 0f;
+                }
+                catch
+                {
+                    return -1f; // NA when error occurs
+                }
             }
 #else
-            // Fallback to legacy XR input or return NA
             return -1f;
 #endif
         }
@@ -744,25 +1154,25 @@ namespace VERA
         private int GetInputState(InputActionProperty actionProperty)
         {
 #if ENABLE_INPUT_SYSTEM
-            if (actionProperty.action == null)
+            InputAction action = actionProperty.action;
+            if (action == null)
                 return -1; // NA when unknown
 
             try
             {
-                if (actionProperty.action.activeControl?.valueType == typeof(float))
+                if (!action.enabled)
+                    action.Enable();
+
+                if (action.IsPressed())
+                    return 1;
+
+                try
                 {
-                    float value = actionProperty.action.ReadValue<float>();
-                    return value > 0.5f ? 1 : 0;
+                    return action.ReadValue<float>() > 0.5f ? 1 : 0;
                 }
-                else if (actionProperty.action.activeControl?.valueType == typeof(bool))
+                catch
                 {
-                    bool value = actionProperty.action.ReadValue<bool>();
-                    return value ? 1 : 0;
-                }
-                else
-                {
-                    // For button inputs, check if pressed
-                    return actionProperty.action.IsPressed() ? 1 : 0;
+                    return 0;
                 }
             }
             catch
@@ -770,7 +1180,6 @@ namespace VERA
                 return -1; // NA when error occurs
             }
 #else
-            // Fallback to legacy XR input or return NA
             return -1;
 #endif
         }
@@ -826,12 +1235,15 @@ namespace VERA
         private Vector2 GetVector2InputState(InputActionProperty actionProperty)
         {
 #if ENABLE_INPUT_SYSTEM
-            if (actionProperty.action == null)
+            InputAction action = actionProperty.action;
+            if (action == null)
                 return new Vector2(-2f, -2f); // NA when unknown
 
             try
             {
-                return actionProperty.action.ReadValue<Vector2>();
+                if (!action.enabled)
+                    action.Enable();
+                return action.ReadValue<Vector2>();
             }
             catch
             {
