@@ -23,7 +23,7 @@ namespace VERA
         {
             yield return new WaitForSeconds(timeToDelay);
 
-            if (VERASessionManager.collecting)
+            if (VERASessionManager.sessionInProgress)
             {
                 Debug.Log($"[VERA Auto-Submitter] Submitting final CSVs and marking COMPLETE after {timeToDelay} seconds...");
                 VERASessionManager.FinalizeSession();

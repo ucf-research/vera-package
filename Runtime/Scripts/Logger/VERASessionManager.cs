@@ -55,20 +55,64 @@ namespace VERA
         public static bool IsReady => VERALogger.Instance != null;
 
         /// <summary>
-        /// Whether VERA has been initialized for the current session, and is ready to log data.
+        /// Whether VERA has been initialized and is ready to start a participant session.
+        /// True once the logger is in the scene and authentication/keys are loaded.
+        /// Does not mean a participant session has started or that data is being recorded.
         /// </summary>
         public static bool initialized { get { return VERALogger.Instance != null && VERALogger.Instance.initialized; } }
 
         /// <summary>
-        /// Event that is invoked when VERA has been successfully initialized for this session and is ready to log data.
-        /// Subscribe to this event to perform actions that depend on VERA being fully initialized, such as setting initial condition values.
+        /// Event that is invoked when VERA has been initialized and is ready to start a participant session.
+        /// Subscribe to onSessionStart for actions that need an active participant and data recording.
         /// </summary>
         public static UnityEvent onInitialized { get { return VERALogger.Instance.onLoggerInitialized; } }
 
         /// <summary>
-        /// Whether data collection is currently active for the current participant session.
+        /// Whether a participant session has been started and data is actively being recorded.
         /// </summary>
-        public static bool collecting { get { return VERALogger.Instance.collecting; } }
+        public static bool sessionInProgress { get { return VERALogger.Instance != null && VERALogger.Instance.sessionInProgress; } }
+
+        /// <summary>
+        /// Obsolete. Use sessionInProgress instead.
+        /// </summary>
+        [Obsolete("Use sessionInProgress instead.")]
+        public static bool collecting { get { return sessionInProgress; } }
+
+        /// <summary>
+        /// Event that is invoked when a participant session has started and data recording is active.
+        /// Subscribe to this event for actions that depend on an active participant (IDs, logging, conditions, trials).
+        /// </summary>
+        public static UnityEvent onSessionStart { get { return VERALogger.Instance.onSessionStart; } }
+
+        /// <summary>
+        /// Event that is invoked when a participant session has ended (after FinalizeSession completes).
+        /// </summary>
+        public static UnityEvent onSessionEnd { get { return VERALogger.Instance.onSessionEnd; } }
+
+        /// <summary>
+        /// Starts a new participant session: creates/looks up the participant on the server and begins data collection.
+        /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
+        /// If auto-start is enabled, VERA already starts a session automatically and this method is not needed.
+        /// In WebXR builds, the portal still supplies the site and participant IDs; those IDs are applied when
+        /// the session starts, but data recording does not begin until this method is called (when auto-start is off).
+        /// If this is called before the WebXR parameters arrive, the start is deferred until they do.
+        /// </summary>
+        public static void StartNewParticipantSession()
+        {
+            if (VERALogger.Instance == null)
+            {
+                VERADebugger.LogWarning("Cannot start a new participant session because VERA is not present in the scene.", "VERASessionManager");
+                return;
+            }
+
+            if (sessionInProgress)
+            {
+                VERADebugger.LogWarning("Cannot start a new participant session because a session is already in progress.", "VERASessionManager");
+                return;
+            }
+
+            VERALogger.Instance.StartNewParticipantSession();
+        }
 
         /// <summary>
         /// Finalizes the current participant session.
@@ -77,15 +121,9 @@ namespace VERA
         /// </summary>
         public static void FinalizeSession()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot finalize session because VERA is not initialized.", "VERASessionManager");
-                return;
-            }
-
-            if (!collecting)
-            {
-                VERADebugger.LogWarning("Cannot finalize session because data collection is not active.", "VERASessionManager");
+                VERADebugger.LogWarning("Cannot finalize session because no participant session is in progress.", "VERASessionManager");
                 return;
             }
 
@@ -105,15 +143,9 @@ namespace VERA
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         public static void StartSurvey(VERASurveyInfo surveyToStart, System.Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot start survey because VERA is not initialized.", "VERASessionManager");
-                return;
-            }
-
-            if (!collecting)
-            {
-                VERADebugger.LogWarning("Cannot start survey because data collection is not active.", "VERASessionManager");
+                VERADebugger.LogWarning("Cannot start survey because no participant session is in progress.", "VERASessionManager");
                 return;
             }
 
@@ -129,15 +161,9 @@ namespace VERA
         /// <param name="values">The values to be logged in this CSV entry, in the correct order as per the file's configuration.</param>
         public static void CreateArbitraryCsvEntry(string fileName, params object[] values)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot create CSV entry because VERA is not initialized.", "VERASessionManager");
-                return;
-            }
-
-            if (!collecting)
-            {
-                VERADebugger.LogWarning("Cannot create CSV entry because data collection is not active.", "VERASessionManager");
+                VERADebugger.LogWarning("Cannot create CSV entry because no participant session is in progress.", "VERASessionManager");
                 return;
             }
 
@@ -153,15 +179,9 @@ namespace VERA
         /// <param name="expectedExtension">The expected file extension (e.g., "json", "txt").</param>
         public static void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized.", "VERASessionManager");
-                return;
-            }
-
-            if (!collecting)
-            {
-                VERADebugger.LogWarning("Cannot upload file because data collection is not active.", "VERASessionManager");
+                VERADebugger.LogWarning("Cannot upload file because no participant session is in progress.", "VERASessionManager");
                 return;
             }
 
@@ -193,9 +213,10 @@ namespace VERA
         }
 
         /// <summary>
-        /// Manually initializes VERA with the specified site ID and participant ID.
-        /// It is highly recommended to allow VERA to initialize itself automatically.
-        /// You should not need to call this method unless you have a specific reason to do so.
+        /// Applies site and participant IDs, typically from a WebXR portal message.
+        /// IDs are always stored so the eventual session attaches to the portal-assigned participant.
+        /// The session itself (participant lookup, data recording) starts immediately only when
+        /// Auto-Start Participant Sessions is enabled; otherwise wait for StartNewParticipantSession().
         /// </summary>
         /// <param name="siteId">The site ID to use for this session</param>
         /// <param name="participantId">The participant ID to use for this session</param>
@@ -212,9 +233,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get current trial because VERA is not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get current trial because no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.CurrentTrial;
@@ -227,9 +248,9 @@ namespace VERA
         /// </summary>
         public static TrialConfig GetNextTrial()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot get next trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot get next trial because no participant session is in progress.");
                 return null;
             }
             return VERALogger.Instance?.trialWorkflow?.GetNextTrial();
@@ -267,9 +288,9 @@ namespace VERA
         /// </summary>
         public static void ResetTrialWorkflow()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot reset trial workflow because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot reset trial workflow because no participant session is in progress.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.ResetWorkflow();
@@ -283,9 +304,9 @@ namespace VERA
         /// <returns>True if trial was started successfully, false otherwise</returns>
         public static bool StartTrial()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot start trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot start trial because no participant session is in progress.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.StartTrial() ?? false;
@@ -298,9 +319,9 @@ namespace VERA
         /// <returns>True if trial was completed successfully, false otherwise</returns>
         public static bool CompleteTrial()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot complete trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot complete trial because no participant session is in progress.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.CompleteTrial() ?? false;
@@ -314,9 +335,9 @@ namespace VERA
         /// <returns>True if trial was aborted successfully, false otherwise</returns>
         public static bool AbortTrial(string reason = "")
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot abort trial because VERA is not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot abort trial because no participant session is in progress.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.AbortTrial(reason) ?? false;
@@ -363,9 +384,9 @@ namespace VERA
         /// </summary>
         public static void RandomizeTrialOrder()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: no participant session is in progress.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWorkflow();
@@ -378,9 +399,9 @@ namespace VERA
         /// </summary>
         public static void ApplyLatinSquareCounterbalancing()
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: no participant session is in progress.");
                 return;
             }
             int participantId = VERALogger.Instance.activeParticipant.GetNumericParticipantShortId();
@@ -395,9 +416,9 @@ namespace VERA
         /// <param name="participantNumber">The participant number to use for counterbalancing</param>
         public static void ApplyLatinSquareCounterbalancing(int participantNumber)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: no participant session is in progress.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantNumber);
@@ -423,9 +444,9 @@ namespace VERA
         /// <returns>True if Latin square ordering was applied successfully, false if validation failed.</returns>
         public static bool ApplyLatinSquareCounterbalancing(int participantNumber, int totalParticipants)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot apply Latin square: no participant session is in progress.");
                 return false;
             }
             return VERALogger.Instance?.trialWorkflow?.ApplyLatinSquareOrdering(participantNumber, totalParticipants) ?? false;
@@ -439,9 +460,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get within-subjects IVs: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get within-subjects IVs: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialWithinSubjectsIVs();
@@ -456,9 +477,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get between-subjects IVs: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get between-subjects IVs: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialBetweenSubjectsIVs();
@@ -473,9 +494,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get randomization type: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get randomization type: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialRandomizationType();
@@ -490,9 +511,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ordering: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ordering: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialOrdering();
@@ -508,9 +529,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial distributions: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial distributions: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialDistributions();
@@ -525,9 +546,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ID: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial ID: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialId();
@@ -542,9 +563,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial type: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial type: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialType();
@@ -559,9 +580,9 @@ namespace VERA
         {
             get
             {
-                if (!initialized)
+                if (!sessionInProgress)
                 {
-                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial conditions: VERA not initialized.");
+                    VERADebugger.LogWarning("[VERASessionManager] Cannot get trial conditions: no participant session is in progress.");
                     return null;
                 }
                 return VERALogger.Instance?.trialWorkflow?.GetCurrentTrialConditions();
@@ -576,9 +597,9 @@ namespace VERA
         /// <param name="blockSize">Number of trials per block</param>
         public static void RandomizeTrialsWithinBlocks(int blockSize)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize blocks: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize blocks: no participant session is in progress.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWithinBlocks(blockSize);
@@ -591,10 +612,10 @@ namespace VERA
         /// <param name="onFailure">Called with an error message when the request fails.</param>
         public static void FetchAccessibilitySettings(Action<VERAAccessibilitySettings> onSuccess, Action<string> onFailure = null)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot fetch accessibility settings because VERA is not initialized.", "VERASessionManager");
-                onFailure?.Invoke("VERA is not initialized.");
+                VERADebugger.LogWarning("Cannot fetch accessibility settings because no participant session is in progress.", "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
                 return;
             }
 
@@ -616,9 +637,9 @@ namespace VERA
         /// <param name="seed">Random seed value</param>
         public static void RandomizeTrialOrderWithSeed(int seed)
         {
-            if (!initialized)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: VERA not initialized.");
+                VERADebugger.LogWarning("[VERASessionManager] Cannot randomize: no participant session is in progress.");
                 return;
             }
             VERALogger.Instance?.trialWorkflow?.RandomizeWithSeed(seed);

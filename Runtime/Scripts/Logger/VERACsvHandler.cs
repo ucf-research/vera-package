@@ -111,7 +111,7 @@ namespace VERA
         // Update, check if we need to flush unwritten entries
         private void Update()
         {
-            if (!VERALogger.Instance.collecting)
+            if (!VERALogger.Instance.sessionInProgress)
                 return;
 
             timeSinceLastFlush += Time.deltaTime;
@@ -196,7 +196,7 @@ namespace VERA
         // Logs an entry to the file. Doesn't write yet, only writes on flush.
         public void CreateEntry(params object[] values)
         {
-            if (!VERALogger.Instance.collecting || VERALogger.Instance.sessionFinalized || skipLocalSync)
+            if (!VERALogger.Instance.sessionInProgress || VERALogger.Instance.sessionFinalized || skipLocalSync)
             {
                 return;
             }
@@ -359,8 +359,8 @@ namespace VERA
         // Checks if we need to flush unwritten entries; flushes if we do need to.
         private void CheckFlushUnwritten()
         {
-            // Only automatically flush if collecting and not finalized
-            if (!VERALogger.Instance.collecting || VERALogger.Instance.sessionFinalized)
+            // Only automatically flush if a session is in progress and not finalized
+            if (!VERALogger.Instance.sessionInProgress || VERALogger.Instance.sessionFinalized)
                 return;
 
             // If the number of unwritten entries is too large or enough time has passed since last flush, flush

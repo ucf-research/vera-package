@@ -176,7 +176,8 @@ namespace VERA
             ));
             section.Add(CreateParagraph(
                 "A single static C# class will be automatically generated for you for each CSV file type you create on the VERA portal. " +
-                "These classes are named according to your CSV file types, and can be used to log new data to the file type from C# scripts."
+                "These classes are named according to your CSV file types, and can be used to log new data to the file type from C# scripts. " +
+                "After creating or editing file types on the portal, click Refresh Experiments in VERA Settings so Unity can download the new definitions and generate the matching classes."
             ));
             section.Add(CreateParagraph(
                 "For example, say you had an \"EyeTracking\" CSV file with \"GazeX\", \"GazeY\", and \"PupilDilation\" columns. " +
@@ -302,8 +303,8 @@ public class Example : MonoBehaviour
 {
     void Start()
     {
-        // Wait for VERA to finish initializing
-        VERASessionManager.onInitialized.AddListener(() =>
+        // Wait for a participant session to start
+        VERASessionManager.onSessionStart.AddListener(() =>
         {
             // Get the participant's ID
             string participantID = VERASessionManager.participantID;
@@ -320,7 +321,7 @@ public class Example : MonoBehaviour
             ));
 
             section.Add(CreateTipBox(
-                "Any code which interacts with VERA (data logs, questionnaires, session management) should be executed after VERA has been initialized."
+                "Any code which logs data, starts surveys, or uses participant IDs should run after a participant session has started (onSessionStart). Use onInitialized when you only need VERA to be ready before starting a session."
             ));
 
             scrollView.Add(section);

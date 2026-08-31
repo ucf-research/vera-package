@@ -36,9 +36,9 @@ namespace VERA
                 return;
             }
 
-            if (!VERALogger.Instance.collecting)
+            if (!VERALogger.Instance.sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot start survey because data collection is not active.", "VERASurveyStarter");
+                VERADebugger.LogWarning("Cannot start survey because no participant session is in progress.", "VERASurveyStarter");
                 return;
             }
 

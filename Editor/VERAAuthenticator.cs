@@ -369,6 +369,8 @@ namespace VERA
                 buildDeauthInfo.currentBuildNumber = currentBuildInfo.currentBuildNumber;
                 buildDeauthInfo.dataRecordingType = currentBuildInfo.dataRecordingType;
                 buildDeauthInfo.debugPreference = currentBuildInfo.debugPreference;
+                buildDeauthInfo.rotationFormat = currentBuildInfo.rotationFormat;
+                buildDeauthInfo.autoStartParticipantSessions = currentBuildInfo.autoStartParticipantSessions;
             }
 
             SetSavedUserAuthInfo(userDeauthInfo);
@@ -405,6 +407,7 @@ namespace VERA
             PlayerPrefs.SetInt("VERA_BuildAuthenticated", authInfo.authenticated ? 1 : 0);
             PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
             PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
+            PlayerPrefs.SetInt("VERA_AutoStartParticipantSessions", authInfo.autoStartParticipantSessions ? 1 : 0);
 
             AssetDatabase.Refresh();
             AssetDatabase.SaveAssets();
@@ -457,7 +460,11 @@ namespace VERA
             if (File.Exists(filePath))
             {
                 string json = File.ReadAllText(filePath);
-                return JsonUtility.FromJson<VERABuildAuthInfo>(json);
+                VERABuildAuthInfo authInfo = JsonUtility.FromJson<VERABuildAuthInfo>(json);
+                // JsonUtility defaults missing bools to false; auto-start should remain enabled unless explicitly disabled
+                if (authInfo != null && !json.Contains("\"autoStartParticipantSessions\""))
+                    authInfo.autoStartParticipantSessions = true;
+                return authInfo;
             }
             else
             {
@@ -889,6 +896,27 @@ namespace VERA
             return currentAuthInfo.rotationFormat;
         }
 
+        /// <summary>
+        /// Changes whether VERA automatically starts a participant session on application start.
+        /// </summary>
+        /// <param name="autoStart">True to create a participant and begin data collection automatically; false to wait for StartNewParticipantSession().</param>
+        public static void ChangeAutoStartParticipantSessions(bool autoStart)
+        {
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+            currentAuthInfo.autoStartParticipantSessions = autoStart;
+            SetSavedBuildAuthInfo(currentAuthInfo);
+        }
+
+        /// <summary>
+        /// Gets whether VERA automatically starts a participant session on application start.
+        /// Defaults to true when the setting has not been stored yet.
+        /// </summary>
+        public static bool GetAutoStartParticipantSessions()
+        {
+            VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
+            return currentAuthInfo != null && currentAuthInfo.autoStartParticipantSessions;
+        }
+
 
         #endregion
 
@@ -967,15 +995,26 @@ namespace VERA
         #region FILE TYPE / COLUMN MANAGEMENT
 
 
+        [MenuItem("VERA/Refresh File Types")]
+        public static void MenuRefreshFileTypes()
+        {
+            if (PlayerPrefs.GetInt("VERA_UserAuthenticated") != 1)
+            {
+                VERADebugger.LogError("You must be authenticated to refresh file types. Open VERA -> Settings and authenticate first.", "VERA Authentication");
+                return;
+            }
+
+            UpdateColumnDefs();
+        }
+
+
         // Updates the column definition to the current experiment's column definition
         public static void UpdateColumnDefs()
         {
-            // Clear old column definitions
-            DeleteExistingColumnDefs();
-
             // If there is no active experiment, we cannot do anything with the columns
             if (PlayerPrefs.GetString("VERA_ActiveExperiment", null) == null || PlayerPrefs.GetString("VERA_ActiveExperiment", null) == "")
             {
+                DeleteExistingColumnDefs();
                 ClearFileTypeDefineSymbols();
                 return;
             }
@@ -1013,6 +1052,7 @@ namespace VERA
                     {
                         VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
                                 "Please try refreshing your experiments and trying again.", "VERA Authentication");
+                        request.Dispose();
                         return;
                     }
                     else
@@ -1021,15 +1061,30 @@ namespace VERA
                         string jsonResponse = request.downloadHandler.text;
                         FileTypesResponse fileTypesResponse = JsonUtility.FromJson<FileTypesResponse>(jsonResponse);
 
-                        if (fileTypesResponse == null || !fileTypesResponse.success)
+                        if (fileTypesResponse == null || !fileTypesResponse.success || fileTypesResponse.fileTypes == null)
                         {
                             VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
                                 "Please try refreshing your experiments and trying again.", "VERA Authentication");
+                            request.Dispose();
                             return;
                         }
 
-                        // Loop through each file type and get column definition, if the file type is a CSV
                         List<FtFileType> fileTypes = fileTypesResponse.fileTypes;
+
+                        if (FileTypesAreUpToDate(fileTypes))
+                        {
+                            VERADebugger.Log(
+                                "File types are already up to date; skipped regeneration.",
+                                "VERA Authentication",
+                                DebugPreference.Verbose);
+                            request.Dispose();
+                            return;
+                        }
+
+                        // Only wipe local column defs after a successful fetch so a failed request
+                        // does not leave the project with no file types until the next re-auth.
+                        DeleteExistingColumnDefs();
+
                         List<VERAColumnDefinition> columnDefs = new List<VERAColumnDefinition>();
                         List<string> definitionsToAdd = new List<string>();
                         for (int i = 0; i < fileTypes.Count; i++)
@@ -1055,31 +1110,32 @@ namespace VERA
                             }
 
                             // Sanitize the filename to remove any invalid characters
-                            string sanitizedName = Regex.Replace(fileTypes[i].name, @"[<>:""/\\|?*]", "_");
+                            string sanitizedName = Regex.Replace(fileTypes[i].name ?? "Unnamed", @"[<>:""/\\|?*]", "_");
                             string relativePath = GetRelativeColumnsFilePath() + "/VERA_" + sanitizedName + "_ColumnDefinition.asset";
 
-                            if (fileTypes[i].extension == "csv" && fileTypes[i].columnDefinition != null)
+                            bool isCsv = string.IsNullOrEmpty(fileTypes[i].extension) ||
+                                         fileTypes[i].extension.Equals("csv", StringComparison.OrdinalIgnoreCase);
+
+                            columnDefs.Add(ScriptableObject.CreateInstance<VERAColumnDefinition>());
+                            int idx = columnDefs.Count - 1;
+
+                            try
                             {
-                                // This file type is a CSV file with an associated column definition.
-                                // Create the column definition asset for this filetype, for use by VERALogger
-                                columnDefs.Add(ScriptableObject.CreateInstance<VERAColumnDefinition>());
-                                int idx = columnDefs.Count - 1;
+                                AssetDatabase.CreateAsset(columnDefs[idx], relativePath);
+                            }
+                            catch (System.Exception e)
+                            {
+                                VERADebugger.LogError($"Failed to create asset at path '{relativePath}': {e.Message}", "VERA Authentication");
+                                continue;
+                            }
 
-                                try
-                                {
-                                    AssetDatabase.CreateAsset(columnDefs[idx], relativePath);
-                                }
-                                catch (System.Exception e)
-                                {
-                                    VERADebugger.LogError($"Failed to create asset at path '{relativePath}': {e.Message}", "VERA Authentication");
-                                    continue;
-                                }
+                            columnDefs[idx].columns.Clear();
 
+                            if (isCsv && fileTypes[i].columnDefinition?.columns != null)
+                            {
                                 // Sort the columns based on order
                                 List<FtColumn> sortedCols = fileTypes[i].columnDefinition.columns.OrderBy(col => col.order).ToList();
 
-                                // Set columns
-                                columnDefs[idx].columns.Clear();
                                 for (int colIndex = 0; colIndex < sortedCols.Count; colIndex++)
                                 {
                                     FtColumn col = sortedCols[colIndex];
@@ -1093,80 +1149,33 @@ namespace VERA
                                     VERAColumnDefinition.Column newCol = new VERAColumnDefinition.Column();
                                     newCol.name = col.name;
                                     newCol.description = col.description;
-                                    switch (col.dataType)
-                                    {
-                                        case "String":
-                                            newCol.type = VERAColumnDefinition.DataType.String;
-                                            break;
-                                        case "Integer":
-                                            newCol.type = VERAColumnDefinition.DataType.Number;
-                                            break;
-                                        case "Transform":
-                                            newCol.type = VERAColumnDefinition.DataType.Transform;
-                                            break;
-                                        case "Date":
-                                            newCol.type = VERAColumnDefinition.DataType.Date;
-                                            break;
-                                        case "JSON":
-                                            newCol.type = VERAColumnDefinition.DataType.JSON;
-                                            break;
-                                        case "Boolean":
-                                            newCol.type = VERAColumnDefinition.DataType.Boolean;
-                                            break;
-                                        case "Float":
-                                            newCol.type = VERAColumnDefinition.DataType.Float;
-                                            break;
-                                    }
+                                    newCol.type = MapApiDataType(col.dataType);
 
                                     columnDefs[idx].columns.Add(newCol);
                                 }
-
-                                // Save column def
-                                columnDefs[idx].fileType = new VERAColumnDefinition.FileType();
-                                columnDefs[idx].fileType.fileTypeId = fileTypes[i]._id;
-                                columnDefs[idx].fileType.name = fileTypes[i].name;
-                                columnDefs[idx].fileType.description = fileTypes[i].description;
-                                columnDefs[idx].fileType.extension = fileTypes[i].extension;
-
-                                EditorUtility.SetDirty(columnDefs[idx]);
-                                AssetDatabase.SaveAssets();
-
-                                // Add define symbol for this column definition
-                                definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
                             }
-                            else if (fileTypes[i].extension != "csv")
+                            else if (isCsv && (fileTypes[i].columnDefinition == null || fileTypes[i].columnDefinition.columns == null))
                             {
-                                // This is a non-CSV file type. Create a column definition asset with file type info but no columns.
-                                // This will be used to generate an UploadFile wrapper instead of a CreateCsvEntry wrapper.
-                                columnDefs.Add(ScriptableObject.CreateInstance<VERAColumnDefinition>());
-                                int idx = columnDefs.Count - 1;
-
-                                try
-                                {
-                                    AssetDatabase.CreateAsset(columnDefs[idx], relativePath);
-                                }
-                                catch (System.Exception e)
-                                {
-                                    VERADebugger.LogError($"Failed to create asset at path '{relativePath}': {e.Message}", "VERA Authentication");
-                                    continue;
-                                }
-
-                                // No columns for non-CSV file types
-                                columnDefs[idx].columns.Clear();
-
-                                // Save file type info
-                                columnDefs[idx].fileType = new VERAColumnDefinition.FileType();
-                                columnDefs[idx].fileType.fileTypeId = fileTypes[i]._id;
-                                columnDefs[idx].fileType.name = fileTypes[i].name;
-                                columnDefs[idx].fileType.description = fileTypes[i].description;
-                                columnDefs[idx].fileType.extension = fileTypes[i].extension;
-
-                                EditorUtility.SetDirty(columnDefs[idx]);
-                                AssetDatabase.SaveAssets();
-
-                                // Add define symbol for this file type
-                                definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
+                                VERADebugger.LogWarning(
+                                    $"File type \"{fileTypes[i].name}\" is a CSV but the portal did not return a column definition. " +
+                                    "A wrapper class will still be generated; add columns on the portal and refresh file types to update it.",
+                                    "VERA Authentication");
                             }
+
+                            columnDefs[idx].fileType = new VERAColumnDefinition.FileType();
+                            columnDefs[idx].fileType.fileTypeId = fileTypes[i]._id;
+                            columnDefs[idx].fileType.name = fileTypes[i].name;
+                            columnDefs[idx].fileType.description = fileTypes[i].description;
+                            columnDefs[idx].fileType.extension = isCsv ? "csv" : fileTypes[i].extension;
+
+                            EditorUtility.SetDirty(columnDefs[idx]);
+                            AssetDatabase.SaveAssets();
+
+                            // Generate from the in-memory asset so we do not depend on Resources.LoadAll
+                            // seeing a brand-new asset in the same editor update tick.
+                            FileTypeGenerator.GenerateFileTypeCsCode(columnDefs[idx], false);
+
+                            definitionsToAdd.Add("VERAFile_" + fileTypes[i].name);
                         }
 
                         // Update the baseline telemetry column definition's fileTypeId
@@ -1177,7 +1186,9 @@ namespace VERA
                         for (int i = 0; i < fileTypes.Count; i++)
                         {
                             string normalizedName = (fileTypes[i].name ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
-                            if (normalizedName == "surveyresponses" && fileTypes[i].extension == "csv")
+                            if (normalizedName == "surveyresponses" &&
+                                (string.IsNullOrEmpty(fileTypes[i].extension) ||
+                                 fileTypes[i].extension.Equals("csv", StringComparison.OrdinalIgnoreCase)))
                             {
                                 // Check if we already created this in the loop above
                                 bool alreadyCreated = false;
@@ -1225,11 +1236,29 @@ namespace VERA
                             }
                         }
 
-                        AssetDatabase.Refresh();
+                        // Keep the locally-managed telemetry define so ReplaceDefines cannot
+                        // remove it and trigger a recompile / InitializeOnLoad add-back cycle.
+                        string telemetrySymbol = "VERAFile_" + VERAExperimentTelemetrySchema.Name;
+                        if (!definitionsToAdd.Contains(telemetrySymbol))
+                            definitionsToAdd.Add(telemetrySymbol);
 
-                        // Generate code for all file types
+                        // Generate remaining wrappers (e.g. baseline telemetry). Individual files
+                        // are imported only when their contents actually change.
                         FileTypeGenerator.GenerateAllFileTypesCsCode();
                         ReplaceDefines(definitionsToAdd);
+
+                        if (definitionsToAdd.Count > 0)
+                        {
+                            VERADebugger.Log(
+                                $"Synced {definitionsToAdd.Count} file type(s) from the portal: {string.Join(", ", definitionsToAdd)}",
+                                "VERA Authentication");
+                        }
+                        else
+                        {
+                            VERADebugger.LogWarning(
+                                "No file types were generated for this experiment. If you just created a file type on the portal, confirm it is saved, then use VERA -> Refresh File Types.",
+                                "VERA Authentication");
+                        }
                     }
 
                     request.Dispose();
@@ -1237,7 +1266,8 @@ namespace VERA
             }
         }
 
-        // Deletes all existing column definitions in the columns folder
+        // Deletes existing column definitions in the columns folder, preserving the
+        // locally-managed Experiment_Telemetry assets created by VERABaselineDataSetup.
         public static void DeleteExistingColumnDefs()
         {
             string columnsFilePath = GetAbsoluteColumnsFilePath();
@@ -1247,6 +1277,9 @@ namespace VERA
 
                 foreach (string file in files)
                 {
+                    if (Path.GetFileName(file).IndexOf(VERAExperimentTelemetrySchema.Name, StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+
                     try
                     {
                         File.Delete(file);
@@ -1276,6 +1309,176 @@ namespace VERA
             return relativePath;
         }
 
+        private static readonly HashSet<string> AutoColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "pid", "conditions", "ts", "timestamp", "timestamp_utc", "eventid"
+        };
+
+        // True when local column defs, generated wrappers, and scripting defines already
+        // match the portal file types — so regeneration would be a no-op besides churn.
+        private static bool FileTypesAreUpToDate(List<FtFileType> fileTypes)
+        {
+            List<VERAColumnDefinition> existingDefs = LoadLocalColumnDefs();
+            HashSet<string> expectedNames = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> expectedDefines = new HashSet<string> { "VERAFile_" + VERAExperimentTelemetrySchema.Name };
+
+            for (int i = 0; i < fileTypes.Count; i++)
+            {
+                FtFileType ft = fileTypes[i];
+                if (string.IsNullOrEmpty(ft.name))
+                    return false;
+
+                string normalizedName = (ft.name ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+                bool isTelemetry = ft.name == VERAExperimentTelemetrySchema.Name || normalizedName == "experimenttelemetry";
+                bool isSurvey = normalizedName == "surveyresponses";
+
+                expectedDefines.Add("VERAFile_" + (isSurvey ? "Survey_Responses" : ft.name));
+
+                if (isTelemetry)
+                    continue;
+
+                expectedNames.Add(isSurvey ? "Survey_Responses" : ft.name);
+
+                VERAColumnDefinition local = existingDefs.FirstOrDefault(d =>
+                    d.fileType != null &&
+                    string.Equals(d.fileType.name, isSurvey ? "Survey_Responses" : ft.name, StringComparison.Ordinal));
+
+                if (local == null || local.fileType == null)
+                    return false;
+
+                if (!string.Equals(local.fileType.fileTypeId, ft._id, StringComparison.Ordinal))
+                    return false;
+
+                bool remoteIsCsv = string.IsNullOrEmpty(ft.extension) ||
+                                   ft.extension.Equals("csv", StringComparison.OrdinalIgnoreCase);
+                bool localIsCsv = string.IsNullOrEmpty(local.fileType.extension) ||
+                                  local.fileType.extension.Equals("csv", StringComparison.OrdinalIgnoreCase);
+                if (remoteIsCsv != localIsCsv)
+                    return false;
+                if (!remoteIsCsv && !string.Equals(local.fileType.extension, ft.extension, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                if (!isSurvey && !ColumnsMatch(local, ft))
+                    return false;
+
+                if (!isSurvey)
+                {
+                    string generatedPath = FileTypeGenerator.GeneratedCsDirectory + "VERAFile_" + ft.name + ".cs";
+                    if (!File.Exists(generatedPath))
+                        return false;
+                }
+            }
+
+            foreach (VERAColumnDefinition def in existingDefs)
+            {
+                if (def?.fileType == null || string.IsNullOrEmpty(def.fileType.name))
+                    continue;
+                if (def.fileType.name == VERAExperimentTelemetrySchema.Name)
+                    continue;
+                if (!expectedNames.Contains(def.fileType.name))
+                    return false;
+            }
+
+            HashSet<string> currentDefines = new HashSet<string>(
+                GetDefineSymbols().Select(s => s.Trim()).Where(s => s.StartsWith("VERAFile_")));
+            if (!expectedDefines.SetEquals(currentDefines))
+                return false;
+
+            string telemetryGeneratedPath = FileTypeGenerator.GeneratedCsDirectory + "VERAFile_" + VERAExperimentTelemetrySchema.Name + ".cs";
+            if (!File.Exists(telemetryGeneratedPath))
+                return false;
+
+            return true;
+        }
+
+        private static List<VERAColumnDefinition> LoadLocalColumnDefs()
+        {
+            var result = new List<VERAColumnDefinition>();
+            string relativeDir = GetRelativeColumnsFilePath();
+            string absoluteDir = GetAbsoluteColumnsFilePath();
+            if (!Directory.Exists(absoluteDir))
+                return result;
+
+            foreach (string file in Directory.GetFiles(absoluteDir, "*.asset"))
+            {
+                string relativePath = relativeDir + "/" + Path.GetFileName(file);
+                var def = AssetDatabase.LoadAssetAtPath<VERAColumnDefinition>(relativePath);
+                if (def != null)
+                    result.Add(def);
+            }
+
+            return result;
+        }
+
+        private static bool ColumnsMatch(VERAColumnDefinition local, FtFileType remote)
+        {
+            List<string> localKeys = new List<string>();
+            if (local.columns != null)
+            {
+                foreach (VERAColumnDefinition.Column col in local.columns)
+                {
+                    if (col == null || IsIgnoredColumn(col.name))
+                        continue;
+                    localKeys.Add(col.name + "\0" + col.type);
+                }
+            }
+
+            List<string> remoteKeys = new List<string>();
+            if (remote.columnDefinition?.columns != null)
+            {
+                foreach (FtColumn col in remote.columnDefinition.columns.OrderBy(c => c.order))
+                {
+                    if (col == null || IsIgnoredColumn(col.name))
+                        continue;
+                    remoteKeys.Add(col.name + "\0" + MapApiDataType(col.dataType));
+                }
+            }
+
+            if (localKeys.Count != remoteKeys.Count)
+                return false;
+
+            localKeys.Sort(StringComparer.Ordinal);
+            remoteKeys.Sort(StringComparer.Ordinal);
+            for (int i = 0; i < localKeys.Count; i++)
+            {
+                if (localKeys[i] != remoteKeys[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsIgnoredColumn(string name)
+        {
+            return string.IsNullOrEmpty(name) || AutoColumnNames.Contains(name);
+        }
+
+        private static VERAColumnDefinition.DataType MapApiDataType(string dataType)
+        {
+            switch ((dataType ?? "").Trim().ToLowerInvariant())
+            {
+                case "string":
+                    return VERAColumnDefinition.DataType.String;
+                case "integer":
+                case "int":
+                case "number":
+                    return VERAColumnDefinition.DataType.Number;
+                case "transform":
+                    return VERAColumnDefinition.DataType.Transform;
+                case "date":
+                    return VERAColumnDefinition.DataType.Date;
+                case "json":
+                    return VERAColumnDefinition.DataType.JSON;
+                case "boolean":
+                case "bool":
+                    return VERAColumnDefinition.DataType.Boolean;
+                case "float":
+                    return VERAColumnDefinition.DataType.Float;
+                default:
+                    return VERAColumnDefinition.DataType.Date;
+            }
+        }
+
 
         #endregion
 
@@ -1292,12 +1495,18 @@ namespace VERA
             // Use the new API for Unity 2023.1 and newer
             NamedBuildTarget namedBuildTarget = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(activeBuildTarget));
             List<string> currentSymbols = PlayerSettings
-                .GetScriptingDefineSymbols(namedBuildTarget).Split(';').ToList();
+                .GetScriptingDefineSymbols(namedBuildTarget).Split(';')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToList();
 #else
         // Use the old API for older Unity versions
         BuildTargetGroup activeBuildTargetGroup = BuildPipeline.GetBuildTargetGroup(activeBuildTarget);
         List<string> currentSymbols = PlayerSettings
-            .GetScriptingDefineSymbolsForGroup(activeBuildTargetGroup).Split(';').ToList();
+            .GetScriptingDefineSymbolsForGroup(activeBuildTargetGroup).Split(';')
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .ToList();
 #endif
 
             return currentSymbols;
@@ -1377,6 +1586,13 @@ namespace VERA
         private static void ReplaceDefines(List<string> symbols)
         {
             HashSet<string> newSymbols = new HashSet<string>(symbols);
+
+            // Experiment_Telemetry is created locally by VERABaselineDataSetup, not by this
+            // portal file-type list. Dropping it here would recompile, then InitializeOnLoad
+            // would add it back and recompile again on every refresh.
+            string telemetrySymbol = "VERAFile_" + VERAExperimentTelemetrySchema.Name;
+            newSymbols.Add(telemetrySymbol);
+
             List<string> oldVeraSymbols = GetDefineSymbols().Where(s => s.StartsWith("VERAFile_")).ToList();
             HashSet<string> oldVeraSymbols_HashSet = new HashSet<string>(oldVeraSymbols);
 

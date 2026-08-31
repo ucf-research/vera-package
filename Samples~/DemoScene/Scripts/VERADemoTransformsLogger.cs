@@ -34,10 +34,10 @@ namespace VERA
         {
             // Perform an initial log if the VERA Logger is already initialized.
             // Otherwise, wait for the VERA Logger to be initialized before performing the initial log.
-            if (VERASessionManager.initialized)
+            if (VERASessionManager.sessionInProgress)
                 PerformInitialLog();
             else
-                VERASessionManager.onInitialized.AddListener(PerformInitialLog);
+                VERASessionManager.onSessionStart.AddListener(PerformInitialLog);
         }
 
         // Performs the initial log of the main camera and controllers' transforms.
@@ -64,9 +64,9 @@ namespace VERA
 
         private void Update()
         {
-            if (!VERASessionManager.initialized || !VERASessionManager.collecting)
+            if (!VERASessionManager.sessionInProgress)
             {
-                // If the VERA Logger is not collecting or initialized, do not log anything
+                // If a participant session is not in progress, do not log anything
                 return;
             }
 

@@ -12,7 +12,8 @@ namespace VERA
     {
         // FileTypeGenerator will generate .cs files for associated column definitions, to allow easy logging of data per-file
 
-        private const string generatedCsPath = "Assets/VERA/Filetypes/GeneratedCode/";
+        internal const string GeneratedCsDirectory = "Assets/VERA/Filetypes/GeneratedCode/";
+        private const string generatedCsPath = GeneratedCsDirectory;
         private static readonly HashSet<string> autoNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pid", "conditions", "ts", "timestamp", "timestamp_utc" };
 
         // Deletes all generated file type cs code
@@ -30,8 +31,9 @@ namespace VERA
             AssetDatabase.Refresh();
         }
 
-        // Generates .cs files for every column definition currently in the columns folder
-        public static void GenerateAllFileTypesCsCode()
+        // Generates .cs files for every column definition currently in the columns folder.
+        // Returns true if any generated file was written or deleted.
+        public static bool GenerateAllFileTypesCsCode()
         {
             // Regenerating/refreshing assets while playing freezes the editor.
             if (Application.isPlaying)
@@ -39,19 +41,18 @@ namespace VERA
                 VERADebugger.LogWarning(
                     "Skipped file type code generation because play mode is active.",
                     "VERA FileTypeGenerator");
-                return;
+                return false;
             }
 
-            // Get all items
+            bool anyChanged = false;
             VERAColumnDefinition[] columnDefinitions = Resources.LoadAll<VERAColumnDefinition>("");
 
-            // Generate code
             foreach (VERAColumnDefinition columnDefinition in columnDefinitions)
             {
-                GenerateFileTypeCsCode(columnDefinition, false);
+                anyChanged |= GenerateFileTypeCsCode(columnDefinition, false);
             }
 
-            AssetDatabase.Refresh();
+            return anyChanged;
         }
 
         // Adds a Unity Editor menu item so developers can regenerate file type wrappers from the Editor
@@ -62,9 +63,13 @@ namespace VERA
             VERADebugger.Log("Generated all file type wrapper code.", "VERA FileTypeGenerator", DebugPreference.None);
         }
 
-        // Generates .cs file for a given column definition
-        public static void GenerateFileTypeCsCode(VERAColumnDefinition columnDefinition, bool refreshOnFinish)
+        // Generates .cs file for a given column definition.
+        // Returns true if the generated file was written or deleted.
+        public static bool GenerateFileTypeCsCode(VERAColumnDefinition columnDefinition, bool refreshOnFinish)
         {
+            if (columnDefinition == null || columnDefinition.fileType == null || string.IsNullOrEmpty(columnDefinition.fileType.name))
+                return false;
+
             string fileName = columnDefinition.fileType.name;
             string filePath = generatedCsPath + "VERAFile_" + fileName + ".cs";
 
@@ -74,9 +79,13 @@ namespace VERA
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
+                    string metaPath = filePath + ".meta";
+                    if (File.Exists(metaPath))
+                        File.Delete(metaPath);
                     AssetDatabase.Refresh();
+                    return true;
                 }
-                return;
+                return false;
             }
 
             // Determine if this is a CSV or non-CSV file type
@@ -147,7 +156,7 @@ namespace VERA
                 if (oldNormalized == newNormalized)
                 {
                     // no changes, skip write and recompile
-                    return;
+                    return false;
                 }
             }
 
@@ -160,11 +169,15 @@ namespace VERA
             // Write the file
             File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
 
-            // Force Unity to refresh so the new/modified code is recognized
+            // Import only this file so Unity recompiles when content actually changed
+            AssetDatabase.ImportAsset(filePath, ImportAssetOptions.ForceUpdate);
+
             if (refreshOnFinish)
             {
                 AssetDatabase.Refresh();
             }
+
+            return true;
         }
 
         // Generates the CreateCsvEntry function for a given column definition

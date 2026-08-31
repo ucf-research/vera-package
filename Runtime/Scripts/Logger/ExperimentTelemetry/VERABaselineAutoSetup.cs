@@ -119,7 +119,7 @@ namespace VERA
             while (true)
             {
                 // Wait for VERA Logger to be initialized
-                if (VERALogger.Instance == null || !VERALogger.Instance.initialized)
+                if (VERALogger.Instance == null || !VERALogger.Instance.sessionInProgress)
                 {
                     yield return new WaitForSeconds(1f);
                     continue;
@@ -164,7 +164,7 @@ namespace VERA
             yield return new WaitForEndOfFrame();
 
             // Wait for VERA Logger to be ready
-            while (VERALogger.Instance == null || !VERALogger.Instance.initialized)
+            while (VERALogger.Instance == null || !VERALogger.Instance.sessionInProgress)
             {
                 yield return new WaitForSeconds(1f);
             }

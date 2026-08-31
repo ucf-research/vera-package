@@ -21,17 +21,17 @@ namespace VERA
             // Change useSimpleConditionSetting to demonstrate two different example methods of assigning conditions:
             //   1) Simple condition setting to a specific value
             //   2) "Automatic" condition setting based on participant ID (e.g. 50/50 split)
-            // To set conditions, the VERA session must be fully initialized.
-            // To make sure our code runs after initialization, we use the onInitialized event.
+            // To set conditions, a participant session must be in progress.
+            // To make sure our code runs after the session starts, we use the onSessionStart event.
             if (useSimpleConditionSetting)
             {
-                // This line makes sure "SetConditionsSimple" is called right after the VERA session is initialized
-                VERASessionManager.onInitialized.AddListener(SetConditionsSimple);
+                // This line makes sure "SetConditionsSimple" is called right after the VERA session starts
+                VERASessionManager.onSessionStart.AddListener(SetConditionsSimple);
             }
             else
             {
-                // This line makes sure "SetConditionsByParticipantID" is called right after the VERA session is initialized
-                VERASessionManager.onInitialized.AddListener(SetConditionsByParticipantID);
+                // This line makes sure "SetConditionsByParticipantID" is called right after the VERA session starts
+                VERASessionManager.onSessionStart.AddListener(SetConditionsByParticipantID);
             }
         }
 

@@ -98,7 +98,7 @@ namespace VERA
                         GUILayout.Label("Use the dropdown below to select from your experiments. Your Unity project can only be linked to a single experiment at a time.", EditorStyles.wordWrappedLabel);
                         GUILayout.Space(5);
 
-                        GUILayout.Label("If you don't see your experiment in the dropdown, use the button below to refresh, and look for your experiment again.", EditorStyles.wordWrappedLabel);
+                        GUILayout.Label("If you don't see your experiment in the dropdown, or you recently added file types or conditions on the VERA portal, use the button below to refresh.", EditorStyles.wordWrappedLabel);
                         GUILayout.Space(5);
 
                         for (int i = 0; i < experimentList.Count; i++)
@@ -304,8 +304,9 @@ namespace VERA
                     }
 
                     // Only call ChangeActiveExperiment if the experiment actually changed;
-                    // this avoids UpdateColumnDefs / GetBuildAuthToken / survey regeneration
-                    // (and the recompile that can come with them) when nothing has changed.
+                    // this avoids GetBuildAuthToken / survey regeneration when the selected
+                    // experiment is unchanged. File types are synced separately below, because
+                    // they can be added or edited on the portal without the experiment ID changing.
                     if (experimentChanged)
                     {
                         if (experimentList[selectedExperimentIndex] != null)
@@ -316,6 +317,12 @@ namespace VERA
                         {
                             VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
                         }
+                    }
+                    else
+                    {
+                        // Same experiment is still selected — still re-fetch file types so newly
+                        // created portal file types (e.g. CubeRotation) generate wrapper code.
+                        VERAAuthenticator.UpdateColumnDefs();
                     }
 
                     // Find the index of the old selected site
@@ -484,6 +491,26 @@ namespace VERA
                 // Display description for the selected option
                 GUILayout.Space(5);
                 EditorGUILayout.HelpBox(DataRecordingTypeDescriptions[newIndex], MessageType.Info);
+
+                // Auto-Start Participant Sessions
+                GUILayout.Space(15);
+                GUILayout.Label("Participant Sessions", EditorStyles.boldLabel);
+                GUILayout.Label("Choose whether VERA should start a participant session automatically when the application starts.", EditorStyles.wordWrappedLabel);
+                GUILayout.Space(5);
+
+                bool currentAutoStart = VERAAuthenticator.GetAutoStartParticipantSessions();
+                bool newAutoStart = EditorGUILayout.Toggle("Auto-Start Participant Sessions", currentAutoStart);
+                if (newAutoStart != currentAutoStart)
+                {
+                    VERAAuthenticator.ChangeAutoStartParticipantSessions(newAutoStart);
+                }
+
+                GUILayout.Space(5);
+                EditorGUILayout.HelpBox(
+                    newAutoStart
+                        ? "VERA will automatically create a participant and begin data collection when the application starts (or, in WebXR, as soon as the portal provides the site and participant IDs). This is the recommended setting for most experiments."
+                        : "VERA will not create a participant or begin data collection until you call VERASessionManager.StartNewParticipantSession(). In WebXR builds, the portal still supplies the site and participant IDs; those IDs are used when the session starts, but recording does not begin until you start it manually.",
+                    MessageType.Info);
 
                 // Rotation Format setting
                 GUILayout.Space(15);
