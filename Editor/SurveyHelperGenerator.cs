@@ -43,6 +43,24 @@ namespace VERA
             }
 
             AssetDatabase.Refresh();
+            GenerateSurveyHelperCode(new List<VERASurveyInfo>());
+        }
+
+        // Removes generated SurveyInfo assets that are not part of the current experiment
+        private static void DeleteStaleSurveyInfoAssets(HashSet<string> keepFileNames)
+        {
+            if (!Directory.Exists(generatedSurveyInfoPath))
+                return;
+
+            foreach (string file in Directory.GetFiles(generatedSurveyInfoPath, "*.asset"))
+            {
+                string fileName = Path.GetFileName(file);
+                if (keepFileNames != null && keepFileNames.Contains(fileName))
+                    continue;
+
+                string relativePath = generatedSurveyInfoPath + fileName;
+                AssetDatabase.DeleteAsset(relativePath);
+            }
         }
 
 
@@ -98,15 +116,23 @@ namespace VERA
                     {
                         RunnableSurveysResponse response = JsonUtility.FromJson<RunnableSurveysResponse>(jsonResponse);
 
-                        // Create SurveyInfo assets and associated code helpers for each survey
                         List<VERASurveyInfo> createdSurveyInfos = new List<VERASurveyInfo>();
-                        foreach (var survey in response.surveys)
+                        HashSet<string> keepAssetFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        if (response?.surveys != null)
                         {
-                            VERASurveyInfo surveyInfo = CreateSurveyInfoAsset(survey);
-                            createdSurveyInfos.Add(surveyInfo);
+                            foreach (var survey in response.surveys)
+                            {
+                                VERASurveyInfo surveyInfo = CreateSurveyInfoAsset(survey);
+                                createdSurveyInfos.Add(surveyInfo);
+
+                                string sanitizedName = SanitizeFileName(survey.surveyName);
+                                if (string.IsNullOrEmpty(sanitizedName))
+                                    sanitizedName = $"Survey_{survey._id}";
+                                keepAssetFiles.Add(sanitizedName + ".asset");
+                            }
                         }
 
-                        // Create the survey helper code file that references all the created SurveyInfo assets
+                        DeleteStaleSurveyInfoAssets(keepAssetFiles);
                         GenerateSurveyHelperCode(createdSurveyInfos);
                     }
                     catch (Exception ex)
@@ -235,10 +261,15 @@ namespace VERA
         // Generates the static survey helper class code that references all created SurveyInfo assets
         private static void GenerateSurveyHelperCode(List<VERASurveyInfo> surveyInfos)
         {
-            if (surveyInfos == null || surveyInfos.Count == 0)
+            if (surveyInfos == null)
+                surveyInfos = new List<VERASurveyInfo>();
+
+            if (surveyInfos.Count == 0)
             {
-                VERADebugger.LogWarning("No surveys found to generate helper code for.", "SurveyHelperGenerator");
-                return;
+                VERADebugger.Log(
+                    "No surveys found for this experiment; generating an empty VERASurveyHelper.",
+                    "SurveyHelperGenerator",
+                    DebugPreference.Verbose);
             }
 
             StringBuilder sb = new StringBuilder();
@@ -335,6 +366,9 @@ namespace VERA
                 sb.AppendLine($"\t\t\t/// <summary>{surveyInfo.surveyName}</summary>");
                 sb.AppendLine($"\t\t\tS_{enumName},");
             }
+
+            if (surveyInfos.Count == 0)
+                sb.AppendLine("\t\t\t// No surveys are defined for this experiment.");
 
             sb.AppendLine("\t\t}");
             sb.AppendLine();

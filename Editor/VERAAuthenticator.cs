@@ -783,6 +783,7 @@ namespace VERA
             {
                 ConditionGenerator.ClearAllConditionCsCode();
                 ClearBuildAuthentication();
+                SurveyHelperGenerator.ClearAllSurveyInfos();
                 return;
             }
 
