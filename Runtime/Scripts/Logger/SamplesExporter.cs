@@ -13,34 +13,49 @@ namespace VERA
         // into the hidden Samples~ folder used by the VERA package.
 
         const string packageFolder = "VERA";
-        const string samplesRelativePath = "Samples~/DemoScene";
-        const string assetsPath = "Assets/_SamplesWorking/DemoScene";
+        const string samplesRoot = "Samples~";
+        const string assetsRoot = "Assets/_SamplesWorking";
+
+        static readonly string[] SampleFolders =
+        {
+            "DemoScene",
+            "VERASandboxDemo",
+            "VERATelemetryReplay",
+        };
 
         [MenuItem("VERA/Export Samples (DEV)")]
         public static void Export()
         {
-            string dst = Path.Combine("Packages", packageFolder, samplesRelativePath).Replace("\\", "/");
-            string src = assetsPath.Replace("\\", "/");
+            string dstRoot = Path.Combine("Packages", packageFolder, samplesRoot).Replace("\\", "/");
+            string srcRoot = assetsRoot.Replace("\\", "/");
 
-            // Ensure destination directory is completely removed
-            if (Directory.Exists(dst))
+            foreach (string sampleFolder in SampleFolders)
             {
-                Directory.Delete(dst, true);
-            }
-            
-            // Also try FileUtil method as backup
-            if (AssetDatabase.IsValidFolder(dst))
-            {
-                FileUtil.DeleteFileOrDirectory(dst);
+                string src = Path.Combine(srcRoot, sampleFolder).Replace("\\", "/");
+                string dst = Path.Combine(dstRoot, sampleFolder).Replace("\\", "/");
+
+                if (!Directory.Exists(src))
+                {
+                    VERADebugger.LogWarning($"Sample folder not found, skipping: {src}", "SamplesExporter");
+                    continue;
+                }
+
+                if (Directory.Exists(dst))
+                {
+                    Directory.Delete(dst, true);
+                }
+
+                if (AssetDatabase.IsValidFolder(dst))
+                {
+                    FileUtil.DeleteFileOrDirectory(dst);
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(dst));
+                FileUtil.CopyFileOrDirectory(src, dst);
             }
 
-            // Ensure parent directory exists
-            Directory.CreateDirectory(Path.GetDirectoryName(dst));
-            
-            // Copy the directory
-            FileUtil.CopyFileOrDirectory(src, dst);
             AssetDatabase.Refresh();
-            VERADebugger.Log($"Successfully exported sample from '{src}' to '{dst}'.", "SamplesExporter", DebugPreference.None);
+            VERADebugger.Log($"Successfully exported samples from '{srcRoot}' to '{dstRoot}'.", "SamplesExporter", DebugPreference.None);
         }
     }
 }

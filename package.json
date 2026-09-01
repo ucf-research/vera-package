@@ -29,6 +29,11 @@
       "displayName": "VERA Sandbox Demo",
       "description": "A hands-on demo showcasing VERA's capabilities.",
       "path": "Samples~/VERASandboxDemo"
+    },
+    {
+      "displayName": "VERA Telemetry Replay",
+      "description": "Replay a participant's experiment telemetry session in the Unity editor.",
+      "path": "Samples~/VERATelemetryReplay"
     }
   ],
   "documentationUrl": "https://vera-xr.io/documentation",
