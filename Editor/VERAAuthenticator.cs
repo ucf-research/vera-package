@@ -758,7 +758,7 @@ namespace VERA
         }
 
         // Changes the currently active experiment
-        public static void ChangeActiveExperiment(string activeExperimentId, string activeExperimentName, bool isMultiSite, int currentBuildNumber)
+        public static void ChangeActiveExperiment(string activeExperimentId, string activeExperimentName, bool isMultiSite, int currentBuildNumber, Action onComplete = null)
         {
             // Get current auth info, to not overwrite other existing info
             VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
@@ -775,17 +775,30 @@ namespace VERA
             // Update session state for dev tools sim participant to avoid inter-experiment conflicts
             SessionState.SetBool("VERA_SimParticipant", false);
 
-            // Update all column definition assets to this new experiment
-            UpdateColumnDefs();
-
             // Clear generated condition code and build authentication if no active experiment
             if (string.IsNullOrEmpty(activeExperimentId))
             {
+                UpdateColumnDefs();
                 ConditionGenerator.ClearAllConditionCsCode();
                 ClearBuildAuthentication();
                 SurveyHelperGenerator.ClearAllSurveyInfos();
+                onComplete?.Invoke();
                 return;
             }
+
+            bool columnsDone = false;
+            bool surveysDone = false;
+            void TryComplete()
+            {
+                if (columnsDone && surveysDone)
+                    onComplete?.Invoke();
+            }
+
+            UpdateColumnDefs(() =>
+            {
+                columnsDone = true;
+                TryComplete();
+            });
 
             // Update authentication token for the new experiment to allow data collection.
             // Survey helper generation is deferred until after the new token is saved, to avoid
@@ -796,12 +809,16 @@ namespace VERA
                 {
                     VERADebugger.LogError("Failed to authenticate for experiment. Cannot change active experiment. " +
                         "Please check your internet connection, refresh experiments, and try again.", "VERA Authentication");
+                    surveysDone = true;
+                    TryComplete();
+                    return;
                 }
-                else
+
+                SurveyHelperGenerator.FetchAndConvertSurveys(() =>
                 {
-                    // Generate survey helper code and SurveyInfo assets now that the correct token is saved
-                    SurveyHelperGenerator.FetchAndConvertSurveys();
-                }
+                    surveysDone = true;
+                    TryComplete();
+                });
             });
         }
 
@@ -1010,13 +1027,14 @@ namespace VERA
 
 
         // Updates the column definition to the current experiment's column definition
-        public static void UpdateColumnDefs()
+        public static void UpdateColumnDefs(Action onComplete = null)
         {
             // If there is no active experiment, we cannot do anything with the columns
             if (PlayerPrefs.GetString("VERA_ActiveExperiment", null) == null || PlayerPrefs.GetString("VERA_ActiveExperiment", null) == "")
             {
                 DeleteExistingColumnDefs();
                 ClearFileTypeDefineSymbols();
+                onComplete?.Invoke();
                 return;
             }
 
@@ -1045,15 +1063,17 @@ namespace VERA
 
             void EditorUpdate()
             {
-                if (operation.isDone)
+                if (!operation.isDone)
+                    return;
+
+                EditorApplication.update -= EditorUpdate;
+                try
                 {
-                    EditorApplication.update -= EditorUpdate;
                     // On error, can't make any column definitions
                     if (request.result != UnityWebRequest.Result.Success)
                     {
                         VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
                                 "Please try refreshing your experiments and trying again.", "VERA Authentication");
-                        request.Dispose();
                         return;
                     }
                     else
@@ -1066,7 +1086,6 @@ namespace VERA
                         {
                             VERADebugger.LogError("Unexpected response from server; could not get column definitions. " +
                                 "Please try refreshing your experiments and trying again.", "VERA Authentication");
-                            request.Dispose();
                             return;
                         }
 
@@ -1078,7 +1097,6 @@ namespace VERA
                                 "File types are already up to date; skipped regeneration.",
                                 "VERA Authentication",
                                 DebugPreference.Verbose);
-                            request.Dispose();
                             return;
                         }
 
@@ -1261,8 +1279,11 @@ namespace VERA
                                 "VERA Authentication");
                         }
                     }
-
+                }
+                finally
+                {
                     request.Dispose();
+                    onComplete?.Invoke();
                 }
             }
         }

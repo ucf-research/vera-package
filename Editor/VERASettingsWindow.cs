@@ -27,7 +27,6 @@ namespace VERA
         private static readonly Color BG_CARD = new Color(0.18f, 0.18f, 0.18f);
         private static readonly Color BG_CARD_HEADER_HOVER = new Color(0.22f, 0.22f, 0.22f);
         private static readonly Color BG_INPUT = new Color(0.14f, 0.14f, 0.14f);
-        private static readonly Color BG_CHIP = new Color(0.22f, 0.2f, 0.25f);
         private static readonly Color BG_SECONDARY_BTN = new Color(0.25f, 0.25f, 0.25f);
         private static readonly Color BG_SECONDARY_BTN_HOVER = new Color(0.32f, 0.32f, 0.32f);
         private static readonly Color TEXT_PRIMARY = new Color(0.92f, 0.92f, 0.92f);
@@ -38,6 +37,8 @@ namespace VERA
         private static readonly Color COLOR_ERROR = new Color(0.9f, 0.32f, 0.32f);
         private static readonly Color COLOR_INFO_BG = new Color(0.22f, 0.2f, 0.25f);
         private static readonly Color COLOR_ERROR_BG = new Color(0.28f, 0.16f, 0.16f);
+        private static readonly Color BG_SETUP_GROUP = new Color(1f, 1f, 1f, 0.035f);
+        private static readonly Color BORDER_HAIRLINE = new Color(1f, 1f, 1f, 0.08f);
 
         #endregion
 
@@ -52,7 +53,6 @@ namespace VERA
 
         private bool experimentFoldout = true;
         private bool dataRecordingFoldout = true;
-        private bool debugPreferencesFoldout = true;
         private bool buildUploadFoldout = true;
 
         private bool uiReady;
@@ -64,6 +64,9 @@ namespace VERA
         private VisualElement actionBar;
         private ScrollView scrollView;
         private VisualElement contentContainer;
+        private bool isLoadingExperimentSetup;
+        private int experimentSetupLoadGeneration;
+        private string experimentSetupLoadMessage = "Refreshing…";
 
         #endregion
 
@@ -235,6 +238,8 @@ namespace VERA
             Vector2 savedScroll = scrollView != null ? scrollView.scrollOffset : Vector2.zero;
 
             bool authenticated = PlayerPrefs.GetInt("VERA_UserAuthenticated") == 1;
+            if (!authenticated)
+                isLoadingExperimentSetup = false;
             UpdateHeader(authenticated);
             RebuildActionBar(authenticated);
 
@@ -357,7 +362,6 @@ namespace VERA
 
             contentContainer.Add(BuildExperimentSection(options));
             contentContainer.Add(BuildDataRecordingSection());
-            contentContainer.Add(BuildDebugPreferencesSection());
 
             if (options.Length > 0)
                 contentContainer.Add(BuildBuildUploadSection());
@@ -370,7 +374,7 @@ namespace VERA
 
         private VisualElement BuildExperimentSection(string[] options)
         {
-            return CreateCollapsibleCard("Your Experiment", experimentFoldout, expanded => experimentFoldout = expanded, body =>
+            return CreateCollapsibleCard("Active Experiment", experimentFoldout, expanded => experimentFoldout = expanded, body =>
             {
                 if (experimentList == null || experimentList.Count == 0)
                 {
@@ -397,33 +401,35 @@ namespace VERA
                 }
 
                 body.Add(CreateParagraph(
-                    "Use the dropdown below to select from your experiments. Your Unity project can only be linked to a single experiment at a time."));
+                    "Your Unity project can only be linked to a single experiment at a time. This selected experiment will be used for all VERA operations."));
                 body.Add(CreateParagraph(
-                    "If you don't see your experiment in the dropdown, or you recently added file types or conditions on the VERA portal, use the button below to refresh."));
+                    "Use the dropdown below to select your active experiment - the dropdown will list all experiments you have created or are collaborating on as shown on the VERA web portal. If you don't see your experiment in the dropdown, use the button below to refresh."));
 
                 for (int i = 0; i < experimentList.Count; i++)
                     options[i] = experimentList[i].name;
 
                 int experimentIndex = Mathf.Clamp(selectedExperimentIndex, 0, experimentList.Count - 1);
-                body.Add(CreateDropdown("Select Experiment", options.ToList(), experimentIndex, newIndex =>
+                VisualElement experimentDropdown = CreateDropdown("Select Experiment", options.ToList(), experimentIndex, newIndex =>
                 {
                     if (newIndex == selectedExperimentIndex)
                         return;
 
                     selectedExperimentIndex = newIndex;
-                    VERAAuthenticator.ChangeActiveExperiment(
-                        experimentList[selectedExperimentIndex]._id,
-                        experimentList[selectedExperimentIndex].name,
-                        experimentList[selectedExperimentIndex].isMultiSite,
-                        experimentList[selectedExperimentIndex].webXrBuildNumber);
-                    selectedSiteIndex = 0;
-                    VERAAuthenticator.ChangeActiveSite(
-                        experimentList[selectedExperimentIndex].sites[selectedSiteIndex]._id,
-                        experimentList[selectedExperimentIndex].sites[selectedSiteIndex].name);
-                    SaveSettings();
-                    ConditionGenerator.GenerateAllConditionCsCode(experimentList[selectedExperimentIndex]);
-                    ScheduleRebuild();
-                }));
+                    int loadGeneration = BeginExperimentSetupLoad("Loading…");
+                    ScheduleAfterPaint(() => ContinueLoadingSelectedExperiment(loadGeneration));
+                });
+                experimentDropdown.name = ExperimentDropdownName;
+                experimentDropdown.SetEnabled(!isLoadingExperimentSetup);
+                body.Add(experimentDropdown);
+
+                Button refreshButton = CreateSecondaryButton(
+                    isLoadingExperimentSetup && experimentSetupLoadMessage.StartsWith("Refresh", StringComparison.Ordinal)
+                        ? "Refreshing..."
+                        : "Refresh Experiments",
+                    RefreshExperiments);
+                refreshButton.name = RefreshExperimentsButtonName;
+                refreshButton.SetEnabled(!isLoadingExperimentSetup);
+                body.Add(refreshButton);
 
                 if (selectedExperimentIndex < experimentList.Count
                     && experimentList[selectedExperimentIndex] != null
@@ -451,11 +457,6 @@ namespace VERA
 
                 body.Add(BuildExperimentSetupSummary(experimentList[experimentIndex]));
 
-                body.Add(CreateSecondaryButton("Refresh Experiments", () =>
-                {
-                    RefreshExperiments();
-                }));
-
                 Label updated = CreateMutedLabel("Experiments last updated on " + timeExperimentsLastRefreshed + ".");
                 updated.style.marginTop = 8;
                 body.Add(updated);
@@ -476,7 +477,7 @@ namespace VERA
 
         private static readonly string[] DataRecordingTypeDescriptions = new string[]
         {
-            "VERA will not record any data locally, nor will it push any data to the VERA web portal. All calls to VERA's logging functions will be ignored.",
+            "VERA will not record any data locally, nor will it push any data to the VERA web portal. All calls to VERA's logging functions will be ignored. With this option selected, VERA can be considered effectively \"disabled\" for all sessions.",
             "VERA will save data locally on the device running the experiment. No data will be automatically sent to the VERA web portal.",
             "VERA will save data locally and also push it to the VERA web portal in real-time. This is the recommended setting for most experiments."
         };
@@ -495,82 +496,11 @@ namespace VERA
             "Transform rotation data will include both quaternion and Euler angles. This provides precision for programmatic use and readability for human inspection."
         };
 
-        private VisualElement BuildDataRecordingSection()
+        private static readonly string[] SessionStartBehaviorLabels = new string[]
         {
-            return CreateCollapsibleCard("Data Recording", dataRecordingFoldout, expanded => dataRecordingFoldout = expanded, body =>
-            {
-                body.Add(CreateParagraph("Select how VERA should handle data recording for this experiment."));
-
-                DataRecordingType currentRecordingType = VERAAuthenticator.GetDataRecordingType();
-                int currentIndex = (int)currentRecordingType;
-                if (currentIndex < 0 || currentIndex >= DataRecordingTypeLabels.Length)
-                    currentIndex = (int)DataRecordingType.RecordLocallyAndLive;
-
-                VisualElement recordingCalloutHost = new VisualElement();
-                recordingCalloutHost.Add(CreateCallout(DataRecordingTypeDescriptions[currentIndex], false));
-
-                body.Add(CreateDropdown("Recording Type", DataRecordingTypeLabels.ToList(), currentIndex, newIndex =>
-                {
-                    if (newIndex == (int)VERAAuthenticator.GetDataRecordingType())
-                        return;
-                    VERAAuthenticator.ChangeDataRecordingType((DataRecordingType)newIndex);
-                    recordingCalloutHost.Clear();
-                    recordingCalloutHost.Add(CreateCallout(DataRecordingTypeDescriptions[newIndex], false));
-                }));
-                body.Add(recordingCalloutHost);
-
-                body.Add(CreateSubHeader("Participant Sessions"));
-                body.Add(CreateParagraph(
-                    "Choose whether VERA should start a participant session automatically when the application starts."));
-
-                bool currentAutoStart = VERAAuthenticator.GetAutoStartParticipantSessions();
-                VisualElement autoStartCalloutHost = new VisualElement();
-                autoStartCalloutHost.Add(CreateCallout(GetAutoStartDescription(currentAutoStart), false));
-
-                body.Add(CreateStyledToggle("Auto-Start Participant Sessions", currentAutoStart, newAutoStart =>
-                {
-                    if (newAutoStart == VERAAuthenticator.GetAutoStartParticipantSessions())
-                        return;
-                    VERAAuthenticator.ChangeAutoStartParticipantSessions(newAutoStart);
-                    autoStartCalloutHost.Clear();
-                    autoStartCalloutHost.Add(CreateCallout(GetAutoStartDescription(newAutoStart), false));
-                }));
-                body.Add(autoStartCalloutHost);
-
-                body.Add(CreateSubHeader("Transform Rotation Format"));
-                body.Add(CreateParagraph("Select how rotation data should be formatted when logging transforms."));
-
-                RotationFormat currentRotationFormat = VERAAuthenticator.GetRotationFormat();
-                int currentRotationIndex = (int)currentRotationFormat;
-                if (currentRotationIndex < 0 || currentRotationIndex >= RotationFormatLabels.Length)
-                    currentRotationIndex = (int)RotationFormat.Quaternion;
-
-                VisualElement rotationCalloutHost = new VisualElement();
-                rotationCalloutHost.Add(CreateCallout(RotationFormatDescriptions[currentRotationIndex], false));
-
-                body.Add(CreateDropdown("Rotation Format", RotationFormatLabels.ToList(), currentRotationIndex, newRotationIndex =>
-                {
-                    if (newRotationIndex == (int)VERAAuthenticator.GetRotationFormat())
-                        return;
-                    VERAAuthenticator.ChangeRotationFormat((RotationFormat)newRotationIndex);
-                    rotationCalloutHost.Clear();
-                    rotationCalloutHost.Add(CreateCallout(RotationFormatDescriptions[newRotationIndex], false));
-                }));
-                body.Add(rotationCalloutHost);
-            });
-        }
-
-        private static string GetAutoStartDescription(bool autoStart)
-        {
-            return autoStart
-                ? "VERA will automatically create a participant and begin data collection when the application starts (or, in WebXR, as soon as the portal provides the site and participant IDs). This is the recommended setting for most experiments."
-                : "VERA will not create a participant or begin data collection until you call VERASessionManager.StartNewParticipantSession(). In WebXR builds, the portal still supplies the site and participant IDs; those IDs are used when the session starts, but recording does not begin until you start it manually.";
-        }
-
-        #endregion
-
-
-        #region DEBUG PREFERENCES
+            "Automatic",
+            "Manual"
+        };
 
         private static readonly string[] DebugPreferenceLabels = new string[]
         {
@@ -588,30 +518,113 @@ namespace VERA
             "VERA will not output any debug logs, warnings, or errors to the console. Use this setting if you want a completely silent experience."
         };
 
-        private VisualElement BuildDebugPreferencesSection()
+        private VisualElement BuildDataRecordingSection()
         {
-            return CreateCollapsibleCard("Debug Preferences", debugPreferencesFoldout, expanded => debugPreferencesFoldout = expanded, body =>
+            return CreateCollapsibleCard("Data Recording", dataRecordingFoldout, expanded => dataRecordingFoldout = expanded, body =>
             {
-                body.Add(CreateParagraph("Select the level of debug logging VERA should output to the console."));
+                DataRecordingType currentRecordingType = VERAAuthenticator.GetDataRecordingType();
+                int currentIndex = (int)currentRecordingType;
+                if (currentIndex < 0 || currentIndex >= DataRecordingTypeLabels.Length)
+                    currentIndex = (int)DataRecordingType.RecordLocallyAndLive;
+
+                VisualElement recordingCalloutHost = CreatePreferenceDescriptionHost(DataRecordingTypeDescriptions[currentIndex]);
+                body.Add(CreatePreferenceBlock(
+                    CreateDropdown("Recording Type", DataRecordingTypeLabels.ToList(), currentIndex, newIndex =>
+                    {
+                        if (newIndex == (int)VERAAuthenticator.GetDataRecordingType())
+                            return;
+                        VERAAuthenticator.ChangeDataRecordingType((DataRecordingType)newIndex);
+                        ReplacePreferenceDescription(recordingCalloutHost, DataRecordingTypeDescriptions[newIndex]);
+                    }),
+                    recordingCalloutHost));
+
+                bool currentAutoStart = VERAAuthenticator.GetAutoStartParticipantSessions();
+                int currentSessionStartIndex = currentAutoStart ? 0 : 1;
+                VisualElement autoStartCalloutHost = CreatePreferenceDescriptionHost(GetAutoStartDescription(currentAutoStart));
+                body.Add(CreatePreferenceBlock(
+                    CreateDropdown("Session Start Behavior", SessionStartBehaviorLabels.ToList(), currentSessionStartIndex, newIndex =>
+                    {
+                        bool newAutoStart = newIndex == 0;
+                        if (newAutoStart == VERAAuthenticator.GetAutoStartParticipantSessions())
+                            return;
+                        VERAAuthenticator.ChangeAutoStartParticipantSessions(newAutoStart);
+                        ReplacePreferenceDescription(autoStartCalloutHost, GetAutoStartDescription(newAutoStart));
+                    }),
+                    autoStartCalloutHost));
+
+                RotationFormat currentRotationFormat = VERAAuthenticator.GetRotationFormat();
+                int currentRotationIndex = (int)currentRotationFormat;
+                if (currentRotationIndex < 0 || currentRotationIndex >= RotationFormatLabels.Length)
+                    currentRotationIndex = (int)RotationFormat.Quaternion;
+
+                VisualElement rotationCalloutHost = CreatePreferenceDescriptionHost(RotationFormatDescriptions[currentRotationIndex]);
+                body.Add(CreatePreferenceBlock(
+                    CreateDropdown("Rotation Format", RotationFormatLabels.ToList(), currentRotationIndex, newRotationIndex =>
+                    {
+                        if (newRotationIndex == (int)VERAAuthenticator.GetRotationFormat())
+                            return;
+                        VERAAuthenticator.ChangeRotationFormat((RotationFormat)newRotationIndex);
+                        ReplacePreferenceDescription(rotationCalloutHost, RotationFormatDescriptions[newRotationIndex]);
+                    }),
+                    rotationCalloutHost));
 
                 DebugPreference currentDebugPreference = VERAAuthenticator.GetDebugPreference();
-                int currentIndex = (int)currentDebugPreference;
-                if (currentIndex < 0 || currentIndex >= DebugPreferenceLabels.Length)
-                    currentIndex = (int)DebugPreference.Informative;
+                int currentDebugIndex = (int)currentDebugPreference;
+                if (currentDebugIndex < 0 || currentDebugIndex >= DebugPreferenceLabels.Length)
+                    currentDebugIndex = (int)DebugPreference.Informative;
 
-                VisualElement debugCalloutHost = new VisualElement();
-                debugCalloutHost.Add(CreateCallout(DebugPreferenceDescriptions[currentIndex], false));
-
-                body.Add(CreateDropdown("Debug Level", DebugPreferenceLabels.ToList(), currentIndex, newIndex =>
-                {
-                    if (newIndex == (int)VERAAuthenticator.GetDebugPreference())
-                        return;
-                    VERAAuthenticator.ChangeDebugPreference((DebugPreference)newIndex);
-                    debugCalloutHost.Clear();
-                    debugCalloutHost.Add(CreateCallout(DebugPreferenceDescriptions[newIndex], false));
-                }));
-                body.Add(debugCalloutHost);
+                VisualElement debugCalloutHost = CreatePreferenceDescriptionHost(DebugPreferenceDescriptions[currentDebugIndex]);
+                VisualElement debugBlock = CreatePreferenceBlock(
+                    CreateDropdown("Debug Level", DebugPreferenceLabels.ToList(), currentDebugIndex, newIndex =>
+                    {
+                        if (newIndex == (int)VERAAuthenticator.GetDebugPreference())
+                            return;
+                        VERAAuthenticator.ChangeDebugPreference((DebugPreference)newIndex);
+                        ReplacePreferenceDescription(debugCalloutHost, DebugPreferenceDescriptions[newIndex]);
+                    }),
+                    debugCalloutHost);
+                debugBlock.style.marginBottom = 0;
+                body.Add(debugBlock);
             });
+        }
+
+        private VisualElement CreatePreferenceBlock(VisualElement control, VisualElement descriptionHost)
+        {
+            VisualElement block = new VisualElement();
+            block.style.marginBottom = 16;
+            control.style.marginTop = 0;
+            control.style.marginBottom = 0;
+            block.Add(control);
+            block.Add(descriptionHost);
+            return block;
+        }
+
+        private VisualElement CreatePreferenceDescriptionHost(string text)
+        {
+            VisualElement host = new VisualElement();
+            host.Add(CreatePreferenceDescription(text));
+            return host;
+        }
+
+        private void ReplacePreferenceDescription(VisualElement host, string text)
+        {
+            host.Clear();
+            host.Add(CreatePreferenceDescription(text));
+        }
+
+        private VisualElement CreatePreferenceDescription(string text)
+        {
+            VisualElement callout = CreateCallout(text, false);
+            callout.style.marginTop = 6;
+            callout.style.marginBottom = 0;
+            return callout;
+        }
+
+        private static string GetAutoStartDescription(bool autoStart)
+        {
+            return autoStart
+                ? "VERA will automatically create a participant and begin data collection when the application starts. In other words, every time the application begins, a new participant session will be created for collection."
+                : "VERA will not create a participant or begin data collection until you call VERASessionManager.StartNewParticipantSession(). In other words, data collection will not start until you explicitly manually start it yourself.";
         }
 
         #endregion
@@ -669,6 +682,11 @@ namespace VERA
         #region EXPERIMENT SETUP SUMMARY
 
         private const string ProjectColumnDefsPath = "Assets/VERA/Resources";
+        private const string RefreshExperimentsButtonName = "vera-refresh-experiments-button";
+        private const string RefreshExperimentsIconName = "vera-refresh-experiments-icon";
+        private const string ExperimentSetupBoxName = "vera-experiment-setup-box";
+        private const string RefreshOverlayName = "vera-refresh-spinner-overlay";
+        private const string ExperimentDropdownName = "vera-experiment-dropdown";
         private static readonly Regex SurveyHelperNameRegex = new Regex(
             @"=>\s*""GeneratedSurveyInfos/(?<name>[^""]+)""",
             RegexOptions.Compiled);
@@ -676,68 +694,87 @@ namespace VERA
         private VisualElement BuildExperimentSetupSummary(Experiment experiment)
         {
             VisualElement box = new VisualElement();
+            box.name = ExperimentSetupBoxName;
             box.style.backgroundColor = BG_INPUT;
             box.style.borderTopLeftRadius = 6;
             box.style.borderTopRightRadius = 6;
             box.style.borderBottomLeftRadius = 6;
             box.style.borderBottomRightRadius = 6;
-            box.style.paddingTop = 10;
-            box.style.paddingBottom = 8;
+            box.style.paddingTop = 12;
+            box.style.paddingBottom = 10;
             box.style.paddingLeft = 12;
-            box.style.paddingRight = 12;
+            box.style.paddingRight = 10;
             box.style.marginTop = 12;
             box.style.marginBottom = 10;
             box.style.borderLeftWidth = 3;
             box.style.borderLeftColor = VERA_PURPLE;
+            box.style.overflow = Overflow.Hidden;
+
+            VisualElement titleRow = new VisualElement();
+            titleRow.style.flexDirection = FlexDirection.Row;
+            titleRow.style.alignItems = Align.Center;
+            titleRow.style.marginBottom = 10;
 
             Label title = new Label("Experiment setup");
             title.style.fontSize = 12;
             title.style.color = VERA_PURPLE_LIGHT;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 8;
-            box.Add(title);
+            title.style.flexShrink = 1;
+            titleRow.Add(title);
+            titleRow.Add(CreateRefreshExperimentsIconButton());
+            box.Add(titleRow);
 
             List<(string name, string extension)> fileTypes = LoadProjectFileTypes();
-            box.Add(CreateSummaryHeading("File types", fileTypes.Count));
+            VisualElement fileGroup = CreateSetupGroup("File types", fileTypes.Count);
             if (fileTypes.Count == 0)
             {
-                box.Add(CreateEmptySummaryLine("None in this project."));
+                fileGroup.Add(CreateEmptySummaryLine("None in this project."));
             }
             else
             {
                 foreach (var fileType in fileTypes)
-                    box.Add(CreateFileTypeRow(fileType.name, fileType.extension));
+                    fileGroup.Add(CreateFileTypeRow(fileType.name, fileType.extension));
             }
+            box.Add(fileGroup);
 
             EnsureConditionEncodings(experiment);
             List<IVGroup> ivGroups = experiment?.conditions?.Where(iv => iv != null).ToList() ?? new List<IVGroup>();
-            box.Add(CreateSummaryHeading("Independent variables", ivGroups.Count));
+            VisualElement ivGroup = CreateSetupGroup("Independent variables", ivGroups.Count);
             if (ivGroups.Count == 0)
             {
-                box.Add(CreateEmptySummaryLine("None in this project."));
+                ivGroup.Add(CreateEmptySummaryLine("None in this project."));
             }
             else
             {
                 foreach (IVGroup iv in ivGroups)
-                    box.Add(CreateIndependentVariableRow(iv));
+                    ivGroup.Add(CreateIndependentVariableRow(iv));
             }
+            box.Add(ivGroup);
 
             List<string> surveys = LoadProjectSurveyNames();
-            box.Add(CreateSummaryHeading("Surveys", surveys.Count));
+            VisualElement surveysGroup = CreateSetupGroup(
+                "Surveys",
+                surveys.Count,
+                surveys.Count == 0
+                    ? null
+                    : CreateRevealGeneratedScriptButton(
+                        GetGeneratedSurveyHelperScriptPath(),
+                        "survey helper",
+                        "Refresh experiments to regenerate the survey helper script."));
+            surveysGroup.style.marginBottom = 0;
             if (surveys.Count == 0)
             {
-                box.Add(CreateEmptySummaryLine("None in this project."));
+                surveysGroup.Add(CreateEmptySummaryLine("None in this project."));
             }
             else
             {
-                VisualElement surveyPills = new VisualElement();
-                surveyPills.style.flexDirection = FlexDirection.Row;
-                surveyPills.style.flexWrap = Wrap.Wrap;
-                surveyPills.style.marginBottom = 4;
                 foreach (string surveyName in surveys)
-                    surveyPills.Add(CreateCompactPill(surveyName));
-                box.Add(surveyPills);
+                    surveysGroup.Add(CreateSurveyRow(surveyName));
             }
+            box.Add(surveysGroup);
+
+            if (isLoadingExperimentSetup)
+                box.Add(CreateRefreshOverlay());
 
             return box;
         }
@@ -795,6 +832,8 @@ namespace VERA
                 string relativePath = ProjectColumnDefsPath + "/" + Path.GetFileName(file);
                 VERAColumnDefinition def = AssetDatabase.LoadAssetAtPath<VERAColumnDefinition>(relativePath);
                 if (def?.fileType == null || string.IsNullOrEmpty(def.fileType.name))
+                    continue;
+                if (IsSurveyResponsesFileType(def.fileType.name))
                     continue;
 
                 string extension = string.IsNullOrEmpty(def.fileType.extension) ? "csv" : def.fileType.extension;
@@ -862,128 +901,553 @@ namespace VERA
             return sb.ToString();
         }
 
-        private Label CreateSummaryHeading(string text, int count)
+        private VisualElement CreateSetupGroup(string title, int count, VisualElement headerAction = null)
         {
-            Label heading = new Label($"{text}  ·  {count}");
-            heading.style.fontSize = 10;
-            heading.style.color = TEXT_MUTED;
+            VisualElement group = new VisualElement();
+            group.style.backgroundColor = BG_SETUP_GROUP;
+            group.style.borderTopLeftRadius = 5;
+            group.style.borderTopRightRadius = 5;
+            group.style.borderBottomLeftRadius = 5;
+            group.style.borderBottomRightRadius = 5;
+            group.style.paddingTop = 8;
+            group.style.paddingBottom = 8;
+            group.style.paddingLeft = 10;
+            group.style.paddingRight = 8;
+            group.style.marginBottom = 8;
+
+            VisualElement header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.marginBottom = 4;
+            header.style.paddingBottom = 5;
+            header.style.borderBottomWidth = 1;
+            header.style.borderBottomColor = BORDER_HAIRLINE;
+
+            Label heading = new Label($"{title}  ·  {count}");
+            heading.style.fontSize = 11;
+            heading.style.color = TEXT_SECONDARY;
             heading.style.unityFontStyleAndWeight = FontStyle.Bold;
-            heading.style.marginTop = 6;
-            heading.style.marginBottom = 4;
-            return heading;
+            heading.style.flexGrow = 1;
+            heading.style.flexShrink = 1;
+            header.Add(heading);
+
+            if (headerAction != null)
+                header.Add(headerAction);
+
+            group.Add(header);
+            return group;
         }
 
         private Label CreateEmptySummaryLine(string text)
         {
             Label label = CreateMutedLabel(text);
-            label.style.marginBottom = 4;
+            label.style.paddingTop = 3;
+            label.style.paddingBottom = 2;
             return label;
         }
 
-        private VisualElement CreateFileTypeRow(string name, string extension)
+        private Label CreateSetupItemName(string name)
         {
-            VisualElement row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.alignItems = Align.Center;
-            row.style.marginBottom = 3;
-
             Label nameLabel = new Label(name);
             nameLabel.style.fontSize = 12;
             nameLabel.style.color = TEXT_PRIMARY;
             nameLabel.style.flexGrow = 1;
             nameLabel.style.flexShrink = 1;
             nameLabel.style.overflow = Overflow.Hidden;
-            row.Add(nameLabel);
+            nameLabel.style.textOverflow = TextOverflow.Ellipsis;
+            nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            return nameLabel;
+        }
 
-            string formattedExtension = FormatFileExtension(extension);
-            VisualElement badge = new VisualElement();
-            badge.style.backgroundColor = BG_CHIP;
-            badge.style.borderTopLeftRadius = 4;
-            badge.style.borderTopRightRadius = 4;
-            badge.style.borderBottomLeftRadius = 4;
-            badge.style.borderBottomRightRadius = 4;
-            badge.style.paddingTop = 1;
-            badge.style.paddingBottom = 1;
-            badge.style.paddingLeft = 6;
-            badge.style.paddingRight = 6;
-            badge.style.flexShrink = 0;
+        private VisualElement CreateFileTypeRow(string name, string extension)
+        {
+            bool isTelemetry = name == VERAExperimentTelemetrySchema.Name;
 
-            Label extLabel = new Label(formattedExtension);
+            VisualElement container = new VisualElement();
+            container.style.paddingTop = 3;
+            container.style.paddingBottom = isTelemetry ? 6 : 3;
+
+            VisualElement row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.Add(CreateSetupItemName(name));
+
+            Label extLabel = new Label(FormatFileExtension(extension));
             extLabel.style.fontSize = 10;
-            extLabel.style.color = VERA_PURPLE_LIGHT;
+            extLabel.style.color = TEXT_MUTED;
             extLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            badge.Add(extLabel);
-            row.Add(badge);
+            extLabel.style.minWidth = 40;
+            extLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+            extLabel.style.flexShrink = 0;
+            extLabel.style.marginRight = 2;
+            row.Add(extLabel);
+
+            if (isTelemetry)
+                row.Add(CreateScriptButtonSpacer());
+            else
+            {
+                row.Add(CreateRevealGeneratedScriptButton(
+                    GetGeneratedFileTypeScriptPath(name),
+                    "file type",
+                    "Refresh experiments to regenerate file type scripts."));
+            }
+
+            container.Add(row);
+
+            if (isTelemetry)
+            {
+                Label note = CreateMutedLabel("Handled automatically by VERA.");
+                note.style.fontSize = 10;
+                note.style.marginTop = 1;
+                note.style.marginRight = 22;
+                container.Add(note);
+            }
+
+            return container;
+        }
+
+        private VisualElement CreateSurveyRow(string name)
+        {
+            VisualElement row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.paddingTop = 3;
+            row.style.paddingBottom = 3;
+            row.Add(CreateSetupItemName(name));
+            row.Add(CreateScriptButtonSpacer());
             return row;
+        }
+
+        private Button CreateRevealGeneratedScriptButton(string assetPath, string entityLabel, string regenerateHint)
+        {
+            bool scriptExists = TryLoadGeneratedScript(assetPath, out _);
+            Color idle = new Color(0f, 0f, 0f, 0f);
+
+            Button button = new Button(() => HighlightGeneratedScript(assetPath, entityLabel, regenerateHint));
+            button.tooltip = scriptExists
+                ? $"Highlight generated script ({Path.GetFileName(assetPath)})"
+                : $"Generated C# script not found for this {entityLabel}.";
+
+            button.style.width = 18;
+            button.style.height = 18;
+            button.style.minWidth = 18;
+            button.style.minHeight = 18;
+            button.style.marginLeft = 4;
+            button.style.marginRight = 0;
+            button.style.marginTop = 0;
+            button.style.marginBottom = 0;
+            button.style.paddingTop = 1;
+            button.style.paddingBottom = 1;
+            button.style.paddingLeft = 1;
+            button.style.paddingRight = 1;
+            button.style.flexShrink = 0;
+            button.style.alignItems = Align.Center;
+            button.style.justifyContent = Justify.Center;
+            button.style.borderTopLeftRadius = 3;
+            button.style.borderTopRightRadius = 3;
+            button.style.borderBottomLeftRadius = 3;
+            button.style.borderBottomRightRadius = 3;
+            button.style.borderTopWidth = 0;
+            button.style.borderBottomWidth = 0;
+            button.style.borderLeftWidth = 0;
+            button.style.borderRightWidth = 0;
+            button.style.backgroundImage = StyleKeyword.None;
+            button.style.backgroundColor = idle;
+
+            Label defaultLabel = button.Q<Label>();
+            Texture icon = EditorGUIUtility.IconContent("cs Script Icon")?.image;
+            if (icon != null)
+            {
+                if (defaultLabel != null)
+                    defaultLabel.style.display = DisplayStyle.None;
+
+                Image image = new Image { image = icon, scaleMode = ScaleMode.ScaleToFit };
+                image.style.width = 14;
+                image.style.height = 14;
+                button.Add(image);
+            }
+            else
+            {
+                button.text = "C#";
+                button.style.fontSize = 8;
+                button.style.color = VERA_PURPLE_LIGHT;
+                button.style.unityFontStyleAndWeight = FontStyle.Bold;
+            }
+
+            if (scriptExists)
+                ApplyButtonHover(button, idle, BG_SECONDARY_BTN);
+            else
+                button.SetEnabled(false);
+
+            return button;
+        }
+
+        private static VisualElement CreateScriptButtonSpacer()
+        {
+            VisualElement spacer = new VisualElement();
+            spacer.style.width = 18;
+            spacer.style.height = 18;
+            spacer.style.minWidth = 18;
+            spacer.style.flexShrink = 0;
+            spacer.style.marginLeft = 4;
+            spacer.style.marginRight = 0;
+            return spacer;
+        }
+
+        private Button CreateRefreshExperimentsIconButton()
+        {
+            Color idle = new Color(0f, 0f, 0f, 0f);
+            Button button = new Button(RefreshExperiments);
+            button.name = RefreshExperimentsIconName;
+            button.tooltip = isLoadingExperimentSetup ? experimentSetupLoadMessage : "Refresh experiments";
+            button.SetEnabled(!isLoadingExperimentSetup);
+
+            button.style.width = 18;
+            button.style.height = 18;
+            button.style.minWidth = 18;
+            button.style.minHeight = 18;
+            button.style.marginLeft = 4;
+            button.style.marginRight = 0;
+            button.style.marginTop = 0;
+            button.style.marginBottom = 0;
+            button.style.paddingTop = 1;
+            button.style.paddingBottom = 1;
+            button.style.paddingLeft = 1;
+            button.style.paddingRight = 1;
+            button.style.flexShrink = 0;
+            button.style.alignItems = Align.Center;
+            button.style.justifyContent = Justify.Center;
+            button.style.borderTopLeftRadius = 3;
+            button.style.borderTopRightRadius = 3;
+            button.style.borderBottomLeftRadius = 3;
+            button.style.borderBottomRightRadius = 3;
+            button.style.borderTopWidth = 0;
+            button.style.borderBottomWidth = 0;
+            button.style.borderLeftWidth = 0;
+            button.style.borderRightWidth = 0;
+            button.style.backgroundImage = StyleKeyword.None;
+            button.style.backgroundColor = idle;
+
+            Label defaultLabel = button.Q<Label>();
+            if (defaultLabel != null)
+                defaultLabel.style.display = DisplayStyle.None;
+
+            if (isLoadingExperimentSetup)
+            {
+                button.Add(CreateLoadingSpinner(12));
+            }
+            else
+            {
+                Texture icon = EditorGUIUtility.IconContent("Refresh")?.image
+                    ?? EditorGUIUtility.IconContent("d_Refresh")?.image;
+                if (icon != null)
+                {
+                    Image image = new Image { image = icon, scaleMode = ScaleMode.ScaleToFit };
+                    image.style.width = 12;
+                    image.style.height = 12;
+                    button.Add(image);
+                }
+                else
+                {
+                    if (defaultLabel != null)
+                        defaultLabel.style.display = DisplayStyle.Flex;
+                    button.text = "↻";
+                    button.style.fontSize = 12;
+                    button.style.color = VERA_PURPLE_LIGHT;
+                }
+
+                ApplyButtonHover(button, idle, BG_SECONDARY_BTN);
+            }
+
+            return button;
+        }
+
+        private VisualElement CreateLoadingSpinner(float size)
+        {
+            Image image = new Image { scaleMode = ScaleMode.ScaleToFit };
+            image.pickingMode = PickingMode.Ignore;
+            image.style.width = size;
+            image.style.height = size;
+            image.style.flexShrink = 0;
+
+            Texture waitFrame = LoadWaitSpinIcon(0);
+            if (waitFrame != null)
+            {
+                image.image = waitFrame;
+                int frame = 0;
+                image.schedule.Execute(() =>
+                {
+                    frame = (frame + 1) % 12;
+                    Texture next = LoadWaitSpinIcon(frame);
+                    if (next != null)
+                        image.image = next;
+                }).Every(70);
+                return image;
+            }
+
+            Texture refreshIcon = EditorGUIUtility.IconContent("Refresh")?.image
+                ?? EditorGUIUtility.IconContent("d_Refresh")?.image;
+            VisualElement spinner = new VisualElement();
+            spinner.pickingMode = PickingMode.Ignore;
+            spinner.style.width = size;
+            spinner.style.height = size;
+            spinner.style.flexShrink = 0;
+            spinner.style.alignItems = Align.Center;
+            spinner.style.justifyContent = Justify.Center;
+
+            if (refreshIcon != null)
+            {
+                image.image = refreshIcon;
+                spinner.Add(image);
+            }
+            else
+            {
+                Label fallback = new Label("↻");
+                fallback.style.fontSize = size;
+                fallback.style.color = VERA_PURPLE_LIGHT;
+                fallback.style.unityTextAlign = TextAnchor.MiddleCenter;
+                spinner.Add(fallback);
+            }
+
+            float angle = 0f;
+            spinner.schedule.Execute(() =>
+            {
+                angle = (angle + 24f) % 360f;
+                spinner.style.rotate = new Rotate(angle);
+            }).Every(40);
+            return spinner;
+        }
+
+        private static Texture LoadWaitSpinIcon(int frame)
+        {
+            string frameName = "WaitSpin" + frame.ToString("00");
+            Texture icon = EditorGUIUtility.IconContent(frameName)?.image;
+            if (icon != null)
+                return icon;
+            return EditorGUIUtility.IconContent("d_" + frameName)?.image;
+        }
+
+        private VisualElement CreateRefreshOverlay()
+        {
+            VisualElement overlay = new VisualElement { name = RefreshOverlayName };
+            overlay.pickingMode = PickingMode.Position;
+            overlay.style.position = Position.Absolute;
+            overlay.style.left = 0;
+            overlay.style.top = 0;
+            overlay.style.right = 0;
+            overlay.style.bottom = 0;
+            overlay.style.backgroundColor = new Color(BG_INPUT.r, BG_INPUT.g, BG_INPUT.b, 0.72f);
+            overlay.style.alignItems = Align.Center;
+            overlay.style.justifyContent = Justify.Center;
+            overlay.style.flexDirection = FlexDirection.Row;
+
+            overlay.Add(CreateLoadingSpinner(16));
+
+            Label label = new Label(experimentSetupLoadMessage);
+            label.style.fontSize = 11;
+            label.style.color = TEXT_SECONDARY;
+            label.style.marginLeft = 8;
+            overlay.Add(label);
+            return overlay;
+        }
+
+        private void ApplyRefreshingStateToCurrentUi()
+        {
+            if (rootVisualElement == null)
+                return;
+
+            Button labeled = rootVisualElement.Q<Button>(RefreshExperimentsButtonName);
+            if (labeled != null)
+            {
+                if (experimentSetupLoadMessage.StartsWith("Refresh", StringComparison.Ordinal))
+                    labeled.text = "Refreshing...";
+                labeled.SetEnabled(false);
+            }
+
+            Button iconButton = rootVisualElement.Q<Button>(RefreshExperimentsIconName);
+            if (iconButton != null)
+            {
+                iconButton.SetEnabled(false);
+                iconButton.tooltip = experimentSetupLoadMessage;
+                iconButton.Clear();
+                iconButton.Add(CreateLoadingSpinner(12));
+            }
+
+            VisualElement experimentDropdown = rootVisualElement.Q(ExperimentDropdownName);
+            if (experimentDropdown != null)
+                experimentDropdown.SetEnabled(false);
+
+            VisualElement box = rootVisualElement.Q(ExperimentSetupBoxName);
+            if (box != null && box.Q(RefreshOverlayName) == null)
+            {
+                box.Add(CreateRefreshOverlay());
+                box.MarkDirtyRepaint();
+            }
+
+            rootVisualElement.MarkDirtyRepaint();
+            Repaint();
+        }
+
+        private void ScheduleAfterPaint(Action action)
+        {
+            if (action == null)
+                return;
+
+            if (rootVisualElement != null)
+            {
+                rootVisualElement.schedule.Execute(action).StartingIn(16);
+                return;
+            }
+
+            EditorApplication.delayCall += () =>
+            {
+                if (this != null)
+                    action();
+            };
+        }
+
+        private void ContinueLoadingSelectedExperiment(int generation)
+        {
+            if (generation != experimentSetupLoadGeneration || this == null)
+                return;
+
+            if (experimentList == null || selectedExperimentIndex < 0 || selectedExperimentIndex >= experimentList.Count)
+            {
+                EndExperimentSetupLoad(generation);
+                return;
+            }
+
+            Experiment experiment = experimentList[selectedExperimentIndex];
+            if (experiment == null)
+            {
+                EndExperimentSetupLoad(generation);
+                return;
+            }
+
+            VERAAuthenticator.ChangeActiveExperiment(
+                experiment._id,
+                experiment.name,
+                experiment.isMultiSite,
+                experiment.webXrBuildNumber,
+                () => EndExperimentSetupLoad(generation));
+
+            selectedSiteIndex = 0;
+            if (experiment.sites != null && experiment.sites.Count > 0 && experiment.sites[0] != null)
+            {
+                VERAAuthenticator.ChangeActiveSite(experiment.sites[0]._id, experiment.sites[0].name);
+            }
+
+            SaveSettings();
+            ConditionGenerator.GenerateAllConditionCsCode(experiment);
+            ScheduleRebuild();
+        }
+
+        private static bool IsSurveyResponsesFileType(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+            if (name == "Survey_Responses")
+                return true;
+
+            string normalized = name.ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+            return normalized == "surveyresponses";
+        }
+
+        private static string GetGeneratedFileTypeScriptPath(string fileTypeName)
+        {
+            if (string.IsNullOrEmpty(fileTypeName))
+                return null;
+
+            return FileTypeGenerator.GeneratedCsDirectory + "VERAFile_" + fileTypeName + ".cs";
+        }
+
+        private static string GetGeneratedIndependentVariableScriptPath(string ivName)
+        {
+            if (string.IsNullOrEmpty(ivName))
+                return null;
+
+            return ConditionGenerator.GeneratedCsDirectory + "VERAIV_" + ivName + ".cs";
+        }
+
+        private static string GetGeneratedSurveyHelperScriptPath()
+        {
+            return SurveyHelperGenerator.GeneratedCsDirectory + "VERASurveyHelper.cs";
+        }
+
+        private static bool TryLoadGeneratedScript(string assetPath, out MonoScript script)
+        {
+            script = null;
+            if (string.IsNullOrEmpty(assetPath))
+                return false;
+
+            script = AssetDatabase.LoadAssetAtPath<MonoScript>(assetPath);
+            return script != null;
+        }
+
+        private static void HighlightGeneratedScript(string assetPath, string entityLabel, string regenerateHint)
+        {
+            if (!TryLoadGeneratedScript(assetPath, out MonoScript script))
+            {
+                EditorUtility.DisplayDialog(
+                    "Generated script not found",
+                    $"Could not find the generated C# script for this {entityLabel} at:\n{assetPath}\n\n{regenerateHint}",
+                    "OK");
+                return;
+            }
+
+            EditorUtility.FocusProjectWindow();
+            Selection.activeObject = script;
+            EditorGUIUtility.PingObject(script);
         }
 
         private VisualElement CreateIndependentVariableRow(IVGroup iv)
         {
-            VisualElement row = new VisualElement();
-            row.style.marginBottom = 4;
+            VisualElement container = new VisualElement();
+            container.style.paddingTop = 3;
+            container.style.paddingBottom = 6;
 
-            Label nameLabel = new Label(iv.ivName ?? "");
-            nameLabel.style.fontSize = 12;
-            nameLabel.style.color = TEXT_PRIMARY;
-            nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            nameLabel.style.marginBottom = 2;
-            row.Add(nameLabel);
+            VisualElement nameRow = new VisualElement();
+            nameRow.style.flexDirection = FlexDirection.Row;
+            nameRow.style.alignItems = Align.Center;
+            nameRow.Add(CreateSetupItemName(iv.ivName ?? ""));
 
-            VisualElement pills = new VisualElement();
-            pills.style.flexDirection = FlexDirection.Row;
-            pills.style.flexWrap = Wrap.Wrap;
-
-            if (iv.conditions == null || iv.conditions.Count == 0)
+            if (!string.IsNullOrEmpty(iv.ivName))
             {
-                pills.Add(CreateEmptySummaryLine("No levels."));
+                nameRow.Add(CreateRevealGeneratedScriptButton(
+                    GetGeneratedIndependentVariableScriptPath(iv.ivName),
+                    "independent variable",
+                    "Refresh experiments to regenerate independent variable scripts."));
             }
             else
             {
+                nameRow.Add(CreateScriptButtonSpacer());
+            }
+
+            container.Add(nameRow);
+
+            var levelNames = new List<string>();
+            if (iv.conditions != null)
+            {
                 foreach (Condition condition in iv.conditions)
                 {
-                    if (condition == null)
+                    if (condition == null || string.IsNullOrEmpty(condition.name))
                         continue;
 
                     string displayName = condition.name;
                     if (!string.IsNullOrEmpty(condition.encoding))
                         displayName = $"{condition.name} ({condition.encoding})";
-                    pills.Add(CreateCompactPill(displayName));
+                    levelNames.Add(displayName);
                 }
             }
 
-            row.Add(pills);
-            return row;
-        }
-
-        private VisualElement CreateCompactPill(string text)
-        {
-            VisualElement pill = new VisualElement();
-            pill.style.backgroundColor = BG_CHIP;
-            pill.style.borderTopLeftRadius = 10;
-            pill.style.borderTopRightRadius = 10;
-            pill.style.borderBottomLeftRadius = 10;
-            pill.style.borderBottomRightRadius = 10;
-            pill.style.paddingTop = 2;
-            pill.style.paddingBottom = 2;
-            pill.style.paddingLeft = 7;
-            pill.style.paddingRight = 7;
-            pill.style.marginRight = 4;
-            pill.style.marginBottom = 3;
-            pill.style.borderTopWidth = 1;
-            pill.style.borderBottomWidth = 1;
-            pill.style.borderLeftWidth = 1;
-            pill.style.borderRightWidth = 1;
-            Color border = new Color(VERA_PURPLE_LIGHT.r, VERA_PURPLE_LIGHT.g, VERA_PURPLE_LIGHT.b, 0.35f);
-            pill.style.borderTopColor = border;
-            pill.style.borderBottomColor = border;
-            pill.style.borderLeftColor = border;
-            pill.style.borderRightColor = border;
-
-            Label label = new Label(text);
-            label.style.fontSize = 11;
-            label.style.color = TEXT_PRIMARY;
-            pill.Add(label);
-            return pill;
+            Label levels = new Label(levelNames.Count == 0 ? "No levels." : string.Join("   ·   ", levelNames));
+            levels.style.fontSize = 11;
+            levels.style.color = TEXT_MUTED;
+            levels.style.whiteSpace = WhiteSpace.Normal;
+            levels.style.marginTop = 1;
+            levels.style.marginRight = 22;
+            container.Add(levels);
+            return container;
         }
 
         private static string FormatFileExtension(string extension)
@@ -999,89 +1463,118 @@ namespace VERA
 
         #region REFRESH EXPERIMENTS
 
+        private int BeginExperimentSetupLoad(string message)
+        {
+            experimentSetupLoadGeneration++;
+            isLoadingExperimentSetup = true;
+            experimentSetupLoadMessage = message;
+            ApplyRefreshingStateToCurrentUi();
+            Repaint();
+            return experimentSetupLoadGeneration;
+        }
+
+        private void EndExperimentSetupLoad(int generation)
+        {
+            if (generation != experimentSetupLoadGeneration)
+                return;
+
+            isLoadingExperimentSetup = false;
+            ScheduleRebuild();
+        }
+
         private void RefreshExperiments()
         {
+            if (isLoadingExperimentSetup)
+                return;
+
+            int generation = BeginExperimentSetupLoad("Refreshing…");
+
             VERAAuthenticator.GetUserExperiments((result) =>
             {
-                string oldActiveId = PlayerPrefs.GetString("VERA_ActiveExperiment");
-                string oldActiveSiteId = PlayerPrefs.GetString("VERA_ActiveSite");
-
-                experimentList = result;
-                if (experimentList != null && experimentList.Count != 0)
+                try
                 {
-                    selectedExperimentIndex = -1;
-                    for (int i = 0; i < experimentList.Count; i++)
+                    string oldActiveId = PlayerPrefs.GetString("VERA_ActiveExperiment");
+                    string oldActiveSiteId = PlayerPrefs.GetString("VERA_ActiveSite");
+
+                    experimentList = result;
+                    if (experimentList != null && experimentList.Count != 0)
                     {
-                        if (experimentList[i]._id == oldActiveId)
+                        selectedExperimentIndex = -1;
+                        for (int i = 0; i < experimentList.Count; i++)
                         {
-                            selectedExperimentIndex = i;
-                            break;
+                            if (experimentList[i]._id == oldActiveId)
+                            {
+                                selectedExperimentIndex = i;
+                                break;
+                            }
                         }
-                    }
 
-                    bool experimentChanged = selectedExperimentIndex == -1;
+                        bool experimentChanged = selectedExperimentIndex == -1;
 
-                    if (selectedExperimentIndex == -1)
-                        selectedExperimentIndex = 0;
+                        if (selectedExperimentIndex == -1)
+                            selectedExperimentIndex = 0;
 
-                    if (experimentChanged)
-                    {
-                        if (experimentList[selectedExperimentIndex] != null)
+                        if (experimentChanged)
                         {
-                            VERAAuthenticator.ChangeActiveExperiment(
-                                experimentList[selectedExperimentIndex]._id,
-                                experimentList[selectedExperimentIndex].name,
-                                experimentList[selectedExperimentIndex].isMultiSite,
-                                experimentList[selectedExperimentIndex].webXrBuildNumber);
+                            if (experimentList[selectedExperimentIndex] != null)
+                            {
+                                VERAAuthenticator.ChangeActiveExperiment(
+                                    experimentList[selectedExperimentIndex]._id,
+                                    experimentList[selectedExperimentIndex].name,
+                                    experimentList[selectedExperimentIndex].isMultiSite,
+                                    experimentList[selectedExperimentIndex].webXrBuildNumber);
+                            }
+                            else
+                            {
+                                VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
+                            }
                         }
                         else
                         {
-                            VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
+                            VERAAuthenticator.UpdateColumnDefs();
+                            SurveyHelperGenerator.FetchAndConvertSurveys();
+                        }
+
+                        selectedSiteIndex = -1;
+                        List<Site> siteList = experimentList[selectedExperimentIndex].sites;
+                        for (int i = 0; i < siteList.Count; i++)
+                        {
+                            if (siteList[i]._id == oldActiveSiteId)
+                            {
+                                selectedSiteIndex = i;
+                                break;
+                            }
+                        }
+
+                        bool siteChanged = selectedSiteIndex == -1;
+                        if (selectedSiteIndex == -1)
+                            selectedSiteIndex = 0;
+
+                        if (experimentChanged || siteChanged)
+                        {
+                            VERAAuthenticator.ChangeActiveSite(
+                                experimentList[selectedExperimentIndex].sites[selectedSiteIndex]._id,
+                                experimentList[selectedExperimentIndex].sites[selectedSiteIndex].name);
                         }
                     }
                     else
                     {
-                        VERAAuthenticator.UpdateColumnDefs();
-                        SurveyHelperGenerator.FetchAndConvertSurveys();
+                        VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
+
+                        VERADebugger.LogWarning("No experiments could be found associated with your account. Without an active experiment, you will not be able to record data. " +
+                            "If this is incorrect, try refreshing experiments or re-authenticating from the VERA Settings window (menu bar -> VERA -> VERA Settings).", "VERA Settings Window");
                     }
 
-                    selectedSiteIndex = -1;
-                    List<Site> siteList = experimentList[selectedExperimentIndex].sites;
-                    for (int i = 0; i < siteList.Count; i++)
-                    {
-                        if (siteList[i]._id == oldActiveSiteId)
-                        {
-                            selectedSiteIndex = i;
-                            break;
-                        }
-                    }
+                    timeExperimentsLastRefreshed = DateTime.Now.ToString("MMMM dd, h:mm:ss tt");
+                    SaveSettings();
 
-                    bool siteChanged = selectedSiteIndex == -1;
-                    if (selectedSiteIndex == -1)
-                        selectedSiteIndex = 0;
-
-                    if (experimentChanged || siteChanged)
-                    {
-                        VERAAuthenticator.ChangeActiveSite(
-                            experimentList[selectedExperimentIndex].sites[selectedSiteIndex]._id,
-                            experimentList[selectedExperimentIndex].sites[selectedSiteIndex].name);
-                    }
+                    if (experimentList != null && experimentList.Count > 0 && selectedExperimentIndex >= 0)
+                        ConditionGenerator.GenerateAllConditionCsCode(experimentList[selectedExperimentIndex]);
                 }
-                else
+                finally
                 {
-                    VERAAuthenticator.ChangeActiveExperiment(null, null, false, -1);
-
-                    VERADebugger.LogWarning("No experiments could be found associated with your account. Without an active experiment, you will not be able to record data. " +
-                        "If this is incorrect, try refreshing experiments or re-authenticating from the VERA Settings window (menu bar -> VERA -> VERA Settings).", "VERA Settings Window");
+                    EndExperimentSetupLoad(generation);
                 }
-
-                timeExperimentsLastRefreshed = DateTime.Now.ToString("MMMM dd, h:mm:ss tt");
-                SaveSettings();
-
-                if (experimentList != null && experimentList.Count > 0 && selectedExperimentIndex >= 0)
-                    ConditionGenerator.GenerateAllConditionCsCode(experimentList[selectedExperimentIndex]);
-
-                ScheduleRebuild();
             });
         }
 
@@ -1292,17 +1785,6 @@ namespace VERA
             return title;
         }
 
-        private Label CreateSubHeader(string text)
-        {
-            Label subHeader = new Label(text);
-            subHeader.style.fontSize = 13;
-            subHeader.style.color = TEXT_PRIMARY;
-            subHeader.style.unityFontStyleAndWeight = FontStyle.Bold;
-            subHeader.style.marginTop = 16;
-            subHeader.style.marginBottom = 6;
-            return subHeader;
-        }
-
         private Label CreateParagraph(string text)
         {
             Label paragraph = new Label(text);
@@ -1384,17 +1866,22 @@ namespace VERA
             return box;
         }
 
-        private VisualElement CreateDropdown(string labelText, List<string> choices, int index, Action<int> onChanged)
+        private Label CreateFieldLabel(string text)
         {
-            VisualElement container = new VisualElement();
-            container.style.marginBottom = 8;
-
-            Label label = new Label(labelText);
+            Label label = new Label(text);
             label.style.fontSize = 11;
             label.style.color = TEXT_MUTED;
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
             label.style.marginBottom = 4;
-            container.Add(label);
+            label.style.whiteSpace = WhiteSpace.Normal;
+            return label;
+        }
+
+        private VisualElement CreateDropdown(string labelText, List<string> choices, int index, Action<int> onChanged)
+        {
+            VisualElement container = new VisualElement();
+            container.style.marginBottom = 8;
+            container.Add(CreateFieldLabel(labelText));
 
             if (choices == null || choices.Count == 0)
                 return container;
@@ -1416,24 +1903,6 @@ namespace VERA
             });
             container.Add(dropdown);
             return container;
-        }
-
-        private VisualElement CreateStyledToggle(string labelText, bool value, Action<bool> onChanged)
-        {
-            Toggle toggle = new Toggle(labelText) { value = value };
-            toggle.style.marginTop = 4;
-            toggle.style.marginBottom = 8;
-
-            Label toggleLabel = toggle.Q<Label>();
-            if (toggleLabel != null)
-            {
-                toggleLabel.style.color = TEXT_PRIMARY;
-                toggleLabel.style.fontSize = 13;
-                toggleLabel.style.whiteSpace = WhiteSpace.Normal;
-            }
-
-            toggle.RegisterValueChangedCallback(evt => onChanged?.Invoke(evt.newValue));
-            return toggle;
         }
 
         private Button CreatePrimaryButton(string text, Action onClick)

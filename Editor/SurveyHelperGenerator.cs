@@ -18,7 +18,8 @@ namespace VERA
         #region VARIABLES AND PATHS
 
 
-        private const string generatedCsPath = "Assets/VERA/Surveys/GeneratedCode/";
+        internal const string GeneratedCsDirectory = "Assets/VERA/Surveys/GeneratedCode/";
+        private const string generatedCsPath = GeneratedCsDirectory;
         private const string generatedSurveyInfoPath = "Assets/VERA/Surveys/Resources/GeneratedSurveyInfos/";
 
 
@@ -71,7 +72,7 @@ namespace VERA
 
 
         // Fetches surveys from the server and generates SurveyInfo ScriptableObjects for each
-        public static void FetchAndConvertSurveys()
+        public static void FetchAndConvertSurveys(Action onComplete = null)
         {
             VERABuildAuthInfo currentAuthInfo = VERAAuthenticator.GetSavedBuildAuthInfo();
             string activeExpId = currentAuthInfo.activeExperiment;
@@ -96,21 +97,22 @@ namespace VERA
 
             void EditorUpdate()
             {
-                if (operation.isDone)
-                {
-                    EditorApplication.update -= EditorUpdate;
+                if (!operation.isDone)
+                    return;
 
+                EditorApplication.update -= EditorUpdate;
+
+                try
+                {
                     // Check for errors
                     if (request.result != UnityWebRequest.Result.Success)
                     {
                         VERADebugger.LogError($"Error fetching surveys for experiment {activeExpId}: {request.error}", "SurveyHelperGenerator");
-                        request.Dispose();
                         return;
                     }
 
                     // Parse response
                     string jsonResponse = request.downloadHandler.text;
-                    request.Dispose();
 
                     try
                     {
@@ -139,6 +141,11 @@ namespace VERA
                     {
                         VERADebugger.LogError($"Error parsing survey {activeExpId}: {ex.Message}", "SurveyHelperGenerator");
                     }
+                }
+                finally
+                {
+                    request.Dispose();
+                    onComplete?.Invoke();
                 }
             }
         }

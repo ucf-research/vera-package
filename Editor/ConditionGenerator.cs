@@ -11,7 +11,8 @@ namespace VERA
 {
     internal static class ConditionGenerator
     {
-        private const string generatedCsPath = "Assets/VERA/Conditions/GeneratedCode/";
+        internal const string GeneratedCsDirectory = "Assets/VERA/Conditions/GeneratedCode/";
+        private const string generatedCsPath = GeneratedCsDirectory;
 
         // Clears all condition code files and removes define symbols
         public static void ClearAllConditionCsCode()
