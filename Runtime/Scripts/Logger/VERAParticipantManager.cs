@@ -6,13 +6,18 @@ using System;
 
 namespace VERA
 {
-    // Data structure for parsing the participant response JSON
+    // Data structure for parsing participant/session identity from VERA API responses.
+    // pID is a JSON number on current APIs; string values such as "P1" are recovered from raw JSON.
     [System.Serializable]
-    internal class ParticipantResponse
+    internal class VeraParticipantIdentity
     {
-        public string databaseID;
+        public bool success;
+        public string databaseID;   // GET /api/sites/:siteId/active-participant
+        public string databaseId;   // GET/POST /api/participants/...
+        public string sessionId;
+        public int sessionNumber;
+        public int pID;
         public string unityID;
-        public string pID;
         public string prolificID;
     }
 
@@ -34,6 +39,13 @@ namespace VERA
         public string participantDatabaseId { get; private set; }
         public string participantShortId { get; private set; }
         public string prolificID { get; private set; }
+        public string sessionId { get; private set; }
+
+        /// <summary>
+        /// 1-based visit/session number from the VERA API. Single-session studies are 1.
+        /// Returns -1 if no session has been assigned yet.
+        /// </summary>
+        public int sessionNumber { get; private set; } = -1;
 
         /// <summary>
         /// Parses a participant short ID from the server, which may be a plain integer ("1")
@@ -62,6 +74,26 @@ namespace VERA
             return numericId;
         }
 
+        /// <summary>
+        /// Participant short ID with an appended session suffix when a session number is assigned
+        /// (e.g. "3S2"). Returns the unmodified short ID when sessionNumber is -1.
+        /// </summary>
+        public static string FormatParticipantSessionLabel(string participantShortId, int sessionNumber)
+        {
+            if (string.IsNullOrEmpty(participantShortId) || sessionNumber == -1)
+                return participantShortId ?? "";
+
+            return participantShortId + "S" + sessionNumber;
+        }
+
+        /// <summary>
+        /// Participant short ID with session suffix when assigned (e.g. "3S2").
+        /// </summary>
+        public string GetParticipantSessionLabel()
+        {
+            return FormatParticipantSessionLabel(participantShortId, sessionNumber);
+        }
+
         private bool TryAssignParticipantShortId(string pID)
         {
             if (string.IsNullOrEmpty(pID) || !TryParseParticipantShortId(pID, out _))
@@ -69,6 +101,123 @@ namespace VERA
 
             participantShortId = pID;
             return true;
+        }
+
+        private static bool TryParseParticipantIdentity(string responseText, out VeraParticipantIdentity response)
+        {
+            response = null;
+            if (string.IsNullOrEmpty(responseText))
+                return false;
+
+            try
+            {
+                response = JsonUtility.FromJson<VeraParticipantIdentity>(responseText);
+                return response != null;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Reads pID from raw JSON so both numeric (27) and pilot-prefixed ("P1") values work.
+        /// JsonUtility cannot coerce JSON numbers into strings or quoted strings into ints.
+        /// </summary>
+        private static string ExtractParticipantShortId(string json, int numericPid)
+        {
+            if (TryExtractJsonField(json, "pID", out string rawPid))
+            {
+                rawPid = rawPid.Trim();
+                if (TryParseParticipantShortId(rawPid, out _))
+                    return rawPid;
+            }
+
+            if (numericPid != 0)
+                return numericPid.ToString();
+
+            return null;
+        }
+
+        private static bool TryExtractJsonField(string json, string fieldName, out string value)
+        {
+            value = null;
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(fieldName))
+                return false;
+
+            string key = "\"" + fieldName + "\"";
+            int keyIndex = json.IndexOf(key, StringComparison.Ordinal);
+            if (keyIndex < 0)
+                return false;
+
+            int colonIndex = json.IndexOf(':', keyIndex + key.Length);
+            if (colonIndex < 0)
+                return false;
+
+            int i = colonIndex + 1;
+            while (i < json.Length && char.IsWhiteSpace(json[i]))
+                i++;
+
+            if (i >= json.Length)
+                return false;
+
+            if (json[i] == '"')
+            {
+                int end = json.IndexOf('"', i + 1);
+                if (end < 0)
+                    return false;
+
+                value = json.Substring(i + 1, end - i - 1);
+                return true;
+            }
+
+            int start = i;
+            if (json[i] == '-')
+                i++;
+
+            while (i < json.Length && char.IsDigit(json[i]))
+                i++;
+
+            if (i <= start || (json[start] == '-' && i == start + 1))
+                return false;
+
+            value = json.Substring(start, i - start);
+            return true;
+        }
+
+        private bool TryApplyParticipantIdentity(string responseText)
+        {
+            if (!TryParseParticipantIdentity(responseText, out VeraParticipantIdentity response))
+                return false;
+
+            if (!TryAssignParticipantShortId(ExtractParticipantShortId(responseText, response.pID)))
+                return false;
+
+            string resolvedDatabaseId = !string.IsNullOrEmpty(response.databaseID)
+                ? response.databaseID
+                : response.databaseId;
+            if (!string.IsNullOrEmpty(resolvedDatabaseId))
+                participantDatabaseId = resolvedDatabaseId;
+
+            if (!string.IsNullOrEmpty(response.sessionId))
+                sessionId = response.sessionId;
+
+            sessionNumber = response.sessionNumber > 0 ? response.sessionNumber : 1;
+
+            if (!string.IsNullOrEmpty(response.prolificID))
+                prolificID = response.prolificID;
+
+            if (!string.IsNullOrEmpty(response.unityID))
+                participantUUID = response.unityID;
+
+            return true;
+        }
+
+        private void ClearAssignedParticipantIdentity()
+        {
+            participantShortId = null;
+            sessionId = null;
+            sessionNumber = -1;
         }
 
         private static bool IsExperimentUnavailableErrorCode(string code)
@@ -164,6 +313,7 @@ namespace VERA
                     // Recording locally, use generated UID and random short ID
                     participantUUID = Guid.NewGuid().ToString().Replace("-", "");
                     participantShortId = UnityEngine.Random.Range(100000, 999999).ToString();
+                    sessionNumber = 1;
                     VERADebugger.Log("Data recording type is set to Only Record Locally; using generated participant UUID and random short ID for local recording.", "VERA Participant", DebugPreference.Informative);
                     break;
                 case DataRecordingType.RecordLocallyAndLive:
@@ -226,55 +376,23 @@ namespace VERA
                 // 200, active participant exists
                 if (request.responseCode == 200)
                 {
-                    // Parse the response to get the participant ID
                     string responseText = request.downloadHandler.text;
-
-                    // Parse JSON response
-                    ParticipantResponse response = null;
-                    bool parseSuccess = false;
-
-                    try
+                    if (TryApplyParticipantIdentity(responseText))
                     {
-                        response = JsonUtility.FromJson<ParticipantResponse>(responseText);
-                        parseSuccess = true;
-                    }
-                    catch (System.Exception)
-                    {
-                        parseSuccess = false;
-                    }
-
-                    if (parseSuccess && response != null)
-                    {
-                        string existingUid = response.unityID;
-                        string databaseId = response.databaseID;
-                        if (TryAssignParticipantShortId(response.pID))
+                        if (!string.IsNullOrEmpty(participantUUID))
                         {
-                            // If uid exists, set it as the participant UUID
-                            if (!String.IsNullOrEmpty(existingUid))
-                            {
-                                participantUUID = existingUid;
-                                VERADebugger.Log("Active participant found with UUID: " + participantUUID + " (pID=" + participantShortId + ")", "VERA Participant", DebugPreference.Informative);
-                                request.Dispose();
-                                yield break;
-                            }
-                            // Active participant exists, but no uid found in response, create a uid and push to database
-                            else
-                            {
-                                VERADebugger.Log("Active participant found, but has no associated uid. Pushing a new uid...", "VERA Participant", DebugPreference.Informative);
-                                request.Dispose();
-                                yield return PushUidToActiveParticipant(databaseId);
-                                yield break;
-                            }
+                            VERADebugger.Log("Active participant found with UUID: " + participantUUID + " (pID=" + participantShortId + ", session=" + sessionNumber + ")", "VERA Participant", DebugPreference.Informative);
+                            request.Dispose();
+                            yield break;
                         }
-                        else
-                        {
-                            VERADebugger.LogWarning($"Active participant response had invalid pID value: '{response.pID}'. Proceeding to create a new participant.", "VERA Participant");
-                        }
+
+                        VERADebugger.Log("Active participant found, but has no associated uid. Pushing a new uid...", "VERA Participant", DebugPreference.Informative);
+                        request.Dispose();
+                        yield return PushUidToActiveParticipant(participantDatabaseId);
+                        yield break;
                     }
-                    else
-                    {
-                        VERADebugger.LogWarning("Failed to parse active participant response or response was null; proceeding to create a new participant.", "VERA Participant");
-                    }
+
+                    VERADebugger.LogWarning("Failed to parse active participant response or response was missing a valid pID; proceeding to create a new participant.", "VERA Participant");
                 }
             }
 
@@ -326,34 +444,14 @@ namespace VERA
             {
                 VERADebugger.Log("Successfully created a new participant; data will be recorded to this participant.", "VERA Participant", DebugPreference.Informative);
 
-                // Parse the response to get the participant short ID
-                string responseText = request.downloadHandler.text;
-
-                // Parse JSON response
-                ParticipantResponse response = null;
-                bool parseSuccess = false;
-
-                try
+                if (TryApplyParticipantIdentity(request.downloadHandler.text))
                 {
-                    response = JsonUtility.FromJson<ParticipantResponse>(responseText);
-                    parseSuccess = true;
-                }
-                catch (System.Exception)
-                {
-                    parseSuccess = false;
-                }
-
-                if (parseSuccess && response != null && TryAssignParticipantShortId(response.pID))
-                {
-                    if (!string.IsNullOrEmpty(response.databaseID))
-                        participantDatabaseId = response.databaseID;
-
-                    VERADebugger.Log("Assigned participant short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
+                    VERADebugger.Log("Assigned participant short ID: " + participantShortId + " (session " + sessionNumber + ")", "VERA Participant", DebugPreference.Informative);
                 }
                 else
                 {
                     VERADebugger.LogError("Failed to create a new participant (missing/invalid pID in response); clearing participantShortId to allow local recording.", "VERA Participant");
-                    participantShortId = null;
+                    ClearAssignedParticipantIdentity();
                 }
             }
             else
@@ -361,7 +459,7 @@ namespace VERA
                 if (TryParseExperimentUnavailableError(request, out ParticipantCreationErrorResponse errorResponse))
                 {
                     participantUUID = null;
-                    participantShortId = null;
+                    ClearAssignedParticipantIdentity();
                     request.Dispose();
                     VERADebugger.LogError(errorResponse.message, "VERA Participant");
                     throw new VERAExperimentUnavailableException(
@@ -373,7 +471,7 @@ namespace VERA
                 // Keep the locally generated participantUUID so CSV paths / form fields stay valid for local recording.
                 // Uploads to the server will still fail until a participant is successfully created.
                 VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Keeping generated participant UUID and clearing short ID to allow local recording.", "VERA Participant");
-                participantShortId = null;
+                ClearAssignedParticipantIdentity();
             }
 
             request.Dispose();
@@ -401,37 +499,9 @@ namespace VERA
             // Check success
             if (getRequest.result == UnityWebRequest.Result.Success)
             {
-                // Parse the response to get the participant short ID
-                string responseText = getRequest.downloadHandler.text;
-
-                // Parse JSON response
-                ParticipantResponse response = null;
-                bool parseSuccess = false;
-
-                try
+                if (TryApplyParticipantIdentity(getRequest.downloadHandler.text))
                 {
-                    response = JsonUtility.FromJson<ParticipantResponse>(responseText);
-                    parseSuccess = true;
-                }
-                catch (System.Exception)
-                {
-                    parseSuccess = false;
-                }
-
-                if (parseSuccess && response != null && TryAssignParticipantShortId(response.pID))
-                {
-                    if (!string.IsNullOrEmpty(response.databaseID))
-                        participantDatabaseId = response.databaseID;
-
-                    if (!string.IsNullOrEmpty(response.prolificID))
-                    {
-                        prolificID = response.prolificID;
-                    }
-                    if (!string.IsNullOrEmpty(response.unityID))
-                    {
-                        participantUUID = response.unityID;
-                    }
-                    else
+                    if (string.IsNullOrEmpty(participantUUID))
                     {
                         // Portal/WebXR participants frequently have no unityID. Use the portal
                         // database ID so progress/upload URLs are not built with an empty segment.
@@ -441,7 +511,7 @@ namespace VERA
                             $"Using portal participant ID '{GetParticipantIdForSessionApis()}' for session APIs.",
                             "VERA Participant");
                     }
-                    VERADebugger.Log("Retrieved existing participant with short ID: " + participantShortId, "VERA Participant", DebugPreference.Informative);
+                    VERADebugger.Log("Retrieved existing participant with short ID: " + participantShortId + " (session " + sessionNumber + ")", "VERA Participant", DebugPreference.Informative);
                     getRequest.Dispose();
                     yield break;
                 }

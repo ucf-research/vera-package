@@ -2026,13 +2026,16 @@ namespace VERA
         }
 
         /// <summary>
-        /// Builds the hierarchical directory path based on experiment, site, build version, and participant.
+        /// Builds the hierarchical directory path based on experiment, site, build version, session, and participant.
         /// Creates the directory if it doesn't already exist.
         /// </summary>
         private string BuildHierarchicalDirectoryPath()
         {
             VERABuildAuthInfo authInfo = buildAuthInfo;
-            string participantShortId = activeParticipant.participantShortId;
+            int sessionNumber = activeParticipant != null ? activeParticipant.sessionNumber : -1;
+            string participantLabel = activeParticipant != null
+                ? activeParticipant.GetParticipantSessionLabel()
+                : "";
 
             // Start with the base directory from baseFilePath
             string baseDirectory = Path.GetDirectoryName(baseFilePath);
@@ -2060,8 +2063,12 @@ namespace VERA
             }
             path = Path.Combine(path, buildVersionFolder);
 
-            // 4. Participant folder
-            string participantFolder = "Participant-" + participantShortId;
+            // 4. Session folder (one folder per visit under the build directory)
+            if (sessionNumber != -1)
+                path = Path.Combine(path, "Session-" + sessionNumber);
+
+            // 5. Participant folder, with session suffix when assigned (e.g. Participant-3S2)
+            string participantFolder = "Participant-" + participantLabel;
             path = Path.Combine(path, participantFolder);
 
             // Create directory if it doesn't exist

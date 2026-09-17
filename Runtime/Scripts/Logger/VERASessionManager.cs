@@ -49,6 +49,23 @@ namespace VERA
         public static int participantNumber { get { return VERALogger.Instance.activeParticipant.GetNumericParticipantShortId(); } }
 
         /// <summary>
+        /// The 1-based visit/session number for this participant (1 for single-session studies).
+        /// Returns -1 if no session has been assigned yet.
+        /// </summary>
+        public static int sessionNumber { get { return VERALogger.Instance.activeParticipant.sessionNumber; } }
+
+        /// <summary>
+        /// The server ID of the current visit/session, when provided by the VERA API.
+        /// </summary>
+        public static string sessionID { get { return VERALogger.Instance.activeParticipant.sessionId; } }
+
+        /// <summary>
+        /// Participant short ID with session suffix when assigned (e.g. "3S2").
+        /// Equals participantID when sessionNumber is -1.
+        /// </summary>
+        public static string participantSessionID { get { return VERALogger.Instance.activeParticipant.GetParticipantSessionLabel(); } }
+
+        /// <summary>
         /// Whether the VERA logger singleton exists and session APIs can be accessed.
         /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
         /// </summary>
