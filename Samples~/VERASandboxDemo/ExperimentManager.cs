@@ -76,11 +76,11 @@ public class ExperimentManager : MonoBehaviour
         // Before we initialize our experiment (e.g., setting conditions, displaying instructions), 
         // we need to ensure that VERA has finished its own initialization process.
         // You can use the VERASessionManager to check if the session is ready before proceeding:
-        //     * VERASessionManager.initialized - a boolean that indicates whether VERA has finished initializing.
-        //     * VERASessionManager.onInitialized - a UnityEvent that is triggered once VERA finishes initializing.
+        //     * VERASessionManager.sessionInProgress - a boolean that indicates whether a VERA session is in progress and recording data.
+        //     * VERASessionManager.onSessionStart - a UnityEvent that is triggered once VERA starts a participant session.
 
         // WITH VERA, we'd initialize the experiment only after VERA is ready:
-        //VERASessionManager.onInitialized.AddListener(InitializeExperiment);
+        //VERASessionManager.onSessionStart.AddListener(InitializeExperiment);
 
         // WITHOUT VERA, we can simply call InitializeExperiment directly:
         InitializeExperiment();
@@ -99,13 +99,12 @@ public class ExperimentManager : MonoBehaviour
         //----------------------------------------------------//
         // VERA SANDBOX NOTE 2: PARTICIPANT IDS
         // You can use VERA to get the current participant's ID:
-        //     * VERASessionManager.participantID - the participant's short ID for the session (e.g. "1", "P1").
-        //     * VERASessionManager.participantNumber - the numeric portion of that ID for counterbalancing.
+        //     * VERASessionManager.participantID - an integer representing the participant's unique ID for the session.
         // For this demo, we are using the participant ID to assign participants to different firing mode conditions 
         // (good aim vs. bad aim) in a balanced way - i.e., even ID's get one condition, odd ID's get the other
 
         // WITH VERA, we can assign conditions based on participant ID:
-        //bool useBadAim = VERASessionManager.participantNumber % 2 == 0;
+        //bool useBadAim = VERASessionManager.participantID % 2 == 0;
 
         // WITHOUT VERA, we can simply randomize condition assignment:
         bool useBadAim = UnityEngine.Random.value > 0.5f;

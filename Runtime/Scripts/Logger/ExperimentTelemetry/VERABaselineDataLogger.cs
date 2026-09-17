@@ -100,13 +100,13 @@ namespace VERA
             RefreshDeviceLists();
 
             // Start logging if VERA Logger is ready and auto-start is enabled
-            if (autoStartLogging && VERALogger.Instance != null && VERALogger.Instance.initialized)
+            if (autoStartLogging && VERALogger.Instance != null && VERALogger.Instance.sessionInProgress)
             {
                 StartLogging();
             }
             else if (autoStartLogging && VERALogger.Instance != null)
             {
-                VERALogger.Instance.onLoggerInitialized.AddListener(StartLogging);
+                VERALogger.Instance.onSessionStart.AddListener(StartLogging);
             }
             else if (!autoStartLogging)
             {
@@ -392,8 +392,8 @@ namespace VERA
         private void Update()
         {
             // Check if we should be logging baseline data
-            // We only need VERALogger to exist and be initialized, not necessarily collecting
-            if (!isLogging || VERALogger.Instance == null || !VERALogger.Instance.initialized)
+            // We only log while a participant session is actively recording
+            if (!isLogging || VERALogger.Instance == null || !VERALogger.Instance.sessionInProgress)
             {
                 return;
             }
@@ -725,9 +725,9 @@ namespace VERA
         private void LogToVERASystem(BaselineDataEntry data)
         {
             // Only log to VERA server - no local CSV fallback
-            if (VERALogger.Instance == null || !VERALogger.Instance.collecting)
+            if (VERALogger.Instance == null || !VERALogger.Instance.sessionInProgress)
             {
-                return; // Skip logging if VERA is not collecting
+                return; // Skip logging if no participant session is in progress
             }
 
             try

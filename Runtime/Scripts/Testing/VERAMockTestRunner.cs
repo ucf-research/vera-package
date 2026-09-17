@@ -27,7 +27,7 @@ namespace VERA
         private void Start()
         {
             // Subscribe to VERA initialization
-            VERASessionManager.onInitialized.AddListener(OnVERAInitialized);
+            VERASessionManager.onSessionStart.AddListener(OnVERAInitialized);
 
             if (verboseLogging)
             {

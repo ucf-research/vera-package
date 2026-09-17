@@ -40,7 +40,7 @@ namespace VERA
         // Update, make log if pertinent
         void Update()
         {
-            if (VERALogger.Instance.collecting && targetObject != null)
+            if (VERALogger.Instance.sessionInProgress && targetObject != null)
             {
                 // Accumulate elapsed time
                 timeSinceLastLog += Time.deltaTime;

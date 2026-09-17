@@ -44,13 +44,13 @@ namespace VERA
             }
 
             // Wait for VERA Logger to be ready
-            if (VERALogger.Instance != null && VERALogger.Instance.initialized)
+            if (VERALogger.Instance != null && VERALogger.Instance.sessionInProgress)
             {
                 OnVERALoggerReady();
             }
             else if (VERALogger.Instance != null)
             {
-                VERALogger.Instance.onLoggerInitialized.AddListener(OnVERALoggerReady);
+                VERALogger.Instance.onSessionStart.AddListener(OnVERALoggerReady);
             }
         }
 
@@ -64,7 +64,7 @@ namespace VERA
 
         public void LogExperimentEvent(string eventType, string eventDescription)
         {
-            if (VERALogger.Instance == null || !VERALogger.Instance.collecting)
+            if (VERALogger.Instance == null || !VERALogger.Instance.sessionInProgress)
                 return;
 
             try

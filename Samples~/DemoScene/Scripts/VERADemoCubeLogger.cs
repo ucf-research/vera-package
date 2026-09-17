@@ -37,9 +37,9 @@ namespace VERA
         {
             MoveObject();
 
-            if (VERASessionManager.collecting == false || VERASessionManager.initialized == false)
+            if (!VERASessionManager.sessionInProgress)
             {
-                // If the VERA Logger is not collecting or initialized, do not log anything
+                // If a participant session is not in progress, do not log anything
                 return;
             }
 

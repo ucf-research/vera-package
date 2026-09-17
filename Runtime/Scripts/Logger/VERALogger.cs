@@ -48,9 +48,15 @@ namespace VERA
 
         // Experiment management
         public bool sessionFinalized { get; private set; } = false;
-        public bool collecting { get; private set; } = false;
+        public bool sessionInProgress { get; private set; } = false;
         public bool initialized { get; private set; } = false;
+        private bool loggerInitializationInProgress = false;
+        private bool sessionStartInProgress = false;
+        private bool webXrParametersReceived = false;
+        private bool pendingParticipantSessionStart = false;
         public UnityEvent onLoggerInitialized = new UnityEvent();
+        public UnityEvent onSessionStart = new UnityEvent();
+        public UnityEvent onSessionEnd = new UnityEvent();
         public VERACsvHandler[] csvHandlers { get; private set; }
         private Dictionary<string, VERAColumnDefinition> nonCsvFileTypes = new Dictionary<string, VERAColumnDefinition>();
         private Dictionary<string, string> conditionsCache = new Dictionary<string, string>();
@@ -65,10 +71,11 @@ namespace VERA
         #region INITIALIZATION
 
 
-        // Awake, sets up singleton and loads authentication
-        // If we are in a WebXR build, does NOT initialize the logger yet;
-        // It will initialize via a message from the WebXR build when the site ID is received.
-        // If we are in the Unity editor or non-WebXR build, initializes the logger immediately.
+        // Awake, sets up singleton, loads authentication, and initializes the logger
+        // so it is ready to start a participant session (initialized / onInitialized).
+        // Participant sessions (sessionInProgress / onSessionStart) begin separately:
+        //   - Editor / non-WebXR: immediately when auto-start is enabled, otherwise via StartNewParticipantSession().
+        //   - WebXR: after portal site/participant IDs arrive, then the same auto-start rule.
         private void Awake()
         {
             // Set up singleton
@@ -91,42 +98,94 @@ namespace VERA
 #endif
 
             LoadAuthentication();
+            StartCoroutine(InitializeLogger());
+        }
 
-            // If we are NOT in a WebXR build (WebGL), initialize immediately
-            // WebXR builds will initialize later via a message from the WebXR build
+
+        // Brings the logger to a ready state without creating a participant or starting data recording.
+        private IEnumerator InitializeLogger()
+        {
+            if (initialized)
+            {
+                yield break;
+            }
+
+            if (loggerInitializationInProgress)
+            {
+                yield break;
+            }
+
+            loggerInitializationInProgress = true;
+
+            SetupKeys();
+
+            if (surveyStarter == null)
+                surveyStarter = gameObject.AddComponent<VERASurveyStarter>();
+
+            // Allow other scripts to subscribe to onInitialized from Start()
+            yield return null;
+
+            initialized = true;
+            loggerInitializationInProgress = false;
+            VERADebugger.Log("VERA logger initialized and ready to start a participant session.", "VERA Logger", DebugPreference.Minimal);
+            onLoggerInitialized?.Invoke();
+
 #if UNITY_WEBGL && !UNITY_EDITOR
-        VERADebugger.Log("WebXR build detected; initialization will occur via Unity message from the VERA site. Not initializing yet.", "VERA Logger", DebugPreference.Informative);
+            VERADebugger.Log("WebXR build detected; waiting for site and participant IDs from the VERA portal before considering session start.", "VERA Logger", DebugPreference.Informative);
 #else
-            VERADebugger.Log("Session is not running in an active WebXR session; initializing logger directly...", "VERA Logger", DebugPreference.Informative);
-            StartCoroutine(Initialize());
+            if (GetAutoStartParticipantSessions())
+            {
+                VERADebugger.Log("Auto-start is enabled; starting a participant session...", "VERA Logger", DebugPreference.Informative);
+                StartCoroutine(StartParticipantSession());
+            }
+            else
+            {
+                VERADebugger.Log("Auto-start participant sessions is disabled. Call VERASessionManager.StartNewParticipantSession() to create a participant and begin data collection.", "VERA Logger", DebugPreference.Informative);
+            }
 #endif
         }
 
 
-        // Initializes the logger, setting up keys, paths, and uploading existing files
-        private IEnumerator Initialize()
+        // Creates the participant, starts data recording, and fires onSessionStart.
+        private IEnumerator StartParticipantSession()
         {
-            if (initialized)
+            if (sessionInProgress)
             {
-                VERADebugger.LogWarning("Logger is already initialized. Skipping reinitialization.", "VERA Logger");
+                VERADebugger.LogWarning("A participant session is already in progress. Skipping duplicate start.", "VERA Logger");
                 yield break;
             }
 
-            yield return SetupKeysAndPaths();
+            if (sessionStartInProgress)
+            {
+                VERADebugger.LogWarning("A participant session is already being started. Skipping duplicate start.", "VERA Logger");
+                yield break;
+            }
 
-            // If no experiment ID found from above keys and paths call, stop initialization.
+            if (sessionFinalized)
+            {
+                VERADebugger.LogWarning("Cannot start a participant session because the previous session was already finalized.", "VERA Logger");
+                yield break;
+            }
+
+            while (!initialized)
+            {
+                yield return null;
+            }
+
+            sessionStartInProgress = true;
+
+            yield return SetupSessionParticipantAndPaths();
+
+            // If no experiment ID found from above keys and paths call, stop session start.
             if (experimentUUID == "N/A" || string.IsNullOrEmpty(experimentUUID))
             {
+                sessionStartInProgress = false;
                 yield break;
             }
 
             // Setup generic file helper first (needed for uploading existing files)
-            genericFileHelper = gameObject.AddComponent<VERAGenericFileHelper>();
-
-            // Upload any existing unuploaded files
-            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedCSVs.txt"), dataPath, ".csv");
-            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedImages.txt"), dataPath, ".png");
-            //UploadExistingUnuploadedFiles(Path.Combine(dataPath, "uploadedGeneric.txt"), genericDataPath, "");
+            if (genericFileHelper == null)
+                genericFileHelper = gameObject.AddComponent<VERAGenericFileHelper>();
 
             // Setup any file types, CSV logging, and the generic file helper
             SetupFileTypes();
@@ -141,15 +200,19 @@ namespace VERA
             // This ensures conditions are available when baseline logging starts
             yield return InitializeExperimentConditions();
 
-            collecting = true;
+            sessionInProgress = true;
 
             // Auto-setup baseline data collection if not already present
             EnsureBaselineDataLoggingSetup();
-            periodicSyncHandler = gameObject.AddComponent<VERAPeriodicSyncHandler>();
-            periodicSyncHandler.StartPeriodicSync();
+            if (periodicSyncHandler == null)
+            {
+                periodicSyncHandler = gameObject.AddComponent<VERAPeriodicSyncHandler>();
+                periodicSyncHandler.StartPeriodicSync();
+            }
 
             // Set up survey starter
-            surveyStarter = gameObject.AddComponent<VERASurveyStarter>();
+            if (surveyStarter == null)
+                surveyStarter = gameObject.AddComponent<VERASurveyStarter>();
 
             // Initialize trial workflow manager (pass participant info for between-subjects assignment and checkpointing)
             trialWorkflow = gameObject.AddComponent<VERATrialWorkflowManager>();
@@ -169,9 +232,9 @@ namespace VERA
             // Short buffer for subscriptions to register
             yield return null;
 
-            VERADebugger.Log("Logger initialized successfully. Data collection can now begin.", "VERA Logger", DebugPreference.Minimal);
-            initialized = true;
-            onLoggerInitialized?.Invoke();
+            sessionStartInProgress = false;
+            VERADebugger.Log("Participant session started. Data collection is now active.", "VERA Logger", DebugPreference.Minimal);
+            onSessionStart?.Invoke();
         }
 
 
@@ -194,6 +257,10 @@ namespace VERA
                 PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
                 PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
                 PlayerPrefs.SetInt("VERA_RotationFormat", (int)authInfo.rotationFormat);
+                // JsonUtility defaults missing bools to false; auto-start should remain enabled unless explicitly disabled
+                if (!json.Contains("\"autoStartParticipantSessions\""))
+                    authInfo.autoStartParticipantSessions = true;
+                PlayerPrefs.SetInt("VERA_AutoStartParticipantSessions", authInfo.autoStartParticipantSessions ? 1 : 0);
             }
             else
             {
@@ -209,7 +276,8 @@ namespace VERA
                     currentBuildNumber = -1,
                     dataRecordingType = DataRecordingType.RecordLocallyAndLive,
                     debugPreference = DebugPreference.Informative,
-                    rotationFormat = RotationFormat.Both
+                    rotationFormat = RotationFormat.Both,
+                    autoStartParticipantSessions = true
                 };
                 buildAuthInfo = emptyAuthInfo;
 
@@ -221,6 +289,7 @@ namespace VERA
                 PlayerPrefs.SetInt("VERA_DataRecordingType", (int)emptyAuthInfo.dataRecordingType);
                 PlayerPrefs.SetInt("VERA_DebugPreference", (int)emptyAuthInfo.debugPreference);
                 PlayerPrefs.SetInt("VERA_RotationFormat", (int)emptyAuthInfo.rotationFormat);
+                PlayerPrefs.SetInt("VERA_AutoStartParticipantSessions", emptyAuthInfo.autoStartParticipantSessions ? 1 : 0);
 
                 // Log unauthenticated user
                 VERADebugger.LogError("Your experiment has not been authenticated, and will not be " +
@@ -230,10 +299,9 @@ namespace VERA
         }
 
 
-        // Sets up the various important keys and paths relating to logging data
-        private IEnumerator SetupKeysAndPaths()
+        // Loads authentication keys without creating a participant or starting recording.
+        private void SetupKeys()
         {
-            // Keys and IDs
             apiKey = PlayerPrefs.GetString("VERA_BuildAuthToken");
             experimentUUID = PlayerPrefs.GetString("VERA_ActiveExperiment");
 
@@ -246,11 +314,20 @@ namespace VERA
             {
                 VERADebugger.LogError("You do not have an active experiment. Without an active experiment, data cannot be collected using VERA." +
                     " In the Menu Bar at the top of the editor, please click on the 'VERA' dropdown, then select 'Settings' to pick an active experiment.", "VERA Logger");
+            }
+        }
+
+
+        // Creates/looks up the participant and sets local data paths for this session.
+        private IEnumerator SetupSessionParticipantAndPaths()
+        {
+            if (string.IsNullOrEmpty(experimentUUID) || experimentUUID == "N/A")
+            {
                 yield break;
             }
 
-            // Participant
-            activeParticipant = gameObject.AddComponent<VERAParticipantManager>();
+            if (activeParticipant == null)
+                activeParticipant = gameObject.AddComponent<VERAParticipantManager>();
 
             // If overriding participant ID, use it to create/retrieve participant
             if (!string.IsNullOrEmpty(overrideParticipantId))
@@ -291,14 +368,13 @@ namespace VERA
                 VERADebugger.LogError("Failed to connect to the VERA servers: " + www.error, "VERA Connection");
         }
 
-        // Manually initializes the logger with the specified site ID and participant ID.
-        // Most often will be called from VERASessionManager, prompted from the WebXR build.
+        // Stores site/participant IDs from WebXR (or a manual override) and starts the session
+        // when auto-start is enabled, or when StartNewParticipantSession() has already been requested.
         // If site is provided, override the active site with the provided ID; otherwise, use the active site from PlayerPrefs.
         // If participant is provided, override the active participant with the provided ID; otherwise, create a new participant.
-        // Continues to initialize the logger after setting the site ID.
         public void ManualInitialization(string siteId, string participantId)
         {
-            VERADebugger.Log("Overriding initialization with given parameters...", "VERA Logger", DebugPreference.Informative);
+            VERADebugger.Log("Received session parameters (site ID: " + siteId + ", participant ID: " + participantId + ").", "VERA Logger", DebugPreference.Informative);
 
             if (!string.IsNullOrEmpty(siteId))
             {
@@ -311,7 +387,73 @@ namespace VERA
                 overrideParticipantId = participantId;
             }
 
-            StartCoroutine(Initialize());
+            webXrParametersReceived = true;
+
+            if (GetAutoStartParticipantSessions() || pendingParticipantSessionStart)
+            {
+                if (pendingParticipantSessionStart)
+                {
+                    VERADebugger.Log("WebXR parameters received; starting the pending participant session with the portal-assigned participant.", "VERA Logger", DebugPreference.Informative);
+                }
+                else
+                {
+                    VERADebugger.Log("Auto-start is enabled; starting a participant session with the provided WebXR parameters...", "VERA Logger", DebugPreference.Informative);
+                }
+
+                StartCoroutine(StartParticipantSession());
+            }
+            else
+            {
+                VERADebugger.Log("WebXR site and participant IDs stored. Auto-start is disabled; call VERASessionManager.StartNewParticipantSession() to begin data collection for this participant.", "VERA Logger", DebugPreference.Informative);
+            }
+        }
+
+        /// <summary>
+        /// Starts a new participant session: creates/looks up the participant on the server and begins data collection.
+        /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
+        /// In WebXR builds, this still uses the site and participant IDs supplied by the portal; if those
+        /// have not arrived yet, the session start is deferred until they do.
+        /// </summary>
+        public void StartNewParticipantSession()
+        {
+            if (sessionInProgress)
+            {
+                VERADebugger.LogWarning("Cannot start a new participant session because a session is already in progress.", "VERA Logger");
+                return;
+            }
+
+            if (sessionStartInProgress)
+            {
+                VERADebugger.LogWarning("A participant session is already being started.", "VERA Logger");
+                return;
+            }
+
+            if (sessionFinalized)
+            {
+                VERADebugger.LogWarning("Cannot start a new participant session because the previous session was already finalized.", "VERA Logger");
+                return;
+            }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (!webXrParametersReceived)
+            {
+                pendingParticipantSessionStart = true;
+                VERADebugger.Log("StartNewParticipantSession() was called before WebXR parameters arrived. The session will start once the portal provides the site and participant IDs.", "VERA Logger", DebugPreference.Informative);
+                return;
+            }
+#endif
+
+            VERADebugger.Log("Starting a new participant session...", "VERA Logger", DebugPreference.Informative);
+            StartCoroutine(StartParticipantSession());
+        }
+
+        /// <summary>
+        /// Whether VERA should automatically create a participant and begin data collection on startup.
+        /// Defaults to true when the setting has not been stored yet.
+        /// </summary>
+        public bool GetAutoStartParticipantSessions()
+        {
+            return PlayerPrefs.GetInt("VERA_AutoStartParticipantSessions", 1) == 1;
         }
 
 
@@ -465,9 +607,9 @@ namespace VERA
         // Ignores extension, returns null on failure to find
         public VERACsvHandler FindCsvHandlerByFileName(string name)
         {
-            if (!collecting)
+            if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot access CSV handers - collection is not yet enabled.", "VERA Logger");
+                VERADebugger.LogWarning("Cannot access CSV handlers - no participant session is in progress.", "VERA Logger");
                 return null;
             }
             if (!initialized)
@@ -672,7 +814,7 @@ namespace VERA
         // Creates a CSV entry for the given file type
         public void CreateCsvEntry(string fileTypeName, params object[] values)
         {
-            if (!collecting || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)
+            if (!sessionInProgress || !initialized || GetDataRecordingType() == DataRecordingType.DoNotRecord)
                 return;
 
             VERACsvHandler csvHandler = FindCsvHandlerByFileName(fileTypeName);
@@ -690,9 +832,9 @@ namespace VERA
         // Uploads a file to a non-CSV file type
         public void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
         {
-            if (!collecting || !initialized)
+            if (!sessionInProgress || !initialized)
             {
-                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized or not collecting.", "VERA Logger");
+                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized or no participant session is in progress.", "VERA Logger");
                 return;
             }
 
@@ -1086,10 +1228,12 @@ namespace VERA
                 return;
 
             sessionFinalized = true;
+            sessionInProgress = false;
 
             DataRecordingType recordingType = GetDataRecordingType();
             if (recordingType == DataRecordingType.DoNotRecord)
             {
+                onSessionEnd?.Invoke();
                 return;
             }
 
@@ -1134,6 +1278,7 @@ namespace VERA
                 VERADebugger.LogWarning("Participant is already in a finalized state before session completion. No action taken.", "VERA Logger");
 
             VERADebugger.Log("All finalization tasks have completed successfully.", "VERA Logger", DebugPreference.Minimal);
+            onSessionEnd?.Invoke();
 #if UNITY_WEBGL && !UNITY_EDITOR
             // In WebGL builds, notify the site itself that the session is complete
             VERADebugger.Log("Notifying VERA portal that session has been finalized.", "VERA Logger", DebugPreference.Informative);
@@ -2018,5 +2163,6 @@ namespace VERA
         public DataRecordingType dataRecordingType = DataRecordingType.RecordLocallyAndLive;
         public DebugPreference debugPreference = DebugPreference.Informative;
         public RotationFormat rotationFormat = RotationFormat.Quaternion;
+        public bool autoStartParticipantSessions = true;
     }
 }
