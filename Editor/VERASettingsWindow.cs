@@ -624,7 +624,7 @@ namespace VERA
         {
             return autoStart
                 ? "VERA will automatically create a participant and begin data collection when the application starts. In other words, every time the application begins, a new participant session will be created for collection."
-                : "VERA will not create a participant or begin data collection until you call VERASessionManager.StartNewParticipantSession(). In other words, data collection will not start until you explicitly manually start it yourself.";
+                : "VERA will not create a participant or begin data collection until you call VERASessionManager.ManualStartParticipantSession() or ManualStartParticipantSessionFromId(). In other words, data collection will not start until you explicitly manually start it yourself.";
         }
 
         #endregion

@@ -54,6 +54,7 @@ namespace VERA
         private bool sessionStartInProgress = false;
         private bool webXrParametersReceived = false;
         private bool pendingParticipantSessionStart = false;
+        private int? pendingManualParticipantId = null;
         public UnityEvent onLoggerInitialized = new UnityEvent();
         public UnityEvent onSessionStart = new UnityEvent();
         public UnityEvent onSessionEnd = new UnityEvent();
@@ -74,7 +75,7 @@ namespace VERA
         // Awake, sets up singleton, loads authentication, and initializes the logger
         // so it is ready to start a participant session (initialized / onInitialized).
         // Participant sessions (sessionInProgress / onSessionStart) begin separately:
-        //   - Editor / non-WebXR: immediately when auto-start is enabled, otherwise via StartNewParticipantSession().
+        //   - Editor / non-WebXR: immediately when auto-start is enabled, otherwise via ManualStartParticipantSession().
         //   - WebXR: after portal site/participant IDs arrive, then the same auto-start rule.
         private void Awake()
         {
@@ -140,7 +141,7 @@ namespace VERA
             }
             else
             {
-                VERADebugger.Log("Auto-start participant sessions is disabled. Call VERASessionManager.StartNewParticipantSession() to create a participant and begin data collection.", "VERA Logger", DebugPreference.Informative);
+                VERADebugger.Log("Auto-start participant sessions is disabled. Call VERASessionManager.ManualStartParticipantSession() to create a participant and begin data collection.", "VERA Logger", DebugPreference.Informative);
             }
 #endif
         }
@@ -329,9 +330,8 @@ namespace VERA
             if (activeParticipant == null)
                 activeParticipant = gameObject.AddComponent<VERAParticipantManager>();
 
-            // If overriding participant ID, use it to create/retrieve participant
-            if (!string.IsNullOrEmpty(overrideParticipantId))
-                yield return activeParticipant.CreateParticipant(overrideParticipantId);
+            if (pendingManualParticipantId.HasValue)
+                yield return activeParticipant.CreateParticipant(pendingManualParticipantId.Value);
             else
                 yield return activeParticipant.CreateParticipant();
 
@@ -369,7 +369,7 @@ namespace VERA
         }
 
         // Stores site/participant IDs from WebXR (or a manual override) and starts the session
-        // when auto-start is enabled, or when StartNewParticipantSession() has already been requested.
+        // when auto-start is enabled, or when ManualStartParticipantSession() has already been requested.
         // If site is provided, override the active site with the provided ID; otherwise, use the active site from PlayerPrefs.
         // If participant is provided, override the active participant with the provided ID; otherwise, create a new participant.
         public void ManualInitialization(string siteId, string participantId)
@@ -404,21 +404,37 @@ namespace VERA
             }
             else
             {
-                VERADebugger.Log("WebXR site and participant IDs stored. Auto-start is disabled; call VERASessionManager.StartNewParticipantSession() to begin data collection for this participant.", "VERA Logger", DebugPreference.Informative);
+                VERADebugger.Log("WebXR site and participant IDs stored. Auto-start is disabled; call VERASessionManager.ManualStartParticipantSession() to begin data collection for this participant.", "VERA Logger", DebugPreference.Informative);
             }
         }
 
         /// <summary>
-        /// Starts a new participant session: creates/looks up the participant on the server and begins data collection.
+        /// Starts a participant session: creates/looks up the participant on the server and begins data collection.
         /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
         /// In WebXR builds, this still uses the site and participant IDs supplied by the portal; if those
         /// have not arrived yet, the session start is deferred until they do.
         /// </summary>
-        public void StartNewParticipantSession()
+        public void ManualStartParticipantSession()
+        {
+            pendingManualParticipantId = null;
+            TryStartParticipantSession("ManualStartParticipantSession");
+        }
+
+        /// <summary>
+        /// Starts a participant session for a specific researcher-visible participant ID (Live pID).
+        /// Uses the same participant API routes as ManualStartParticipantSession, with optional manualId set.
+        /// </summary>
+        public void ManualStartParticipantSessionFromId(int participantId)
+        {
+            pendingManualParticipantId = participantId;
+            TryStartParticipantSession("ManualStartParticipantSessionFromId");
+        }
+
+        private void TryStartParticipantSession(string callerName)
         {
             if (sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot start a new participant session because a session is already in progress.", "VERA Logger");
+                VERADebugger.LogWarning("Cannot start a participant session because a session is already in progress.", "VERA Logger");
                 return;
             }
 
@@ -430,7 +446,7 @@ namespace VERA
 
             if (sessionFinalized)
             {
-                VERADebugger.LogWarning("Cannot start a new participant session because the previous session was already finalized.", "VERA Logger");
+                VERADebugger.LogWarning("Cannot start a participant session because the previous session was already finalized.", "VERA Logger");
                 return;
             }
 
@@ -438,12 +454,16 @@ namespace VERA
             if (!webXrParametersReceived)
             {
                 pendingParticipantSessionStart = true;
-                VERADebugger.Log("StartNewParticipantSession() was called before WebXR parameters arrived. The session will start once the portal provides the site and participant IDs.", "VERA Logger", DebugPreference.Informative);
+                VERADebugger.Log(callerName + "() was called before WebXR parameters arrived. The session will start once the portal provides the site and participant IDs.", "VERA Logger", DebugPreference.Informative);
                 return;
             }
 #endif
 
-            VERADebugger.Log("Starting a new participant session...", "VERA Logger", DebugPreference.Informative);
+            if (pendingManualParticipantId.HasValue)
+                VERADebugger.Log("Starting a participant session from manual ID " + pendingManualParticipantId.Value + "...", "VERA Logger", DebugPreference.Informative);
+            else
+                VERADebugger.Log("Starting a new participant session...", "VERA Logger", DebugPreference.Informative);
+
             StartCoroutine(StartParticipantSession());
         }
 

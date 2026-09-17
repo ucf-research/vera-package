@@ -196,6 +196,8 @@ namespace VERA
             string resolvedDatabaseId = !string.IsNullOrEmpty(response.databaseID)
                 ? response.databaseID
                 : response.databaseId;
+            if (string.IsNullOrEmpty(resolvedDatabaseId))
+                resolvedDatabaseId = ExtractFirstJsonField(responseText, "databaseID", "databaseId");
             if (!string.IsNullOrEmpty(resolvedDatabaseId))
                 participantDatabaseId = resolvedDatabaseId;
 
@@ -207,10 +209,32 @@ namespace VERA
             if (!string.IsNullOrEmpty(response.prolificID))
                 prolificID = response.prolificID;
 
-            if (!string.IsNullOrEmpty(response.unityID))
-                participantUUID = response.unityID;
+            string resolvedUnityId = !string.IsNullOrEmpty(response.unityID)
+                ? response.unityID
+                : ExtractFirstJsonField(responseText, "unityID", "unityId", "uid");
+            if (!string.IsNullOrEmpty(resolvedUnityId))
+                participantUUID = resolvedUnityId;
+
+            // File/progress APIs need a participant ID. If the server omitted unityID,
+            // fall back to the enrollment database ID rather than leaving uploads broken.
+            if (string.IsNullOrEmpty(participantUUID) && !string.IsNullOrEmpty(participantDatabaseId))
+                participantUUID = participantDatabaseId;
 
             return true;
+        }
+
+        private static string ExtractFirstJsonField(string json, params string[] fieldNames)
+        {
+            if (fieldNames == null)
+                return null;
+
+            for (int i = 0; i < fieldNames.Length; i++)
+            {
+                if (TryExtractJsonField(json, fieldNames[i], out string value) && !string.IsNullOrEmpty(value))
+                    return value;
+            }
+
+            return null;
         }
 
         private void ClearAssignedParticipantIdentity()
@@ -292,8 +316,19 @@ namespace VERA
         }
 
 
-        // Creates the participant entity from scratch (or uses active participant if it exists)
+        // Creates the participant entity from scratch (or uses the site's active participant if it exists)
         public IEnumerator CreateParticipant()
+        {
+            yield return CreateParticipantInternal(null);
+        }
+
+        // Creates or starts a new participant session using a specific researcher-visible pID
+        public IEnumerator CreateParticipant(int manualId)
+        {
+            yield return CreateParticipantInternal(manualId);
+        }
+
+        private IEnumerator CreateParticipantInternal(int? manualId)
         {
             // If a participant already exists, do not create a new one
             if (!string.IsNullOrEmpty(participantUUID))
@@ -302,7 +337,6 @@ namespace VERA
                 yield break;
             }
 
-            // Check data recording type
             DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
             switch (dataRecordingType)
             {
@@ -310,44 +344,21 @@ namespace VERA
                     VERADebugger.Log("Data recording type is set to Do Not Record; not creating participant.", "VERA Participant", DebugPreference.Informative);
                     break;
                 case DataRecordingType.OnlyRecordLocally:
-                    // Recording locally, use generated UID and random short ID
                     participantUUID = Guid.NewGuid().ToString().Replace("-", "");
-                    participantShortId = UnityEngine.Random.Range(100000, 999999).ToString();
+                    participantShortId = manualId.HasValue
+                        ? manualId.Value.ToString()
+                        : UnityEngine.Random.Range(100000, 999999).ToString();
                     sessionNumber = 1;
-                    VERADebugger.Log("Data recording type is set to Only Record Locally; using generated participant UUID and random short ID for local recording.", "VERA Participant", DebugPreference.Informative);
+                    VERADebugger.Log(
+                        manualId.HasValue
+                            ? "Data recording type is set to Only Record Locally; using generated participant UUID and manual short ID " + participantShortId + " for local recording."
+                            : "Data recording type is set to Only Record Locally; using generated participant UUID and random short ID for local recording.",
+                        "VERA Participant",
+                        DebugPreference.Informative);
                     break;
                 case DataRecordingType.RecordLocallyAndLive:
                 default:
-                    // Create a new participant directly
-                    yield return CreateParticipantCoroutine();
-
-                    // [LEGACY - Active Participant Workflow] Previously checked for an existing active
-                    // participant at the site before creating a new one. See EnsureParticipant() below.
-                    // yield return EnsureParticipant();
-                    //
-                    // // If after ensuring the participant we don't have a valid short ID, attempt creation retries
-                    // int attempts = 0;
-                    // int maxAttempts = 3;
-                    // while ((participantShortId == 0) && attempts < maxAttempts)
-                    // {
-                    //     attempts++;
-                    //     VERADebugger.LogWarning($"participantShortId is {participantShortId} after EnsureParticipant(); attempting creation attempt {attempts}/{maxAttempts}...", "VERA Participant");
-                    //     yield return CreateParticipantCoroutine();
-                    //
-                    //     if (participantShortId > 0)
-                    //     {
-                    //         VERADebugger.Log("Participant creation succeeded on retry.", "VERA Participant", DebugPreference.Informative);
-                    //         yield break;
-                    //     }
-                    //
-                    //     // small delay before next attempt
-                    //     yield return new WaitForSeconds(1f);
-                    // }
-                    //
-                    // if (participantShortId == 0)
-                    // {
-                    //     VERADebugger.LogError("Unable to obtain a valid participant short ID after retries. Local recording will continue but uploads may not attach to the correct participant on the server.", "VERA Participant");
-                    // }
+                    yield return CreateOrFetchLiveParticipant(manualId);
                     break;
             }
         }
@@ -416,41 +427,194 @@ namespace VERA
 #endif
 
 
-        // Creates the participant and uploads to the site
-        // If overrideId is provided, it will use that as the participant UUID and just GET the existing participant
-        private IEnumerator CreateParticipantCoroutine()
+        private IEnumerator CreateOrFetchLiveParticipant(int? manualId)
         {
-            // Set up the request
-            string expId = VERALogger.Instance.experimentUUID;
+            string fallbackOverrideId = VERALogger.Instance != null ? VERALogger.Instance.overrideParticipantId : null;
+
+            // manualId must go through POST /create so the server starts a new session.
+            // GET /active-participant returns the site's current visit; if that happens to be
+            // the requested pID, a GET-first flow would reuse the old session and skip create.
+            if (manualId.HasValue)
+            {
+                yield return CreateActiveParticipant(manualId);
+            }
+            else
+            {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                yield return FetchActiveParticipant(null);
+                if (string.IsNullOrEmpty(GetParticipantIdForSessionApis()) && !string.IsNullOrEmpty(fallbackOverrideId))
+                    yield return GetParticipantFromOverrideId(fallbackOverrideId);
+#else
+                yield return CreateActiveParticipant(null);
+#endif
+            }
+
+            EnsureParticipantIdForSessionApis(fallbackOverrideId);
+
+            if (manualId.HasValue)
+                WarnIfAssignedIdDoesNotMatch(manualId.Value);
+
+            if (string.IsNullOrEmpty(GetParticipantIdForSessionApis()))
+            {
+                VERADebugger.LogError(
+                    "Participant identity is missing unityID/databaseID; live uploads will fail until the server returns one of those fields.",
+                    "VERA Participant");
+            }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (string.IsNullOrEmpty(GetParticipantIdForSessionApis()))
+            {
+                VERADebugger.LogError(
+                    "Cannot set IN_VR progress after participant lookup: no participant ID is available.",
+                    "VERA Participant");
+                yield break;
+            }
+
+            yield return RetryableChangeProgress(ParticipantProgressState.IN_VR);
+#endif
+        }
+
+        private void WarnIfAssignedIdDoesNotMatch(int requestedId)
+        {
+            if (AssignedIdMatches(requestedId))
+                return;
+
+            if (string.IsNullOrEmpty(participantShortId))
+            {
+                VERADebugger.LogError(
+                    "Requested participant ID " + requestedId + " but the server did not return a pID.",
+                    "VERA Participant");
+                return;
+            }
+
+            VERADebugger.LogError(
+                "Requested participant ID " + requestedId + " but the server assigned pID '" + participantShortId +
+                "'. The backend may not have received manualId.",
+                "VERA Participant");
+        }
+
+        private bool AssignedIdMatches(int requestedId)
+        {
+            return TryParseParticipantShortId(participantShortId, out int assignedId) && assignedId == requestedId;
+        }
+
+        private static string AppendManualIdQuery(string url, int? manualId)
+        {
+            if (!manualId.HasValue)
+                return url;
+
+            return url + (url.Contains("?") ? "&" : "?") + "manualId=" + manualId.Value;
+        }
+
+        private static string CreateActiveParticipantUrl(string siteId, int? manualId)
+        {
+            // Stay on /create (no path segment) so older servers do not 404.
+            // Put manualId in the query string AND the urlencoded body (see CreateActiveParticipant).
+            string url = VERAHost.hostUrl + "/api/sites/" + siteId + "/active-participant/create";
+            if (manualId.HasValue)
+                url += "?manualId=" + manualId.Value;
+            return url;
+        }
+
+        // WebXR / manual-ID: fetch the site's current participant, optionally looking up/creating a specific pID.
+        private IEnumerator FetchActiveParticipant(int? manualId)
+        {
             string siteId = VERALogger.Instance.siteUUID;
             string apiKey = VERALogger.Instance.apiKey;
+            string url = AppendManualIdQuery(
+                VERAHost.hostUrl + "/api/sites/" + siteId + "/active-participant",
+                manualId);
 
-            string host = VERAHost.hostUrl;
+            VERADebugger.Log(
+                manualId.HasValue
+                    ? "Fetching active participant with manual ID " + manualId.Value + " at url " + url
+                    : "Fetching active participant at url " + url,
+                "VERA Participant",
+                manualId.HasValue ? DebugPreference.Informative : DebugPreference.Verbose);
 
-            participantUUID = Guid.NewGuid().ToString().Replace("-", "");
-            string url = host + "/api/participants/" + expId + "/" + siteId;
-            VERADebugger.Log("Creating participant at url " + url, "VERA Participant", DebugPreference.Verbose);
-
-            WWWForm form = new WWWForm();
-            form.AddField("participantId", participantUUID);
-
-            // Send the request
-            UnityWebRequest request = UnityWebRequest.Post(url, form);
+            UnityWebRequest request = UnityWebRequest.Get(url);
             VERAHost.ApplyBearerAuth(request, apiKey);
             yield return request.SendWebRequest();
 
-            // Check success
             if (request.result == UnityWebRequest.Result.Success)
             {
-                VERADebugger.Log("Successfully created a new participant; data will be recorded to this participant.", "VERA Participant", DebugPreference.Informative);
-
-                if (TryApplyParticipantIdentity(request.downloadHandler.text))
+                string responseText = request.downloadHandler != null ? request.downloadHandler.text : "";
+                VERADebugger.Log("Active participant response: " + responseText, "VERA Participant", DebugPreference.Verbose);
+                if (TryApplyParticipantIdentity(responseText))
                 {
-                    VERADebugger.Log("Assigned participant short ID: " + participantShortId + " (session " + sessionNumber + ")", "VERA Participant", DebugPreference.Informative);
+                    VERADebugger.Log(
+                        "Active participant found with UUID: " + (participantUUID ?? "null") + " (pID=" + participantShortId + ", session=" + sessionNumber + ")",
+                        "VERA Participant",
+                        DebugPreference.Informative);
                 }
                 else
                 {
-                    VERADebugger.LogError("Failed to create a new participant (missing/invalid pID in response); clearing participantShortId to allow local recording.", "VERA Participant");
+                    VERADebugger.LogError(
+                        "Failed to parse active participant response or response was missing a valid pID. Response: " + responseText,
+                        "VERA Participant");
+                    ClearAssignedParticipantIdentity();
+                }
+            }
+            else
+            {
+                LogParticipantRequestFailure(request, manualId, "fetch active participant");
+            }
+
+            request.Dispose();
+        }
+
+        // Standalone: create or start a new session for the site's active participant, optionally using a specific pID.
+        private IEnumerator CreateActiveParticipant(int? manualId)
+        {
+            string siteId = VERALogger.Instance.siteUUID;
+            string apiKey = VERALogger.Instance.apiKey;
+            string url = CreateActiveParticipantUrl(siteId, manualId);
+
+            VERADebugger.Log(
+                manualId.HasValue
+                    ? "Creating participant with manual ID " + manualId.Value + " at url " + url
+                    : "Creating participant at url " + url,
+                "VERA Participant",
+                manualId.HasValue ? DebugPreference.Informative : DebugPreference.Verbose);
+
+            // Do NOT use WWWForm here: Unity WWWForm posts multipart/form-data, which Express
+            // does not parse without multer, so req.body.manualId never arrives and the server
+            // auto-assigns the next pID. Use urlencoded so bodyParser.urlencoded populates req.body.
+            UnityWebRequest request;
+            if (manualId.HasValue)
+            {
+                string formBody = "manualId=" + Uri.EscapeDataString(manualId.Value.ToString());
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(formBody);
+                request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                request.SetRequestHeader("X-Vera-Manual-Id", manualId.Value.ToString());
+            }
+            else
+            {
+                request = CreateJsonPostRequest(url, "{}");
+            }
+            VERAHost.ApplyBearerAuth(request, apiKey);
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                string responseText = request.downloadHandler != null ? request.downloadHandler.text : "";
+                VERADebugger.Log("Create participant response: " + responseText, "VERA Participant", DebugPreference.Verbose);
+
+                if (TryApplyParticipantIdentity(responseText))
+                {
+                    VERADebugger.Log(
+                        "Assigned participant short ID: " + participantShortId + " (session " + sessionNumber + ", uuid=" + (participantUUID ?? "null") + ")",
+                        "VERA Participant",
+                        DebugPreference.Informative);
+                }
+                else
+                {
+                    VERADebugger.LogError(
+                        "Failed to create a new participant (missing/invalid pID in response). Response: " + responseText,
+                        "VERA Participant");
                     ClearAssignedParticipantIdentity();
                 }
             }
@@ -468,13 +632,42 @@ namespace VERA
                         errorResponse.message);
                 }
 
-                // Keep the locally generated participantUUID so CSV paths / form fields stay valid for local recording.
-                // Uploads to the server will still fail until a participant is successfully created.
-                VERADebugger.LogError($"Failed to create a new participant; server request failed: result={request.result}, code={request.responseCode}, error={request.error}. Keeping generated participant UUID and clearing short ID to allow local recording.", "VERA Participant");
+                LogParticipantRequestFailure(request, manualId, "create participant");
+                if (string.IsNullOrEmpty(participantUUID))
+                    participantUUID = Guid.NewGuid().ToString().Replace("-", "");
                 ClearAssignedParticipantIdentity();
             }
 
             request.Dispose();
+        }
+
+        private static UnityWebRequest CreateJsonPostRequest(string url, string jsonPayload)
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload ?? "{}");
+            UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST);
+            UploadHandlerRaw uploadHandler = new UploadHandlerRaw(bodyRaw);
+            uploadHandler.contentType = "application/json";
+            request.uploadHandler = uploadHandler;
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            return request;
+        }
+
+        private void LogParticipantRequestFailure(UnityWebRequest request, int? manualId, string action)
+        {
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : "";
+            string details = "result=" + request.result + ", code=" + request.responseCode + ", error=" + request.error +
+                (string.IsNullOrEmpty(responseText) ? "" : ", response=" + responseText);
+
+            if (request.responseCode == 400 && manualId.HasValue)
+            {
+                VERADebugger.LogError(
+                    "Invalid manual participant ID '" + manualId.Value + "' while trying to " + action + ": " + details,
+                    "VERA Participant");
+                return;
+            }
+
+            VERADebugger.LogError("Failed to " + action + ": " + details, "VERA Participant");
         }
 
 

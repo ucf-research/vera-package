@@ -917,7 +917,7 @@ namespace VERA
         /// <summary>
         /// Changes whether VERA automatically starts a participant session on application start.
         /// </summary>
-        /// <param name="autoStart">True to create a participant and begin data collection automatically; false to wait for StartNewParticipantSession().</param>
+        /// <param name="autoStart">True to create a participant and begin data collection automatically; false to wait for ManualStartParticipantSession().</param>
         public static void ChangeAutoStartParticipantSessions(bool autoStart)
         {
             VERABuildAuthInfo currentAuthInfo = GetSavedBuildAuthInfo();
