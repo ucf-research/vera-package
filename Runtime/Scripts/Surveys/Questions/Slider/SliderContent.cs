@@ -43,6 +43,19 @@ namespace VERA
         }
 
 
+        public override void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+            if (slider == null || savedAnswer == null || string.IsNullOrEmpty(savedAnswer.answer))
+                return;
+
+            if (!float.TryParse(savedAnswer.answer, out float value))
+                return;
+
+            slider.SetValueWithoutNotify(value);
+            UpdateValueDisplay(value);
+        }
+
+
         private void UpdateValueDisplay(float value)
         {
             valueDisplayText.text = Mathf.RoundToInt(value * 100f).ToString();

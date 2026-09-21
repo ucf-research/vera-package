@@ -53,6 +53,20 @@ namespace VERA
         }
 
 
+        public override void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+            if (savedAnswer == null || string.IsNullOrEmpty(savedAnswer.answer))
+                return;
+
+            string[] parts = savedAnswer.answer.Split(new[] { ',' }, System.StringSplitOptions.None);
+            for (int i = 0; i < parts.Length && i < spawnedStatements.Count; i++)
+            {
+                if (int.TryParse(parts[i].Trim(), out int selectedIndex) && selectedIndex >= 0)
+                    spawnedStatements[i].SetSelectedIndex(selectedIndex);
+            }
+        }
+
+
         public override string GetResponse()
         {
             List<string> responses = new List<string>();

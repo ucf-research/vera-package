@@ -70,7 +70,7 @@ namespace VERA
 
         private SurveyDisplayState currentSurveyState = SurveyDisplayState.StartingScreen;
         private SurveyScreen activeSurveyScreen;
-        private KeyValuePair<string, string>[] surveyResponses;
+        private SurveyQuestionAnswer[] surveyResponses;
         private int currentQuestionIndex = 0;
 
 
@@ -139,7 +139,7 @@ namespace VERA
             this.onSurveyComplete = onSurveyComplete;
 
             // Reset responses and question index
-            surveyResponses = new KeyValuePair<string, string>[activeSurveyInfo.surveyQuestions.Count];
+            surveyResponses = new SurveyQuestionAnswer[activeSurveyInfo.surveyQuestions.Count];
             currentQuestionIndex = 0;
 
             // Apply height and distance offset parameters
@@ -192,7 +192,7 @@ namespace VERA
                     if (currentQuestionIndex > 0)
                     {
                         currentQuestionIndex--;
-                        surveyComponents.questionScreen.DisplayQuestion(activeSurveyInfo.surveyQuestions[currentQuestionIndex]);
+                        DisplayCurrentQuestion();
                         SetProgressText(true, currentQuestionIndex);
                     }
                     else
@@ -238,7 +238,7 @@ namespace VERA
                     if (currentQuestionIndex < activeSurveyInfo.surveyQuestions.Count - 1)
                     {
                         currentQuestionIndex++;
-                        surveyComponents.questionScreen.DisplayQuestion(activeSurveyInfo.surveyQuestions[currentQuestionIndex]);
+                        DisplayCurrentQuestion();
                         SetProgressText(true, currentQuestionIndex);
                     }
                     else
@@ -285,11 +285,30 @@ namespace VERA
         {
             currentSurveyState = SurveyDisplayState.InSurvey;
             surveyComponents.questionScreen.ShowQuestionScreen();
-            surveyComponents.questionScreen.DisplayQuestion(activeSurveyInfo.surveyQuestions[currentQuestionIndex]);
+            DisplayCurrentQuestion();
             activeSurveyScreen = surveyComponents.questionScreen;
 
             SetNavButtons(true, NEXT_BUTTON_DEFAULT_TEXT, true, PREVIOUS_BUTTON_DEFAULT_TEXT);
             SetProgressText(true, currentQuestionIndex);
+        }
+
+
+        /// <summary>
+        /// Shows the question at <see cref="currentQuestionIndex"/>, restoring any previously saved answer.
+        /// </summary>
+        private void DisplayCurrentQuestion()
+        {
+            SurveyQuestionAnswer savedAnswer = null;
+            if (surveyResponses != null
+                && currentQuestionIndex >= 0
+                && currentQuestionIndex < surveyResponses.Length)
+            {
+                savedAnswer = surveyResponses[currentQuestionIndex];
+            }
+
+            surveyComponents.questionScreen.DisplayQuestion(
+                activeSurveyInfo.surveyQuestions[currentQuestionIndex],
+                savedAnswer);
         }
 
 
@@ -328,15 +347,20 @@ namespace VERA
             }
 
             // Save the response for the current question
-            surveyResponses[currentQuestionIndex] = new KeyValuePair<string, string>(activeSurveyInfo.surveyQuestions[currentQuestionIndex].questionId, surveyComponents.questionScreen.GetCurrentResponse());
+            surveyResponses[currentQuestionIndex] = new SurveyQuestionAnswer
+            {
+                questionId = activeSurveyInfo.surveyQuestions[currentQuestionIndex].questionId,
+                answer = surveyComponents.questionScreen.GetCurrentResponse(),
+                otherText = surveyComponents.questionScreen.GetCurrentOtherText()
+            };
         }
 
 
         /// <summary>
         /// Returns the survey responses collected from the participant.
         /// </summary>
-        /// <returns>A KeyValuePair containing the survey ID and the participant's responses.</returns>
-        public KeyValuePair<string, string>[] GetSurveyResults()
+        /// <returns>An array of survey question answers including optional Other free-text.</returns>
+        public SurveyQuestionAnswer[] GetSurveyResults()
         {
             return surveyResponses;
         }

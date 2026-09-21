@@ -123,6 +123,9 @@ namespace VERA
                 VERAFadeCanvas.Instance.FadeOut(1f);
             }
 
+            // Ensure an XRI Spatial Keyboard manager exists (reuse existing, or spawn from sample/Resources)
+            SurveySpatialKeyboardBootstrap.EnsureInScene();
+
             // Use existing survey interface if one already exists, or spawn a new one if not
             if (activeSurveyInterface == null)
             {

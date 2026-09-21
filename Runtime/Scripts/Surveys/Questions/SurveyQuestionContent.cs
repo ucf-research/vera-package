@@ -130,6 +130,25 @@ namespace VERA
 
 
         /// <summary>
+        /// Retrieves free-text entered for an "Other" choice, if any.
+        /// Returns null when Other is not applicable or not selected.
+        /// </summary>
+        public virtual string GetOtherText()
+        {
+            return null;
+        }
+
+
+        /// <summary>
+        /// Restores a previously saved answer onto this freshly displayed question UI.
+        /// No-op when <paramref name="savedAnswer"/> is null or empty.
+        /// </summary>
+        public virtual void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+        }
+
+
+        /// <summary>
         /// Returns whether the user has sufficiently answered this question to proceed.
         /// </summary>
         public abstract bool IsAnswered();

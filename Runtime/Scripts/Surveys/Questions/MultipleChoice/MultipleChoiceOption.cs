@@ -28,6 +28,8 @@ public class MultipleChoiceOption : MonoBehaviour
 
     public int OptionIndex { get; private set; }
     public bool IsSelected { get; private set; }
+    public string OptionText { get; private set; }
+    public bool IsOtherOption { get; private set; }
 
     private bool allowMultiple;
     private Action<int> onOptionClicked;
@@ -46,9 +48,12 @@ public class MultipleChoiceOption : MonoBehaviour
     /// <param name="text">Display text for this option.</param>
     /// <param name="multipleAllowed">True for selection (multi-select), false for multiple choice (single-select).</param>
     /// <param name="onClicked">Callback invoked with this option's index when clicked.</param>
-    public void Initialize(int index, string text, bool multipleAllowed, Action<int> onClicked)
+    /// <param name="isOtherOption">True when this option is the free-text "Other" choice.</param>
+    public void Initialize(int index, string text, bool multipleAllowed, Action<int> onClicked, bool isOtherOption = false)
     {
         OptionIndex = index;
+        OptionText = text;
+        IsOtherOption = isOtherOption;
         allowMultiple = multipleAllowed;
         onOptionClicked = onClicked;
         optionText.text = text;

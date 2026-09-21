@@ -47,14 +47,25 @@ namespace VERA
             MultipleChoice,
             Selection,
             Slider,
-            Matrix
+            Matrix,
+            OpenResponse
         }
+
+        public enum VERASurveyAnswerInputMode
+        {
+            Text,
+            Voice
+        }
+
+        public const string DEFAULT_OTHER_OPTION_LABEL = "Other (please specify)";
+        public const int OPEN_RESPONSE_MAX_LENGTH = 1000;
 
         [Header("Overview")]
         [Tooltip("The type of question; Multiple Choice - presented with a series of choices, choose only one; " +
             "Selection - presented with a series of choices, choose as many as you wish; " +
             "Slider - presented with a slider which may be adjusted between a minimum and maximum value; " +
-            "Matrix - presented with a matrix table, of which may be populated with options and scale choices")]
+            "Matrix - presented with a matrix table, of which may be populated with options and scale choices; " +
+            "Open Response - free-text paragraph input")]
         public VERASurveyQuestionType questionType;
         [Tooltip("The question's displayed text, written as should be displayed to the questionnaire taker")]
         [TextArea] public string questionText;
@@ -74,6 +85,10 @@ namespace VERA
         [Header("Multiple Choice / Selection")]
         [Tooltip("The options the questionnaire taker may choose from, written as should be displayed to the questionnaire taker")]
         public string[] selectionOptions;
+        [Tooltip("If true, an additional \"Other\" choice is shown that lets the participant type a custom answer")]
+        public bool allowOtherOption;
+        [Tooltip("Label for the Other choice. Defaults to \"Other (please specify)\" when empty")]
+        public string otherOptionLabel;
 
         #endregion
 
@@ -100,6 +115,27 @@ namespace VERA
         public string[] matrixRowTexts;
 
         #endregion
+
+
+        #region OPEN RESPONSE
+
+        // Open response (free text)
+        [Header("Open Response")]
+        [Tooltip("Hint text shown in the empty free-response input")]
+        public string answerPlaceholder;
+        [Tooltip("Input mode for open response. Voice falls back to text input in Unity until a voice pipeline is available")]
+        public VERASurveyAnswerInputMode answerInputMode;
+
+        #endregion
+
+
+        /// <summary>
+        /// Returns the Other option label, falling back to the default when unset.
+        /// </summary>
+        public string GetOtherOptionLabel()
+        {
+            return string.IsNullOrWhiteSpace(otherOptionLabel) ? DEFAULT_OTHER_OPTION_LABEL : otherOptionLabel;
+        }
 
     }
 }

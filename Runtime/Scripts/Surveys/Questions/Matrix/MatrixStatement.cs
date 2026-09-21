@@ -77,6 +77,20 @@ namespace VERA
         }
 
 
+        /// <summary>
+        /// Programmatically selects a column for this row (used when restoring a saved answer).
+        /// </summary>
+        public void SetSelectedIndex(int index)
+        {
+            if (index < 0 || index >= spawnedOptions.Count)
+                return;
+
+            selectedOptionIndex = index;
+            foreach (MatrixStatementOption option in spawnedOptions)
+                option.SetSelected(option.OptionIndex == index);
+        }
+
+
         #endregion
 
 

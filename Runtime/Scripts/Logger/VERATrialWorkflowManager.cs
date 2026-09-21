@@ -2084,7 +2084,11 @@ namespace VERA
                             questionText = qObj.Value<string>("questionText"),
                             questionType = qObj.Value<string>("questionType"),
                             leftSliderText = qObj.Value<string>("leftSliderText"),
-                            rightSliderText = qObj.Value<string>("rightSliderText")
+                            rightSliderText = qObj.Value<string>("rightSliderText"),
+                            allowOtherOption = qObj.Value<bool?>("allowOtherOption") ?? false,
+                            otherOptionLabel = qObj.Value<string>("otherOptionLabel"),
+                            answerPlaceholder = qObj.Value<string>("answerPlaceholder"),
+                            answerInputMode = qObj.Value<string>("answerInputMode")
                         };
 
                         // Parse question options
