@@ -1261,8 +1261,8 @@ namespace VERA
                         if (!definitionsToAdd.Contains(telemetrySymbol))
                             definitionsToAdd.Add(telemetrySymbol);
 
-                        // Generate remaining wrappers (e.g. baseline telemetry). Individual files
-                        // are imported only when their contents actually change.
+                        // Generate user-facing wrappers. Experiment_Telemetry is skipped —
+                        // it is handled internally and must not appear in GeneratedCode.
                         FileTypeGenerator.GenerateAllFileTypesCsCode();
                         ReplaceDefines(definitionsToAdd);
 
@@ -1406,8 +1406,9 @@ namespace VERA
             if (!expectedDefines.SetEquals(currentDefines))
                 return false;
 
+            // Stale Experiment_Telemetry wrappers from older package versions should be removed.
             string telemetryGeneratedPath = FileTypeGenerator.GeneratedCsDirectory + "VERAFile_" + VERAExperimentTelemetrySchema.Name + ".cs";
-            if (!File.Exists(telemetryGeneratedPath))
+            if (File.Exists(telemetryGeneratedPath))
                 return false;
 
             return true;
