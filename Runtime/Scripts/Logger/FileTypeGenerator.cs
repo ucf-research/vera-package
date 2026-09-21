@@ -101,6 +101,7 @@ namespace VERA
 
             // Use StringBuilder to create the code
             StringBuilder sb = new StringBuilder();
+            VERAGeneratedCodeHeader.Append(sb);
 
             // Build the class; for example, for a file named "PlayerTransform", would be VERAFile_PlayerTransform
             sb.AppendLine("#if VERAFile_" + fileName);

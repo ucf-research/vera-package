@@ -130,6 +130,7 @@ namespace VERA
 
             string ivName = group.ivName;
             StringBuilder sb = new StringBuilder();
+            VERAGeneratedCodeHeader.Append(sb);
 
             // Build a list of the names of values this IV can have
             // (ex., for "Targets", might be "Bunnies" or "Pumpkins")

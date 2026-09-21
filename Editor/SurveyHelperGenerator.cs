@@ -284,6 +284,7 @@ namespace VERA
             }
 
             StringBuilder sb = new StringBuilder();
+            VERAGeneratedCodeHeader.Append(sb);
 
             // Generate class header
             GenerateSurveyHelperClassHeader(sb);
