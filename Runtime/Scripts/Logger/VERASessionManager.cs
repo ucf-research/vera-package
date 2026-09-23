@@ -49,6 +49,23 @@ namespace VERA
         public static int participantNumber { get { return VERALogger.Instance.activeParticipant.GetNumericParticipantShortId(); } }
 
         /// <summary>
+        /// The 1-based visit/session number for this participant (1 for single-session studies).
+        /// Returns -1 if no session has been assigned yet.
+        /// </summary>
+        public static int sessionNumber { get { return VERALogger.Instance.activeParticipant.sessionNumber; } }
+
+        /// <summary>
+        /// The server ID of the current visit/session, when provided by the VERA API.
+        /// </summary>
+        public static string sessionID { get { return VERALogger.Instance.activeParticipant.sessionId; } }
+
+        /// <summary>
+        /// Participant short ID with session suffix when assigned (e.g. "3S2").
+        /// Equals participantID when sessionNumber is -1.
+        /// </summary>
+        public static string participantSessionID { get { return VERALogger.Instance.activeParticipant.GetParticipantSessionLabel(); } }
+
+        /// <summary>
         /// Whether the VERA logger singleton exists and session APIs can be accessed.
         /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
         /// </summary>
@@ -90,28 +107,55 @@ namespace VERA
         public static UnityEvent onSessionEnd { get { return VERALogger.Instance.onSessionEnd; } }
 
         /// <summary>
-        /// Starts a new participant session: creates/looks up the participant on the server and begins data collection.
+        /// Starts a participant session: creates or looks up the participant on the server and begins data collection.
         /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
         /// If auto-start is enabled, VERA already starts a session automatically and this method is not needed.
+        /// The server auto-assigns a participant ID. To start from a specific researcher-visible pID, use
+        /// ManualStartParticipantSessionFromId instead.
         /// In WebXR builds, the portal still supplies the site and participant IDs; those IDs are applied when
         /// the session starts, but data recording does not begin until this method is called (when auto-start is off).
         /// If this is called before the WebXR parameters arrive, the start is deferred until they do.
         /// </summary>
-        public static void StartNewParticipantSession()
+        public static void ManualStartParticipantSession()
+        {
+            if (!TryPrepareManualSessionStart())
+                return;
+
+            VERALogger.Instance.ManualStartParticipantSession();
+        }
+
+        /// <summary>
+        /// Starts a participant session for a specific researcher-visible participant ID (Live pID, e.g. 1, 2, 3).
+        /// If that participant exists, a new session is always started for them (prior visits are not reused).
+        /// If they do not exist, they are created with that exact pID, then session 1 is started.
+        /// Uses the same participant API routes as ManualStartParticipantSession; this method additionally
+        /// passes the ID as manualId.
+        /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
+        /// </summary>
+        /// <param name="participantId">The Live pID to fetch or create, as shown in the researcher UI.</param>
+        public static void ManualStartParticipantSessionFromId(int participantId)
+        {
+            if (!TryPrepareManualSessionStart())
+                return;
+
+            VERALogger.Instance.ManualStartParticipantSessionFromId(participantId);
+        }
+
+        private static bool TryPrepareManualSessionStart()
         {
             if (VERALogger.Instance == null)
             {
-                VERADebugger.LogWarning("Cannot start a new participant session because VERA is not present in the scene.", "VERASessionManager");
-                return;
+                VERADebugger.LogWarning("Cannot start a participant session because VERA is not present in the scene.", "VERASessionManager");
+                return false;
             }
 
             if (sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot start a new participant session because a session is already in progress.", "VERASessionManager");
-                return;
+                VERADebugger.LogWarning("Cannot start a participant session because a session is already in progress.", "VERASessionManager");
+                return false;
             }
 
-            VERALogger.Instance.StartNewParticipantSession();
+            return true;
         }
 
         /// <summary>
@@ -216,7 +260,7 @@ namespace VERA
         /// Applies site and participant IDs, typically from a WebXR portal message.
         /// IDs are always stored so the eventual session attaches to the portal-assigned participant.
         /// The session itself (participant lookup, data recording) starts immediately only when
-        /// Auto-Start Participant Sessions is enabled; otherwise wait for StartNewParticipantSession().
+        /// Auto-Start Participant Sessions is enabled; otherwise wait for ManualStartParticipantSession().
         /// </summary>
         /// <param name="siteId">The site ID to use for this session</param>
         /// <param name="participantId">The participant ID to use for this session</param>
