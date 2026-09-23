@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using Newtonsoft.Json.Linq;
 using System.Collections;
 using System.Collections.Generic;
@@ -41,7 +45,7 @@ namespace VERA
         #region OUTPUT
 
         // Creates and uploads a CSV file for this specific survey instance
-        private IEnumerator UploadSurveyInstanceFile(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        private IEnumerator UploadSurveyInstanceFile(VERASurveyInfo surveyToOutput, SurveyQuestionAnswer[] surveyResults, string instanceId)
         {
             string pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
@@ -90,18 +94,20 @@ namespace VERA
             // Data rows
             foreach (var response in surveyResults)
             {
+                if (response == null) continue;
+
                 string questionText = "";
-                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                if (questionTextLookup.TryGetValue(response.questionId, out string text))
                 {
                     questionText = text;
                 }
 
                 // Escape CSV values
                 string escapedQuestionText = EscapeCsvValue(questionText);
-                string escapedAnswer = EscapeCsvValue(response.Value);
+                string escapedAnswer = EscapeCsvValue(FormatAnswerForCsv(response));
                 string escapedSurveyName = EscapeCsvValue(surveyName);
 
-                csvContent.AppendLine($"{pID},{ts},{studyId},{surveyId},{escapedSurveyName},{instanceId},{response.Key},{escapedQuestionText},{escapedAnswer}");
+                csvContent.AppendLine($"{pID},{ts},{studyId},{surveyId},{escapedSurveyName},{instanceId},{response.questionId},{escapedQuestionText},{escapedAnswer}");
             }
 
             // Create temp file
@@ -192,18 +198,20 @@ namespace VERA
         }
 
         // Records responses to the shared Survey_Responses CSV (backup/fallback)
-        private void RecordToSharedCsv(VERACsvHandler csvHandler, KeyValuePair<string, string>[] surveyResults,
+        private void RecordToSharedCsv(VERACsvHandler csvHandler, SurveyQuestionAnswer[] surveyResults,
             string pID, string ts, string studyId, string surveyId, string surveyName, string instanceId,
             Dictionary<string, string> questionTextLookup)
         {
             foreach (var response in surveyResults)
             {
+                if (response == null) continue;
+
                 string questionText = "";
-                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                if (questionTextLookup.TryGetValue(response.questionId, out string text))
                 {
                     questionText = text;
                 }
-                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
+                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.questionId, questionText, FormatAnswerForCsv(response));
             }
             VERADebugger.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to shared Survey_Responses file.");
         }
@@ -222,8 +230,20 @@ namespace VERA
             return value;
         }
 
+        // Combines answer + optional otherText for local CSV backups
+        private static string FormatAnswerForCsv(SurveyQuestionAnswer response)
+        {
+            if (response == null)
+                return "";
+
+            if (string.IsNullOrEmpty(response.otherText))
+                return response.answer ?? "";
+
+            return $"{response.answer} | {response.otherText}";
+        }
+
         // Legacy method - records survey responses to the shared Survey_Responses CSV file type via VERACsvHandler
-        private void RecordSurveyResponses(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults, string instanceId)
+        private void RecordSurveyResponses(VERASurveyInfo surveyToOutput, SurveyQuestionAnswer[] surveyResults, string instanceId)
         {
             string pID = VERALogger.Instance.activeParticipant.participantShortId;
             string ts = Time.realtimeSinceStartup.ToString();
@@ -253,14 +273,16 @@ namespace VERA
 
             foreach (var response in surveyResults)
             {
+                if (response == null) continue;
+
                 string questionText = "";
-                if (questionTextLookup.TryGetValue(response.Key, out string text))
+                if (questionTextLookup.TryGetValue(response.questionId, out string text))
                 {
                     questionText = text;
                 }
 
                 // All 9 columns provided explicitly (skipAutoColumns file type)
-                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.Key, questionText, response.Value);
+                csvHandler.CreateEntry(0, pID, ts, studyId, surveyId, surveyName, instanceId, response.questionId, questionText, FormatAnswerForCsv(response));
             }
 
             VERADebugger.Log($"[VERA Survey] Recorded {surveyResults.Length} survey responses to Survey_Responses file type.");
@@ -268,7 +290,7 @@ namespace VERA
 
         // Outputs given results of given survey back to the database
         // Flow: submit responses to the API, then record to the Survey_Responses CSV file type
-        public IEnumerator OutputSurveyResults(VERASurveyInfo surveyToOutput, KeyValuePair<string, string>[] surveyResults)
+        public IEnumerator OutputSurveyResults(VERASurveyInfo surveyToOutput, SurveyQuestionAnswer[] surveyResults)
         {
             uploadSuccessful = false;
             fileUploadSuccessful = false;
@@ -328,15 +350,21 @@ namespace VERA
 
                 for (int i = 0; i < surveyResults.Length; i++)
                 {
-                    SurveyResponse surveyResponse = new SurveyResponse
+                    SurveyQuestionAnswer result = surveyResults[i];
+                    if (result == null) continue;
+
+                    JObject responsePayload = new JObject
                     {
-                        question = surveyResults[i].Key,
-                        surveyInstance = instanceId,
-                        answer = surveyResults[i].Value,
-                        participantId = participantId
+                        ["question"] = result.questionId,
+                        ["surveyInstance"] = instanceId,
+                        ["answer"] = result.answer ?? "",
+                        ["participantId"] = participantId
                     };
 
-                    string responseJson = JsonUtility.ToJson(surveyResponse);
+                    if (!string.IsNullOrEmpty(result.otherText))
+                        responsePayload["otherText"] = result.otherText;
+
+                    string responseJson = responsePayload.ToString(Newtonsoft.Json.Formatting.None);
                     VERADebugger.Log($"[VERA Survey] Submitting response {i + 1}/{surveyResults.Length}: {responseJson}");
 
                     UnityWebRequest responseRequest = new UnityWebRequest(VERAHost.hostUrl + "/api/surveys/responses", "POST");
@@ -352,7 +380,7 @@ namespace VERA
                     {
                         VERADebugger.LogError($"[VERA Survey] Error creating SurveyResponse: {responseRequest.error}");
                         VERADebugger.LogError($"[VERA Survey] HTTP Status Code: {responseRequest.responseCode}");
-                        VERADebugger.LogError($"[VERA Survey] Question ID: {surveyResults[i].Key}");
+                        VERADebugger.LogError($"[VERA Survey] Question ID: {result.questionId}");
                         VERADebugger.LogError($"[VERA Survey] URL: {VERAHost.hostUrl}/api/surveys/responses");
                         if (!string.IsNullOrEmpty(responseRequest.downloadHandler?.text))
                         {
@@ -443,6 +471,10 @@ namespace VERA
         public List<string> matrixColumnNames;
         public string leftSliderText;
         public string rightSliderText;
+        public bool allowOtherOption;
+        public string otherOptionLabel;
+        public string answerPlaceholder;
+        public string answerInputMode;
         public string createdAt;
         public int __v;
     }
@@ -465,12 +497,24 @@ namespace VERA
         public bool requiresCompletion;
     }
 
+    /// <summary>
+    /// A single participant answer collected during a survey run, including optional Other free-text.
+    /// </summary>
+    [System.Serializable]
+    public class SurveyQuestionAnswer
+    {
+        public string questionId;
+        public string answer;
+        public string otherText;
+    }
+
     [System.Serializable]
     internal class SurveyResponse
     {
         public string question;
         public string surveyInstance;
         public string answer;
+        public string otherText;
         public string participantId;
     }
 }

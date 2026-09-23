@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -45,6 +49,20 @@ namespace VERA
                 MatrixStatement statement = Instantiate(matrixStatementPrefab, matrixStatementContentContainer);
                 statement.Initialize(rowText, columnCount, matrixStatementOptionPrefab);
                 spawnedStatements.Add(statement);
+            }
+        }
+
+
+        public override void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+            if (savedAnswer == null || string.IsNullOrEmpty(savedAnswer.answer))
+                return;
+
+            string[] parts = savedAnswer.answer.Split(new[] { ',' }, System.StringSplitOptions.None);
+            for (int i = 0; i < parts.Length && i < spawnedStatements.Count; i++)
+            {
+                if (int.TryParse(parts[i].Trim(), out int selectedIndex) && selectedIndex >= 0)
+                    spawnedStatements[i].SetSelectedIndex(selectedIndex);
             }
         }
 

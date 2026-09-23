@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;

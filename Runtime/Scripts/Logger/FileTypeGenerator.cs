@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 #if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
@@ -73,8 +77,11 @@ namespace VERA
             string fileName = columnDefinition.fileType.name;
             string filePath = generatedCsPath + "VERAFile_" + fileName + ".cs";
 
-            // If this is the Survey_Responses file type, do not generate a class since it's handled separately with a fixed schema
-            if (fileName == "Survey_Responses")
+            // Do not generate a user-facing wrapper for file types VERA handles automatically.
+            // Survey_Responses uses a fixed survey schema; Experiment_Telemetry is logged
+            // internally via VERABaselineDataLogger. Leaving a public VERAFile_* in the
+            // project only confuses users searching for APIs they should not call.
+            if (fileName == "Survey_Responses" || fileName == VERAExperimentTelemetrySchema.Name)
             {
                 if (File.Exists(filePath))
                 {
@@ -94,6 +101,7 @@ namespace VERA
 
             // Use StringBuilder to create the code
             StringBuilder sb = new StringBuilder();
+            VERAGeneratedCodeHeader.Append(sb);
 
             // Build the class; for example, for a file named "PlayerTransform", would be VERAFile_PlayerTransform
             sb.AppendLine("#if VERAFile_" + fileName);
