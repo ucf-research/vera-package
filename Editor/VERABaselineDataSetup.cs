@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Build;
@@ -68,7 +72,6 @@ namespace VERA
 
             VERADebugger.Log("✓ VERA Baseline Data setup complete!", "VERABaselineDataSetup");
             VERADebugger.Log($"  - Column definition: Assets/VERA/Resources/{VERAExperimentTelemetrySchema.Name}ColumnDefinition.asset", "VERABaselineDataSetup");
-            VERADebugger.Log($"  - Generated code: {generatedCodePath}/VERAFile_{VERAExperimentTelemetrySchema.Name}.cs", "VERABaselineDataSetup");
             VERADebugger.Log($"  - Scripting symbol: {TELEMETRY_SYMBOL}", "VERABaselineDataSetup");
             VERADebugger.Log("Unity will now recompile. Please wait...", "VERABaselineDataSetup");
         }

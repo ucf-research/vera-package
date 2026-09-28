@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -70,6 +74,20 @@ namespace VERA
         public int GetSelectedIndex()
         {
             return selectedOptionIndex;
+        }
+
+
+        /// <summary>
+        /// Programmatically selects a column for this row (used when restoring a saved answer).
+        /// </summary>
+        public void SetSelectedIndex(int index)
+        {
+            if (index < 0 || index >= spawnedOptions.Count)
+                return;
+
+            selectedOptionIndex = index;
+            foreach (MatrixStatementOption option in spawnedOptions)
+                option.SetSelected(option.OptionIndex == index);
         }
 
 

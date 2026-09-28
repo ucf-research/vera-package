@@ -560,6 +560,7 @@ MonoBehaviour:
   multipleChoicePrefab: {fileID: 5975045694617749594, guid: 73feeba1f07bf2d4882ee4734f9c4ad4, type: 3}
   sliderPrefab: {fileID: 8424013070895342762, guid: 48565add5a4a791449eaaef8f27e0193, type: 3}
   matrixPrefab: {fileID: 4820960849633130956, guid: 290e685f1bdaf2f4ba7cfe9817176740, type: 3}
+  openResponsePrefab: {fileID: 9222000000000100, guid: e4f5a6b7c8d90e1f2a3b4c5d6e7f8091, type: 3}
 --- !u!1 &1603023040302229199
 GameObject:
   m_ObjectHideFlags: 0
@@ -1157,8 +1158,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: You've completed all questions in this questionnaire. If you continue, you won't
-    be able to change your responses.
+  m_text: You've completed all questions in this questionnaire. If you continue,
+    you won't be able to change your responses.
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
   m_sharedMaterial: {fileID: 3190709048002044342, guid: bf69cd860c897ed47b29fabf51db5df3, type: 2}
@@ -2112,7 +2113,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 1
+  m_PresetInfoIsWorld: 0
 --- !u!114 &6677531268745169724
 MonoBehaviour:
   m_ObjectHideFlags: 0

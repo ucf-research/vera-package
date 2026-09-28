@@ -1,4 +1,8 @@
-﻿using TMPro;
+﻿// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -36,6 +40,19 @@ namespace VERA
             UpdateValueDisplay(slider.value);
 
             slider.onValueChanged.AddListener(UpdateValueDisplay);
+        }
+
+
+        public override void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+            if (slider == null || savedAnswer == null || string.IsNullOrEmpty(savedAnswer.answer))
+                return;
+
+            if (!float.TryParse(savedAnswer.answer, out float value))
+                return;
+
+            slider.SetValueWithoutNotify(value);
+            UpdateValueDisplay(value);
         }
 
 

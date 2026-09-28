@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System.Collections;
 using Unity.XR.CoreUtils;
 using UnityEngine;
@@ -118,6 +122,9 @@ namespace VERA
 
                 VERAFadeCanvas.Instance.FadeOut(1f);
             }
+
+            // Ensure an XRI Spatial Keyboard manager exists (reuse existing, or spawn from sample/Resources)
+            SurveySpatialKeyboardBootstrap.EnsureInScene();
 
             // Use existing survey interface if one already exists, or spawn a new one if not
             if (activeSurveyInterface == null)

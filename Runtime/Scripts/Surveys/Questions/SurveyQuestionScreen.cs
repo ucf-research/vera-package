@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,6 +20,7 @@ namespace VERA
         [SerializeField] private SurveyQuestionContent multipleChoicePrefab; // Also selection
         [SerializeField] private SurveyQuestionContent sliderPrefab;
         [SerializeField] private SurveyQuestionContent matrixPrefab; // Also Likert
+        [SerializeField] private SurveyQuestionContent openResponsePrefab;
 
         private SurveyQuestionContent activeQuestionContent;
 
@@ -42,7 +47,8 @@ namespace VERA
         /// question text, response options, etc.
         /// </summary>
         /// <param name="question">The survey question to display.</param>
-        public void DisplayQuestion(VERASurveyQuestionInfo question)
+        /// <param name="savedAnswer">Optional previously saved answer to restore when revisiting this question.</param>
+        public void DisplayQuestion(VERASurveyQuestionInfo question, SurveyQuestionAnswer savedAnswer = null)
         {
             VERADebugger.Log($"Displaying question {question.orderInSurvey + 1}: {question.questionText}", "SurveyDisplay", DebugPreference.Verbose);
 
@@ -64,6 +70,16 @@ namespace VERA
                 case VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix:
                     activeQuestionContent = Instantiate(matrixPrefab, questionContentContainer);
                     break;
+                case VERASurveyQuestionInfo.VERASurveyQuestionType.OpenResponse:
+                    if (openResponsePrefab == null)
+                    {
+                        VERADebugger.LogError(
+                            "OpenResponse question encountered but openResponsePrefab is not assigned on SurveyQuestionScreen.",
+                            "SurveyDisplay");
+                        break;
+                    }
+                    activeQuestionContent = Instantiate(openResponsePrefab, questionContentContainer);
+                    break;
                 default:
                     VERADebugger.LogError($"Unsupported question type: {question.questionType}", "SurveyDisplay");
                     break;
@@ -72,6 +88,8 @@ namespace VERA
             if (activeQuestionContent != null)
             {
                 activeQuestionContent.DisplayQuestion(question);
+                if (savedAnswer != null)
+                    activeQuestionContent.ApplySavedAnswer(savedAnswer);
             }
         }
 
@@ -91,6 +109,17 @@ namespace VERA
             if (activeQuestionContent != null)
                 return activeQuestionContent.GetResponse();
             return "-1";
+        }
+
+
+        /// <summary>
+        /// Retrieves free-text entered for an "Other" choice on the current question, if any.
+        /// </summary>
+        public string GetCurrentOtherText()
+        {
+            if (activeQuestionContent != null)
+                return activeQuestionContent.GetOtherText();
+            return null;
         }
 
 

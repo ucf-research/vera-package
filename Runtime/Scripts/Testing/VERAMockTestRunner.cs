@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -207,13 +211,17 @@ namespace VERA
             int numQuestions = surveyInfo.surveyQuestions.Count;
 
             // Create survey results array using real question IDs from workflow
-            KeyValuePair<string, string>[] surveyResults = new KeyValuePair<string, string>[numQuestions];
+            SurveyQuestionAnswer[] surveyResults = new SurveyQuestionAnswer[numQuestions];
 
             for (int i = 0; i < numQuestions; i++)
             {
                 string questionId = surveyInfo.surveyQuestions[i].questionId;
                 string answer = GenerateMockAnswer(i);
-                surveyResults[i] = new KeyValuePair<string, string>(questionId, answer);
+                surveyResults[i] = new SurveyQuestionAnswer
+                {
+                    questionId = questionId,
+                    answer = answer
+                };
             }
 
             if (verboseLogging)
@@ -309,12 +317,17 @@ namespace VERA
                 switch (question.questionType)
                 {
                     case "selection":
+                    case "multipleSelection":
+                    case "multiple_selection":
                         currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Selection;
-                        currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                        currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
+                        ApplyOtherOptionFields(currentQuestion, question);
                         break;
+                    case "multiple_choice":
                     case "multipleChoice":
                         currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice;
-                        currentQuestion.selectionOptions = question.questionOptions.ToArray();
+                        currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
+                        ApplyOtherOptionFields(currentQuestion, question);
                         break;
                     case "slider":
                         currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Slider;
@@ -322,9 +335,21 @@ namespace VERA
                         currentQuestion.rightSliderText = question.rightSliderText;
                         break;
                     case "matrix":
+                    case "likert":
                         currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Matrix;
-                        currentQuestion.matrixColumnTexts = question.matrixColumnNames.ToArray();
-                        currentQuestion.matrixRowTexts = question.questionOptions.ToArray();
+                        currentQuestion.matrixColumnTexts = question.matrixColumnNames?.ToArray() ?? new string[0];
+                        currentQuestion.matrixRowTexts = question.questionOptions?.ToArray() ?? new string[0];
+                        break;
+                    case "open_response":
+                    case "text":
+                    case "textarea":
+                        currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.OpenResponse;
+                        currentQuestion.answerPlaceholder = question.answerPlaceholder;
+                        currentQuestion.answerInputMode =
+                            !string.IsNullOrEmpty(question.answerInputMode) &&
+                            question.answerInputMode.Equals("voice", System.StringComparison.OrdinalIgnoreCase)
+                                ? VERASurveyQuestionInfo.VERASurveyAnswerInputMode.Voice
+                                : VERASurveyQuestionInfo.VERASurveyAnswerInputMode.Text;
                         break;
                 }
 
@@ -333,6 +358,15 @@ namespace VERA
 
             surveyInfo.surveyQuestions = surveyQuestionInfos.OrderBy(q => q.orderInSurvey).ToList();
             return surveyInfo;
+        }
+
+
+        private static void ApplyOtherOptionFields(VERASurveyQuestionInfo currentQuestion, VERASurveyQuestion question)
+        {
+            currentQuestion.allowOtherOption = question.allowOtherOption;
+            currentQuestion.otherOptionLabel = string.IsNullOrWhiteSpace(question.otherOptionLabel)
+                ? VERASurveyQuestionInfo.DEFAULT_OTHER_OPTION_LABEL
+                : question.otherOptionLabel;
         }
 
 
@@ -488,7 +522,11 @@ namespace VERA
                                 questionText = qToken["questionText"]?.ToString(),
                                 questionType = qToken["questionType"]?.ToString(),
                                 leftSliderText = qToken["leftSliderText"]?.ToString(),
-                                rightSliderText = qToken["rightSliderText"]?.ToString()
+                                rightSliderText = qToken["rightSliderText"]?.ToString(),
+                                allowOtherOption = qToken["allowOtherOption"]?.Value<bool>() ?? false,
+                                otherOptionLabel = qToken["otherOptionLabel"]?.ToString(),
+                                answerPlaceholder = qToken["answerPlaceholder"]?.ToString(),
+                                answerInputMode = qToken["answerInputMode"]?.ToString()
                             };
 
                             // Parse question options

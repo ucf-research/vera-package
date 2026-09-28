@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 #if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
@@ -187,11 +191,13 @@ namespace VERA
                         case "multiple_selection":
                             currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Selection;
                             currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
+                            ApplyOtherOptionFields(currentQuestion, question);
                             break;
                         case "multiple_choice":
                         case "multipleChoice":
                             currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.MultipleChoice;
                             currentQuestion.selectionOptions = question.questionOptions?.ToArray() ?? new string[0];
+                            ApplyOtherOptionFields(currentQuestion, question);
                             break;
                         case "slider":
                             currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.Slider;
@@ -220,6 +226,13 @@ namespace VERA
                             {
                                 currentQuestion.matrixRowTexts = question.questionOptions?.ToArray();
                             }
+                            break;
+                        case "open_response":
+                        case "text":
+                        case "textarea":
+                            currentQuestion.questionType = VERASurveyQuestionInfo.VERASurveyQuestionType.OpenResponse;
+                            currentQuestion.answerPlaceholder = question.answerPlaceholder;
+                            currentQuestion.answerInputMode = ParseAnswerInputMode(question.answerInputMode);
                             break;
                         default:
                             VERADebugger.LogError($"Unsupported survey question type: {question.questionType}. Running this survey may result in unexpected behavior. (Question text is \"" + question.questionText + "\")", "SurveyHelperGenerator");
@@ -280,6 +293,7 @@ namespace VERA
             }
 
             StringBuilder sb = new StringBuilder();
+            VERAGeneratedCodeHeader.Append(sb);
 
             // Generate class header
             GenerateSurveyHelperClassHeader(sb);
@@ -576,8 +590,30 @@ namespace VERA
             public List<string> matrixColumnNames;
             public string leftSliderText;
             public string rightSliderText;
+            public bool allowOtherOption;
+            public string otherOptionLabel;
+            public string answerPlaceholder;
+            public string answerInputMode;
             public string createdAt;
             public int __v;
+        }
+
+
+        private static void ApplyOtherOptionFields(VERASurveyQuestionInfo currentQuestion, EditorSurveyQuestion question)
+        {
+            currentQuestion.allowOtherOption = question.allowOtherOption;
+            currentQuestion.otherOptionLabel = string.IsNullOrWhiteSpace(question.otherOptionLabel)
+                ? VERASurveyQuestionInfo.DEFAULT_OTHER_OPTION_LABEL
+                : question.otherOptionLabel;
+        }
+
+
+        private static VERASurveyQuestionInfo.VERASurveyAnswerInputMode ParseAnswerInputMode(string mode)
+        {
+            if (!string.IsNullOrEmpty(mode) && mode.Equals("voice", System.StringComparison.OrdinalIgnoreCase))
+                return VERASurveyQuestionInfo.VERASurveyAnswerInputMode.Voice;
+
+            return VERASurveyQuestionInfo.VERASurveyAnswerInputMode.Text;
         }
 
 

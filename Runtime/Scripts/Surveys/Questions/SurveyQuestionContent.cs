@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System;
 using System.Collections;
 using TMPro;
@@ -123,6 +127,25 @@ namespace VERA
         /// </summary>
         /// <returns>The user's response as a string.</returns>
         public abstract string GetResponse();
+
+
+        /// <summary>
+        /// Retrieves free-text entered for an "Other" choice, if any.
+        /// Returns null when Other is not applicable or not selected.
+        /// </summary>
+        public virtual string GetOtherText()
+        {
+            return null;
+        }
+
+
+        /// <summary>
+        /// Restores a previously saved answer onto this freshly displayed question UI.
+        /// No-op when <paramref name="savedAnswer"/> is null or empty.
+        /// </summary>
+        public virtual void ApplySavedAnswer(SurveyQuestionAnswer savedAnswer)
+        {
+        }
 
 
         /// <summary>

@@ -1,3 +1,7 @@
+// Copyright (c) 2024-2026 University of Central Florida for VERA. All rights reserved. <https://vera-xr.io>
+// SPDX-FileCopyrightText: 2024-2026 University of Central Florida for VERA <https://vera-xr.io>
+// SPDX-License-Identifier: LicenseRef-VERA
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -2080,7 +2084,11 @@ namespace VERA
                             questionText = qObj.Value<string>("questionText"),
                             questionType = qObj.Value<string>("questionType"),
                             leftSliderText = qObj.Value<string>("leftSliderText"),
-                            rightSliderText = qObj.Value<string>("rightSliderText")
+                            rightSliderText = qObj.Value<string>("rightSliderText"),
+                            allowOtherOption = qObj.Value<bool?>("allowOtherOption") ?? false,
+                            otherOptionLabel = qObj.Value<string>("otherOptionLabel"),
+                            answerPlaceholder = qObj.Value<string>("answerPlaceholder"),
+                            answerInputMode = qObj.Value<string>("answerInputMode")
                         };
 
                         // Parse question options
