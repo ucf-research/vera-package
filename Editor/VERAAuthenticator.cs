@@ -41,6 +41,11 @@ namespace VERA
         {
             EditorApplication.quitting += StopUserAuthServer;
             AssemblyReloadEvents.beforeAssemblyReload += StopUserAuthServer;
+
+            // Auth JSON files are the project source of truth; PlayerPrefs can drift
+            // (partial clears, crash before Save, etc.) and leave the UI "signed in"
+            // with a token that no longer matches disk — or the reverse.
+            SyncAuthenticationPlayerPrefsFromDisk();
         }
 
 
@@ -315,11 +320,36 @@ namespace VERA
 
                 // Push to file (updates PlayerPrefs as well)
                 SetSavedUserAuthInfo(newAuthInfo);
+
+                // Logout clears the build token but keeps the active experiment. Re-login
+                // only restores the user JWT, so we must re-fetch the experiment build token
+                // here or uploads keep returning 401 while the UI still shows "Signed in".
+                RefreshBuildAuthForActiveExperiment();
             }
             catch (Exception ex)
             {
                 VERADebugger.LogError($"Error in SaveUserAuthentication: {ex.Message}\nStack trace: {ex.StackTrace}", "VERA Authentication");
             }
+        }
+
+        /// <summary>
+        /// Re-fetches the experiment build auth token for the currently active experiment, if any.
+        /// Safe to call when no experiment is selected (no-op).
+        /// </summary>
+        public static void RefreshBuildAuthForActiveExperiment(Action<bool> onComplete = null)
+        {
+            VERABuildAuthInfo buildInfo = GetSavedBuildAuthInfo();
+            string experimentId = buildInfo != null ? buildInfo.activeExperiment : null;
+            if (string.IsNullOrEmpty(experimentId))
+                experimentId = PlayerPrefs.GetString("VERA_ActiveExperiment", "");
+
+            if (string.IsNullOrEmpty(experimentId))
+            {
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            GetBuildAuthToken(experimentId, onComplete);
         }
 
         // Saves incoming build authentication info
@@ -384,11 +414,9 @@ namespace VERA
         // Clears various authentication parameters
         public static void ClearAuthentication()
         {
-            // Save
-            EditorApplication.delayCall += () =>
-            {
-                SaveUserDeauthentication();
-            };
+            // Must run synchronously. A delayed clear can race a subsequent re-login and
+            // wipe the freshly saved user token after authentication succeeds.
+            SaveUserDeauthentication();
         }
 
         // Sets the saved build authentication info to a new authInfo
@@ -404,17 +432,111 @@ namespace VERA
             // Write to the file
             File.WriteAllText(filePath, json);
 
-            // Update PlayerPrefs
-            PlayerPrefs.SetString("VERA_BuildAuthToken", authInfo.buildAuthToken);
-            PlayerPrefs.SetString("VERA_ActiveExperiment", authInfo.activeExperiment);
-            PlayerPrefs.SetString("VERA_ActiveSite", authInfo.activeSite);
-            PlayerPrefs.SetInt("VERA_BuildAuthenticated", authInfo.authenticated ? 1 : 0);
-            PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
-            PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
-            PlayerPrefs.SetInt("VERA_AutoStartParticipantSessions", authInfo.autoStartParticipantSessions ? 1 : 0);
+            ApplyBuildAuthInfoToPlayerPrefs(authInfo);
 
             AssetDatabase.Refresh();
             AssetDatabase.SaveAssets();
+        }
+
+        private static void ApplyBuildAuthInfoToPlayerPrefs(VERABuildAuthInfo authInfo)
+        {
+            if (authInfo == null)
+                authInfo = new VERABuildAuthInfo();
+
+            PlayerPrefs.SetString("VERA_BuildAuthToken", authInfo.buildAuthToken ?? string.Empty);
+            PlayerPrefs.SetString("VERA_ActiveExperiment", authInfo.activeExperiment ?? string.Empty);
+            PlayerPrefs.SetString("VERA_ActiveSite", authInfo.activeSite ?? string.Empty);
+            PlayerPrefs.SetInt("VERA_BuildAuthenticated", authInfo.authenticated ? 1 : 0);
+            PlayerPrefs.SetInt("VERA_DataRecordingType", (int)authInfo.dataRecordingType);
+            PlayerPrefs.SetInt("VERA_DebugPreference", (int)authInfo.debugPreference);
+            PlayerPrefs.SetInt("VERA_RotationFormat", (int)authInfo.rotationFormat);
+            PlayerPrefs.SetInt("VERA_AutoStartParticipantSessions", authInfo.autoStartParticipantSessions ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        private static void ApplyUserAuthInfoToPlayerPrefs(VERAUserAuthInfo authInfo)
+        {
+            if (authInfo == null)
+                authInfo = new VERAUserAuthInfo();
+
+            PlayerPrefs.SetString("VERA_UserId", authInfo.userId ?? string.Empty);
+            PlayerPrefs.SetString("VERA_UserName", authInfo.userName ?? string.Empty);
+            PlayerPrefs.SetString("VERA_UserAuthToken", authInfo.userAuthToken ?? string.Empty);
+            PlayerPrefs.SetInt("VERA_UserAuthenticated", authInfo.authenticated ? 1 : 0);
+            PlayerPrefs.SetInt("VERA_IsPreviewAccount", authInfo.isPreviewAccount ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>
+        /// Copies auth JSON on disk into PlayerPrefs so UI state and API callers agree.
+        /// Does not create auth directories. Missing files clear the corresponding prefs so a
+        /// deleted Authentication folder cannot leave the UI stuck on a stale "Signed in" state.
+        /// </summary>
+        internal static void SyncAuthenticationPlayerPrefsFromDisk()
+        {
+            try
+            {
+                string userPath = Path.Combine(Application.dataPath, "VERA", "Authentication", "Editor", userAuthFileName);
+                if (File.Exists(userPath))
+                {
+                    VERAUserAuthInfo userInfo = JsonUtility.FromJson<VERAUserAuthInfo>(File.ReadAllText(userPath));
+                    ApplyUserAuthInfoToPlayerPrefs(userInfo ?? new VERAUserAuthInfo());
+                }
+                else
+                {
+                    ApplyUserAuthInfoToPlayerPrefs(new VERAUserAuthInfo());
+                }
+
+                string buildPath = Path.Combine(Application.dataPath, "VERA", "Authentication", "Resources", buildAuthFileName);
+                if (File.Exists(buildPath))
+                {
+                    string json = File.ReadAllText(buildPath);
+                    VERABuildAuthInfo buildInfo = JsonUtility.FromJson<VERABuildAuthInfo>(json);
+                    if (buildInfo != null && !json.Contains("\"autoStartParticipantSessions\""))
+                        buildInfo.autoStartParticipantSessions = true;
+                    ApplyBuildAuthInfoToPlayerPrefs(buildInfo ?? new VERABuildAuthInfo());
+                }
+                else
+                {
+                    ApplyBuildAuthInfoToPlayerPrefs(new VERABuildAuthInfo());
+                }
+            }
+            catch (Exception ex)
+            {
+                VERADebugger.LogWarning(
+                    $"Could not sync authentication PlayerPrefs from disk: {ex.Message}",
+                    "VERA Authentication");
+            }
+        }
+
+        /// <summary>
+        /// When the user JWT is valid but the experiment build token is missing (e.g. after logout
+        /// preserved the active experiment), fetches a new build token so Play Mode uploads work.
+        /// </summary>
+        internal static void EnsureBuildAuthTokenForSignedInUser()
+        {
+            if (PlayerPrefs.GetInt("VERA_UserAuthenticated", 0) != 1)
+                return;
+
+            if (string.IsNullOrEmpty(PlayerPrefs.GetString("VERA_UserAuthToken", "")))
+                return;
+
+            VERABuildAuthInfo buildInfo = GetSavedBuildAuthInfo();
+            if (buildInfo != null &&
+                buildInfo.authenticated &&
+                !string.IsNullOrEmpty(buildInfo.buildAuthToken))
+            {
+                return;
+            }
+
+            string experimentId = buildInfo != null ? buildInfo.activeExperiment : null;
+            if (string.IsNullOrEmpty(experimentId))
+                experimentId = PlayerPrefs.GetString("VERA_ActiveExperiment", "");
+
+            if (string.IsNullOrEmpty(experimentId))
+                return;
+
+            RefreshBuildAuthForActiveExperiment();
         }
 
 
@@ -433,15 +555,7 @@ namespace VERA
                 // Write to the file
                 File.WriteAllText(filePath, json);
 
-                // Update PlayerPrefs
-                PlayerPrefs.SetString("VERA_UserId", authInfo.userId);
-                PlayerPrefs.SetString("VERA_UserName", authInfo.userName);
-                PlayerPrefs.SetString("VERA_UserAuthToken", authInfo.userAuthToken);
-                PlayerPrefs.SetInt("VERA_UserAuthenticated", authInfo.authenticated ? 1 : 0);
-                PlayerPrefs.SetInt("VERA_IsPreviewAccount", authInfo.isPreviewAccount ? 1 : 0);
-
-                // Force save PlayerPrefs
-                PlayerPrefs.Save();
+                ApplyUserAuthInfoToPlayerPrefs(authInfo);
 
                 AssetDatabase.Refresh();
                 AssetDatabase.SaveAssets();
