@@ -70,6 +70,12 @@ namespace VERA
         public static string participantSessionID { get { return VERALogger.Instance.activeParticipant.GetParticipantSessionLabel(); } }
 
         /// <summary>
+        /// The participant's Prolific PID when one is associated with this session.
+        /// Null if the participant has no Prolific ID.
+        /// </summary>
+        public static string prolificPID { get { return VERALogger.Instance.activeParticipant.prolificID; } }
+
+        /// <summary>
         /// Whether the VERA logger singleton exists and session APIs can be accessed.
         /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
         /// </summary>
@@ -675,6 +681,90 @@ namespace VERA
 
             VERALogger.Instance.StartCoroutine(
                 VERALogger.Instance.activeParticipant.FetchAccessibilitySettings(onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Stores or updates a memory field for the current participant on the VERA server.
+        /// Memory persists across sessions for the same participant within an experiment.
+        /// Keys are trimmed, case-sensitive, max 128 characters, and cannot contain '/', '\', or control characters.
+        /// Values are plain strings up to 2 MB.
+        /// </summary>
+        /// <param name="keyName">The memory field name (e.g. "Gender").</param>
+        /// <param name="keyValue">The value to store (e.g. "Male").</param>
+        /// <param name="onSuccess">Called when the value is stored successfully.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void SetMemoryKey(string keyName, string keyValue, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("set a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.SetMemoryKey(keyName, keyValue, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Fetches a single memory field for the current participant from the VERA server.
+        /// If the key does not exist, <paramref name="onSuccess"/> is invoked with null (not treated as an error).
+        /// </summary>
+        /// <param name="keyName">The memory field name to retrieve.</param>
+        /// <param name="onSuccess">Called with the stored value, or null if the key does not exist.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetMemoryKey(string keyName, Action<string> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("get a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetMemoryKey(keyName, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Fetches all memory fields (with values) for the current participant from the VERA server.
+        /// </summary>
+        /// <param name="onSuccess">Called with a dictionary of key → value pairs when the request succeeds.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetAllMemoryKeys(Action<Dictionary<string, string>> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("get all memory keys", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetAllMemoryKeys(onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Deletes a memory field for the current participant on the VERA server.
+        /// Clearing a key that does not exist is treated as success.
+        /// </summary>
+        /// <param name="keyName">The memory field name to delete.</param>
+        /// <param name="onSuccess">Called when the key is cleared (or was already absent).</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void ClearMemoryKey(string keyName, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("clear a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.ClearMemoryKey(keyName, onSuccess, onFailure));
+        }
+
+        private static bool TryPrepareMemoryApi(string actionDescription, Action<string> onFailure)
+        {
+            if (!sessionInProgress)
+            {
+                string message = "Cannot " + actionDescription + " because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
+                return false;
+            }
+
+            if (VERALogger.Instance?.activeParticipant == null)
+            {
+                onFailure?.Invoke("No active participant is available.");
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

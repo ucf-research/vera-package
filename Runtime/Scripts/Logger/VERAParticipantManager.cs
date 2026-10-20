@@ -244,6 +244,7 @@ namespace VERA
         private void ClearAssignedParticipantIdentity()
         {
             participantShortId = null;
+            prolificID = null;
             sessionId = null;
             sessionNumber = -1;
         }
@@ -972,6 +973,482 @@ namespace VERA
                 participantDatabaseId = fallbackOverrideId;
                 participantUUID = fallbackOverrideId;
             }
+        }
+
+
+        #endregion
+
+
+        #region PARTICIPANT MEMORY
+
+
+        private const int MaxMemoryKeyLength = 128;
+        private const int MaxMemoryValueLength = 2 * 1024 * 1024;
+
+        /// <summary>
+        /// Stores or updates a memory field for this participant on the VERA server.
+        /// </summary>
+        public IEnumerator SetMemoryKey(string keyName, string keyValue, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryRequest(out string error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!TryValidateMemoryKey(keyName, out string key, out error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!TryValidateMemoryValue(keyValue, out error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            string url = BuildMemoryKeyUrl(key);
+            string jsonPayload = JsonUtility.ToJson(new VERAMemoryValuePayload { value = keyValue ?? "" });
+            VERADebugger.Log("Setting memory key \"" + key + "\" at " + url, "VERA Participant", DebugPreference.Verbose);
+
+            UnityWebRequest request = CreateJsonRequest(url, UnityWebRequest.kHttpVerbPUT, jsonPayload);
+            VERAHost.ApplyBearerAuth(request, VERALogger.Instance.apiKey);
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string failure = FormatMemoryRequestError("set memory key \"" + key + "\"", request);
+                VERADebugger.LogWarning(failure, "VERA Participant");
+                onFailure?.Invoke(failure);
+                request.Dispose();
+                yield break;
+            }
+
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+            request.Dispose();
+
+            VERAMemoryEntryResponse response = TryParseMemoryEntryResponse(responseText, out error);
+            if (response == null)
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!response.success || response.entry == null)
+            {
+                onFailure?.Invoke(GetMemoryErrorMessage(response.error, response.message, "Failed to set memory key."));
+                yield break;
+            }
+
+            VERADebugger.Log("Successfully set memory key \"" + key + "\".", "VERA Participant", DebugPreference.Informative);
+            onSuccess?.Invoke();
+        }
+
+        /// <summary>
+        /// Fetches a single memory field for this participant from the VERA server.
+        /// Invokes <paramref name="onSuccess"/> with null when the key does not exist.
+        /// </summary>
+        public IEnumerator GetMemoryKey(string keyName, Action<string> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryRequest(out string error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!TryValidateMemoryKey(keyName, out string key, out error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            string url = BuildMemoryKeyUrl(key);
+            VERADebugger.Log("Getting memory key \"" + key + "\" from " + url, "VERA Participant", DebugPreference.Verbose);
+
+            UnityWebRequest request = UnityWebRequest.Get(url);
+            VERAHost.ApplyBearerAuth(request, VERALogger.Instance.apiKey);
+            yield return request.SendWebRequest();
+
+            long responseCode = request.responseCode;
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+
+            if (responseCode == 404)
+            {
+                request.Dispose();
+                onSuccess?.Invoke(null);
+                yield break;
+            }
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string failure = FormatMemoryRequestError("get memory key \"" + key + "\"", request);
+                VERADebugger.LogWarning(failure, "VERA Participant");
+                onFailure?.Invoke(failure);
+                request.Dispose();
+                yield break;
+            }
+
+            request.Dispose();
+
+            VERAMemoryEntryResponse response = TryParseMemoryEntryResponse(responseText, out error);
+            if (response == null)
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!response.success || response.entry == null)
+            {
+                // Treat explicit "not found" payloads as a soft miss even if status was 200.
+                if (IsMemoryKeyNotFoundError(response.error, response.message))
+                {
+                    onSuccess?.Invoke(null);
+                    yield break;
+                }
+
+                onFailure?.Invoke(GetMemoryErrorMessage(response.error, response.message, "Failed to get memory key."));
+                yield break;
+            }
+
+            onSuccess?.Invoke(response.entry.value);
+        }
+
+        /// <summary>
+        /// Fetches all memory fields (with values) for this participant from the VERA server.
+        /// </summary>
+        public IEnumerator GetAllMemoryKeys(Action<Dictionary<string, string>> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryRequest(out string error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            string url = BuildMemoryListUrl(includeValues: true);
+            VERADebugger.Log("Getting all memory keys from " + url, "VERA Participant", DebugPreference.Verbose);
+
+            UnityWebRequest request = UnityWebRequest.Get(url);
+            VERAHost.ApplyBearerAuth(request, VERALogger.Instance.apiKey);
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string failure = FormatMemoryRequestError("get all memory keys", request);
+                VERADebugger.LogWarning(failure, "VERA Participant");
+                onFailure?.Invoke(failure);
+                request.Dispose();
+                yield break;
+            }
+
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+            request.Dispose();
+
+            if (string.IsNullOrEmpty(responseText))
+            {
+                onFailure?.Invoke("Memory list response was empty.");
+                yield break;
+            }
+
+            VERAMemoryListResponse response = null;
+            try
+            {
+                response = JsonUtility.FromJson<VERAMemoryListResponse>(responseText);
+            }
+            catch (Exception ex)
+            {
+                onFailure?.Invoke("Failed to parse memory list response: " + ex.Message);
+                yield break;
+            }
+
+            if (response == null || !response.success)
+            {
+                onFailure?.Invoke(GetMemoryErrorMessage(response != null ? response.error : null, null, "Failed to list memory keys."));
+                yield break;
+            }
+
+            Dictionary<string, string> result = new Dictionary<string, string>();
+            if (response.entries != null)
+            {
+                foreach (VERAMemoryEntry entry in response.entries)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.key))
+                        continue;
+
+                    result[entry.key] = entry.value ?? "";
+                }
+            }
+
+            onSuccess?.Invoke(result);
+        }
+
+        /// <summary>
+        /// Deletes a memory field for this participant on the VERA server.
+        /// Invokes <paramref name="onSuccess"/> when the key is missing (idempotent clear).
+        /// </summary>
+        public IEnumerator ClearMemoryKey(string keyName, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryRequest(out string error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            if (!TryValidateMemoryKey(keyName, out string key, out error))
+            {
+                onFailure?.Invoke(error);
+                yield break;
+            }
+
+            string url = BuildMemoryKeyUrl(key);
+            VERADebugger.Log("Clearing memory key \"" + key + "\" at " + url, "VERA Participant", DebugPreference.Verbose);
+
+            UnityWebRequest request = UnityWebRequest.Delete(url);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            VERAHost.ApplyBearerAuth(request, VERALogger.Instance.apiKey);
+            yield return request.SendWebRequest();
+
+            long responseCode = request.responseCode;
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+
+            if (responseCode == 404)
+            {
+                request.Dispose();
+                onSuccess?.Invoke();
+                yield break;
+            }
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string failure = FormatMemoryRequestError("clear memory key \"" + key + "\"", request);
+                VERADebugger.LogWarning(failure, "VERA Participant");
+                onFailure?.Invoke(failure);
+                request.Dispose();
+                yield break;
+            }
+
+            request.Dispose();
+
+            if (!string.IsNullOrEmpty(responseText))
+            {
+                VERAMemoryDeleteResponse response = null;
+                try
+                {
+                    response = JsonUtility.FromJson<VERAMemoryDeleteResponse>(responseText);
+                }
+                catch (Exception ex)
+                {
+                    onFailure?.Invoke("Failed to parse memory delete response: " + ex.Message);
+                    yield break;
+                }
+
+                if (response != null && !response.success)
+                {
+                    if (IsMemoryKeyNotFoundError(response.error, response.message))
+                    {
+                        onSuccess?.Invoke();
+                        yield break;
+                    }
+
+                    onFailure?.Invoke(GetMemoryErrorMessage(response.error, response.message, "Failed to clear memory key."));
+                    yield break;
+                }
+            }
+
+            VERADebugger.Log("Successfully cleared memory key \"" + key + "\".", "VERA Participant", DebugPreference.Informative);
+            onSuccess?.Invoke();
+        }
+
+        private bool TryPrepareMemoryRequest(out string error)
+        {
+            error = null;
+
+            DataRecordingType dataRecordingType = VERALogger.Instance.GetDataRecordingType();
+            if (dataRecordingType != DataRecordingType.RecordLocallyAndLive)
+            {
+                error = "Participant memory is only available when recording to the server.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(participantShortId))
+            {
+                error = "No participant short ID available.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(VERALogger.Instance.experimentUUID) || VERALogger.Instance.experimentUUID == "N/A")
+            {
+                error = "No experiment ID available.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(VERALogger.Instance.apiKey))
+            {
+                error = "No API authentication token available.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryValidateMemoryKey(string keyName, out string trimmedKey, out string error)
+        {
+            trimmedKey = null;
+            error = null;
+
+            if (keyName == null)
+            {
+                error = "Memory key cannot be null.";
+                return false;
+            }
+
+            trimmedKey = keyName.Trim();
+            if (trimmedKey.Length == 0)
+            {
+                error = "Memory key cannot be empty.";
+                return false;
+            }
+
+            if (trimmedKey.Length > MaxMemoryKeyLength)
+            {
+                error = "Memory key cannot exceed " + MaxMemoryKeyLength + " characters.";
+                return false;
+            }
+
+            for (int i = 0; i < trimmedKey.Length; i++)
+            {
+                char c = trimmedKey[i];
+                if (c == '/' || c == '\\' || char.IsControl(c))
+                {
+                    error = "Memory key cannot contain '/', '\\', or control characters.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryValidateMemoryValue(string keyValue, out string error)
+        {
+            error = null;
+
+            if (keyValue == null)
+            {
+                error = "Memory value cannot be null.";
+                return false;
+            }
+
+            if (keyValue.Length > MaxMemoryValueLength)
+            {
+                error = "Memory value cannot exceed " + MaxMemoryValueLength + " characters (2 MB).";
+                return false;
+            }
+
+            return true;
+        }
+
+        private string BuildMemoryKeyUrl(string key)
+        {
+            string pid = Uri.EscapeDataString(participantShortId);
+            string encodedKey = Uri.EscapeDataString(key);
+            string experimentId = Uri.EscapeDataString(VERALogger.Instance.experimentUUID);
+            return VERAHost.hostUrl + "/api/participants/pid/" + pid + "/kv/" + encodedKey + "?experimentId=" + experimentId;
+        }
+
+        private string BuildMemoryListUrl(bool includeValues)
+        {
+            string pid = Uri.EscapeDataString(participantShortId);
+            string experimentId = Uri.EscapeDataString(VERALogger.Instance.experimentUUID);
+            string url = VERAHost.hostUrl + "/api/participants/pid/" + pid + "/kv?experimentId=" + experimentId;
+            if (includeValues)
+                url += "&includeValues=true";
+            return url;
+        }
+
+        private static UnityWebRequest CreateJsonRequest(string url, string method, string jsonPayload)
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload ?? "{}");
+            UnityWebRequest request = new UnityWebRequest(url, method);
+            UploadHandlerRaw uploadHandler = new UploadHandlerRaw(bodyRaw);
+            uploadHandler.contentType = "application/json";
+            request.uploadHandler = uploadHandler;
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            return request;
+        }
+
+        private static VERAMemoryEntryResponse TryParseMemoryEntryResponse(string responseText, out string error)
+        {
+            error = null;
+
+            if (string.IsNullOrEmpty(responseText))
+            {
+                error = "Memory response was empty.";
+                return null;
+            }
+
+            try
+            {
+                VERAMemoryEntryResponse response = JsonUtility.FromJson<VERAMemoryEntryResponse>(responseText);
+                if (response == null)
+                {
+                    error = "Memory response was invalid.";
+                    return null;
+                }
+                return response;
+            }
+            catch (Exception ex)
+            {
+                error = "Failed to parse memory response: " + ex.Message;
+                return null;
+            }
+        }
+
+        private static string FormatMemoryRequestError(string action, UnityWebRequest request)
+        {
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+            string serverError = TryExtractMemoryErrorMessage(responseText);
+            string details = "HTTP " + request.responseCode + ", " + request.error;
+            if (!string.IsNullOrEmpty(serverError))
+                details += ": " + serverError;
+            else if (!string.IsNullOrEmpty(responseText))
+                details += ", response=" + responseText;
+
+            return "Failed to " + action + " (" + details + ")";
+        }
+
+        private static string TryExtractMemoryErrorMessage(string responseText)
+        {
+            if (string.IsNullOrEmpty(responseText))
+                return null;
+
+            try
+            {
+                VERAMemoryEntryResponse response = JsonUtility.FromJson<VERAMemoryEntryResponse>(responseText);
+                return GetMemoryErrorMessage(
+                    response != null ? response.error : null,
+                    response != null ? response.message : null,
+                    null);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string GetMemoryErrorMessage(string error, string message, string fallback)
+        {
+            if (!string.IsNullOrEmpty(error))
+                return error;
+            if (!string.IsNullOrEmpty(message))
+                return message;
+            return fallback;
+        }
+
+        private static bool IsMemoryKeyNotFoundError(string error, string message)
+        {
+            string combined = ((error ?? "") + " " + (message ?? "")).ToLowerInvariant();
+            return combined.Contains("not found");
         }
 
 
