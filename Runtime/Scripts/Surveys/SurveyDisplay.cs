@@ -56,7 +56,7 @@ namespace VERA
         #region VARIABLES
 
         private VERASurveyInfo activeSurveyInfo;
-        private Action onSurveyComplete;
+        private Action<VERASurveyResults> onSurveyComplete;
 
         private VERAFocusUI focusUi;
         [SerializeField] private VERASurveyComponents surveyComponents;
@@ -127,10 +127,10 @@ namespace VERA
         /// Start a survey by VERASurveyInfo. Triggers the display of the survey in VR, and the collection of responses.
         /// </summary>
         /// <param name="surveyToStart">The VERASurveyInfo object containing the survey details to start.</param>
-        /// <param name="onSurveyComplete">A callback Action that will be invoked when the survey is completed by the participant.</param>
+        /// <param name="onSurveyComplete">Invoked when the survey is completed. The argument is that submission's responses.</param>
         /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
-        public void StartSurvey(VERASurveyInfo surveyToStart, Action onSurveyComplete, float heightOffset = 0f, float distanceOffset = 3f)
+        public void StartSurvey(VERASurveyInfo surveyToStart, Action<VERASurveyResults> onSurveyComplete, float heightOffset = 0f, float distanceOffset = 3f)
         {
             VERATween.Cancel(surveyComponents.mainCanvasGroup.gameObject);
             surveyComponents.mainCanvasGroup.TweenAlpha(1f, SurveyDisplay.SCREEN_FADE_DURATION);
@@ -155,12 +155,12 @@ namespace VERA
         /// Finishes the survey; should be called when the participant has fully completed the survey, 
         /// and the results have been successfully uploaded (i.e. ready to move on).
         /// </summary>
-        public void FinishSurvey()
+        public void FinishSurvey(VERASurveyResults results)
         {
             // If we have a stored callback for when the survey is complete, invoke it to trigger any necessary follow-up actions
             if (onSurveyComplete != null)
             {
-                onSurveyComplete.Invoke();
+                onSurveyComplete.Invoke(results);
 
                 VERATween.Cancel(surveyComponents.mainCanvasGroup.gameObject);
                 surveyComponents.mainCanvasGroup.TweenAlpha(0f, SurveyDisplay.SCREEN_FADE_DURATION).SetOnComplete(() => Destroy(gameObject));

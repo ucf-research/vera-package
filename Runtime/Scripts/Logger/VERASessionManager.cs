@@ -117,6 +117,21 @@ namespace VERA
         public static UnityEvent onSessionEnd { get { return VERALogger.Instance.onSessionEnd; } }
 
         /// <summary>
+        /// Invoked when the participant submits a survey in the VERA survey interface.
+        /// The argument is that submission's responses, built from the answers just collected.
+        /// VERASurveyHelper.onSurveySubmitted forwards to this event.
+        /// </summary>
+        public static event Action<VERASurveyResults> onSurveySubmitted;
+
+        internal static void NotifySurveySubmitted(VERASurveyResults results)
+        {
+            if (results == null)
+                return;
+
+            onSurveySubmitted?.Invoke(results);
+        }
+
+        /// <summary>
         /// Starts a participant session: creates or looks up the participant on the server and begins data collection.
         /// Call this when Auto-Start Participant Sessions is disabled in VERA Settings.
         /// If auto-start is enabled, VERA already starts a session automatically and this method is not needed.
@@ -190,12 +205,29 @@ namespace VERA
         /// automatically generated VERASurveyHelper static class to do so in a more convenient manner.
         /// </summary>
         /// <param name="surveyToStart">A VERASurveyInfo scriptable object representing the survey to start.</param>
-        /// <param name="onSurveyComplete">A callback Action that will be invoked when the survey is completed by the participant.</param>
+        /// <param name="onSurveyComplete">Invoked when the survey is completed by the participant.</param>
         /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
         /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
         /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         public static void StartSurvey(VERASurveyInfo surveyToStart, System.Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
+        {
+            Action<VERASurveyResults> callback = onSurveyComplete == null ? null : _ => onSurveyComplete();
+            StartSurvey(surveyToStart, callback, runInWeb, transportToLobby, heightOffset, distanceOffset);
+        }
+
+        /// <summary>
+        /// Starts a survey for the current participant session, based on the provided SurveyInfo.
+        /// Whereas you can use this method to start any survey at any time, it is recommended to use the
+        /// automatically generated VERASurveyHelper static class to do so in a more convenient manner.
+        /// </summary>
+        /// <param name="surveyToStart">A VERASurveyInfo scriptable object representing the survey to start.</param>
+        /// <param name="onSurveyComplete">Invoked when the survey is completed. The argument is that submission's responses.</param>
+        /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
+        /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
+        /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
+        /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
+        public static void StartSurvey(VERASurveyInfo surveyToStart, Action<VERASurveyResults> onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
         {
             if (!sessionInProgress)
             {

@@ -307,6 +307,9 @@ namespace VERA
             // Generate GetSurveyReferenceById method
             GenerateGetSurveyReferenceByIdMethod(sb);
 
+            // Generate onSurveySubmitted event
+            GenerateOnSurveySubmittedEvent(sb);
+
             // Generate StartSurvey method
             GenerateStartSurveyMethod(sb, surveyInfos);
 
@@ -367,6 +370,8 @@ namespace VERA
             sb.AppendLine("\t/// Static helper class for starting surveys and reading survey responses in your VERA experiment.");
             sb.AppendLine("\t/// <br/><br/>This class has been automatically generated based on your surveys defined in the VERA portal for your currently selected experiment.");
             sb.AppendLine("\t/// Use StartSurvey() to begin a survey for the current participant.");
+            sb.AppendLine("\t/// Pass an Action&lt;VERASurveyResults&gt; completion callback to receive that submission's responses, or an Action to keep an existing callback.");
+            sb.AppendLine("\t/// Subscribe to onSurveySubmitted to receive the responses as soon as the participant submits a survey.");
             sb.AppendLine("\t/// Use GetSurveyResponses() to fetch that participant's completed responses from the VERA server.");
             sb.AppendLine("\t/// </summary>");
             sb.AppendLine("\tpublic static class VERASurveyHelper");
@@ -440,6 +445,23 @@ namespace VERA
             sb.AppendLine();
         }
 
+        // Generates the onSurveySubmitted event, forwarded to the survey interface notification
+        private static void GenerateOnSurveySubmittedEvent(StringBuilder sb)
+        {
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Invoked when the participant submits a survey in the VERA survey interface.");
+            sb.AppendLine("\t\t/// <br/><br/>The argument is that submission's responses, returned live from the answers just collected.");
+            sb.AppendLine("\t\t/// Each entry in <see cref=\"VERASurveyResults.results\"/> is one answered question (question text, answer, and optional other text).");
+            sb.AppendLine("\t\t/// sessionNumber is the current visit when one is assigned. instanceNumber is the 1-based run of this survey during the current play session.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\tpublic static event Action<VERASurveyResults> onSurveySubmitted");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tadd { VERASessionManager.onSurveySubmitted += value; }");
+            sb.AppendLine("\t\t\tremove { VERASessionManager.onSurveySubmitted -= value; }");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+        }
+
         // Generates the StartSurvey method
         private static void GenerateStartSurveyMethod(StringBuilder sb, List<VERASurveyInfo> surveyInfos)
         {
@@ -447,12 +469,28 @@ namespace VERA
             sb.AppendLine("\t\t/// Starts the specified survey for the current participant.");
             sb.AppendLine("\t\t/// </summary>");
             sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
-            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">A callback Action that will be invoked when the survey is completed by the participant.</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">Invoked when the survey is completed by the participant.</param>");
             sb.AppendLine("\t\t/// <param name=\"runInWeb\">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>");
             sb.AppendLine("\t\t/// <param name=\"transportToLobby\">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>");
             sb.AppendLine("\t\t/// <param name=\"heightOffset\">How far the survey will be offset vertically from the user's head position. Default is 0.</param>");
             sb.AppendLine("\t\t/// <param name=\"distanceOffset\">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>");
             sb.AppendLine("\t\tpublic static void StartSurvey(VERASurveyReference surveyToStart, Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tAction<VERASurveyResults> callback = onSurveyComplete == null ? null : _ => onSurveyComplete();");
+            sb.AppendLine("\t\t\tStartSurvey(surveyToStart, callback, runInWeb, transportToLobby, heightOffset, distanceOffset);");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Starts the specified survey for the current participant.");
+            sb.AppendLine("\t\t/// <br/><br/>onSurveyComplete receives the responses from the submission that just finished.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">Invoked when the survey is completed. The argument is that submission's responses.</param>");
+            sb.AppendLine("\t\t/// <param name=\"runInWeb\">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>");
+            sb.AppendLine("\t\t/// <param name=\"transportToLobby\">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>");
+            sb.AppendLine("\t\t/// <param name=\"heightOffset\">How far the survey will be offset vertically from the user's head position. Default is 0.</param>");
+            sb.AppendLine("\t\t/// <param name=\"distanceOffset\">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>");
+            sb.AppendLine("\t\tpublic static void StartSurvey(VERASurveyReference surveyToStart, Action<VERASurveyResults> onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)");
             sb.AppendLine("\t\t{");
             sb.AppendLine("\t\t\t// Get the resource path for the selected survey");
             sb.AppendLine("\t\t\tstring resourcePath = surveyToStart switch");
@@ -495,8 +533,20 @@ namespace VERA
             sb.AppendLine("\t\t/// <br/><br/>This is a convenience overload equivalent to calling StartSurvey with runInWeb = true.");
             sb.AppendLine("\t\t/// </summary>");
             sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
-            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">A callback Action that will be invoked when the survey is completed by the participant.</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">Invoked when the survey is completed by the participant.</param>");
             sb.AppendLine("\t\tpublic static void StartSurveyInWeb(VERASurveyReference surveyToStart, Action onSurveyComplete)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tStartSurvey(surveyToStart, onSurveyComplete: onSurveyComplete, runInWeb: true);");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Starts the specified survey for the current participant in the web context.");
+            sb.AppendLine("\t\t/// <br/><br/>This is a convenience overload equivalent to calling StartSurvey with runInWeb = true.");
+            sb.AppendLine("\t\t/// <br/><br/>onSurveyComplete receives the responses from the submission that just finished.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\t/// <param name=\"surveyToStart\">The survey to start, specified using the VERASurveyReference enum</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSurveyComplete\">Invoked when the survey is completed. The argument is that submission's responses.</param>");
+            sb.AppendLine("\t\tpublic static void StartSurveyInWeb(VERASurveyReference surveyToStart, Action<VERASurveyResults> onSurveyComplete)");
             sb.AppendLine("\t\t{");
             sb.AppendLine("\t\t\tStartSurvey(surveyToStart, onSurveyComplete: onSurveyComplete, runInWeb: true);");
             sb.AppendLine("\t\t}");

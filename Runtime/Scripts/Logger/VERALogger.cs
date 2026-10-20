@@ -1526,8 +1526,17 @@ namespace VERA
         #region SURVEY MANAGEMENT
 
 
-        // Starts a survey for the participant based on the provided survey info
+        // Starts a survey for the participant based on the provided survey info.
+        // This overload keeps existing parameterless completion callbacks working.
         public void StartSurvey(VERASurveyInfo surveyToStart, System.Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
+        {
+            System.Action<VERASurveyResults> callback = onSurveyComplete == null ? null : _ => onSurveyComplete();
+            StartSurvey(surveyToStart, callback, runInWeb, transportToLobby, heightOffset, distanceOffset);
+        }
+
+        // Starts a survey for the participant based on the provided survey info.
+        // onSurveyComplete receives the responses from the submission that just finished.
+        public void StartSurvey(VERASurveyInfo surveyToStart, System.Action<VERASurveyResults> onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
         {
             if (surveyStarter == null)
             {
