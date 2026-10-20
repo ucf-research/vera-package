@@ -1535,8 +1535,25 @@ namespace VERA
                         }
                         else
                         {
-                            VERAAuthenticator.UpdateColumnDefs();
-                            SurveyHelperGenerator.FetchAndConvertSurveys();
+                            // Experiment ID is unchanged, so skip ChangeActiveExperiment (avoids
+                            // unnecessary column/survey churn). Still refresh the build auth token:
+                            // logout clears it while preserving the active experiment, and re-login
+                            // alone does not restore it — leaving uploads on a stale/empty token.
+                            string experimentId = experimentList[selectedExperimentIndex]._id;
+                            VERAAuthenticator.GetBuildAuthToken(experimentId, (success) =>
+                            {
+                                if (!success)
+                                {
+                                    VERADebugger.LogError(
+                                        "Failed to refresh build authentication for the active experiment. " +
+                                        "Data upload will not work until this succeeds. Try refreshing experiments or re-authenticating.",
+                                        "VERA Settings Window");
+                                }
+
+                                VERAAuthenticator.UpdateColumnDefs();
+                                if (success)
+                                    SurveyHelperGenerator.FetchAndConvertSurveys();
+                            });
                         }
 
                         selectedSiteIndex = -1;
@@ -1622,6 +1639,10 @@ namespace VERA
         [InitializeOnLoadMethod]
         private static void OnEditorLoad()
         {
+            // Ensure PlayerPrefs match auth files before any connection check.
+            VERAAuthenticator.SyncAuthenticationPlayerPrefsFromDisk();
+            VERAAuthenticator.EnsureBuildAuthTokenForSignedInUser();
+
             DebugPreference debugPref = VERAAuthenticator.GetDebugPreference();
             if (debugPref == DebugPreference.Verbose || debugPref == DebugPreference.Informative)
             {
