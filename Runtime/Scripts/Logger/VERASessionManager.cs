@@ -207,6 +207,46 @@ namespace VERA
         }
 
         /// <summary>
+        /// Fetches the current participant's completed responses for a survey from the VERA server.
+        /// Prefer VERASurveyHelper.GetSurveyResponses, which accepts a generated survey reference.
+        /// Leave sessionNumber and instanceNumber unset to return every completion of this survey.
+        /// instanceNumber alone selects that run across all sessions.
+        /// sessionNumber alone returns every run from that visit.
+        /// When both are set, instanceNumber is the run inside that session.
+        /// A participant with no matching completion invokes onFailure.
+        /// </summary>
+        /// <param name="surveyId">Experiment survey id, not the global template id.</param>
+        /// <param name="onSuccess">Called with the response set when the request succeeds.</param>
+        /// <param name="sessionNumber">Optional longitudinal visit number (1, 2, 3, ...).</param>
+        /// <param name="instanceNumber">Optional run number. Counted inside the session when sessionNumber is also set.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetSurveyResponses(string surveyId, Action<VERASurveyResults> onSuccess, int? sessionNumber = null, int? instanceNumber = null, Action<string> onFailure = null)
+        {
+            if (onSuccess == null)
+            {
+                VERADebugger.LogWarning("Cannot get survey responses because no success callback was provided.", "VERASessionManager");
+                return;
+            }
+
+            if (!sessionInProgress)
+            {
+                const string message = "Cannot get survey responses because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
+                return;
+            }
+
+            if (VERALogger.Instance.activeParticipant == null)
+            {
+                onFailure?.Invoke("No active participant is available.");
+                return;
+            }
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetSurveyResponses(surveyId, onSuccess, sessionNumber, instanceNumber, onFailure));
+        }
+
+        /// <summary>
         /// Creates a new arbitrary CSV entry with the specified file name and values.
         /// It is highly recommended to use the generated VERAFile_[FileName].CreateCsvEntry methods instead of this method,
         /// as those methods provide type safety and ensure correct column ordering. Use this function only as a last resort.

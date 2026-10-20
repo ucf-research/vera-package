@@ -288,6 +288,38 @@ public class Example : MonoBehaviour
                 "When running a questionnaire using VERA, the questionnaire display, navigation, and response recording will be handled automatically for you."
             ));
 
+            section.Add(CreateParagraph(
+                "You can also fetch the current participant's completed responses. Leave the session and instance numbers unset to get every completion. " +
+                "Set a session number to limit the request to that visit, an instance number to select one run, or both to select a run inside that visit:"
+            ));
+
+            string responsesCode = @"// Example: Reading survey responses in Unity
+using VERA;
+
+public class Example : MonoBehaviour
+{
+    void Start()
+    {
+        VERASessionManager.onSessionStart.AddListener(() =>
+        {
+            // Every completion of My Survey for this participant
+            VERASurveyHelper.GetSurveyResponses(
+                VERASurveyHelper.VERASurveyReference.S_MySurvey,
+                onSuccess: results => { /* results.results */ }
+            );
+
+            // The second run of session 2
+            VERASurveyHelper.GetSurveyResponses(
+                VERASurveyHelper.VERASurveyReference.S_MySurvey,
+                onSuccess: results => { /* results.results */ },
+                sessionNumber: 2,
+                instanceNumber: 2
+            );
+        });
+    }
+}";
+            section.Add(CreateCodeBlock(responsesCode));
+
             scrollView.Add(section);
         }
 

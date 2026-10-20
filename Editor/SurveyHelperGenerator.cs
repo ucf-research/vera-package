@@ -16,7 +16,7 @@ namespace VERA
 {
     internal static class SurveyHelperGenerator
     {
-        // SurveyHelperGenerator will generate .cs files for surveys, with associated helpers for starting surveys
+        // SurveyHelperGenerator will generate .cs files for surveys, with associated helpers for starting surveys and reading responses
 
 
         #region VARIABLES AND PATHS
@@ -313,6 +313,9 @@ namespace VERA
             // Generate StartSurveyInWeb method
             GenerateStartSurveyInWebMethod(sb);
 
+            // Generate GetSurveyResponses method
+            GenerateGetSurveyResponsesMethod(sb, surveyInfos);
+
             // Close class and namespace
             sb.AppendLine("\t}");
             sb.AppendLine("}");
@@ -361,9 +364,10 @@ namespace VERA
             sb.AppendLine("namespace VERA");
             sb.AppendLine("{");
             sb.AppendLine("\t/// <summary>");
-            sb.AppendLine("\t/// Static helper class for starting surveys in your VERA experiment.");
+            sb.AppendLine("\t/// Static helper class for starting surveys and reading survey responses in your VERA experiment.");
             sb.AppendLine("\t/// <br/><br/>This class has been automatically generated based on your surveys defined in the VERA portal for your currently selected experiment.");
-            sb.AppendLine("\t/// Use the StartSurvey() method to begin a survey for the current participant.");
+            sb.AppendLine("\t/// Use StartSurvey() to begin a survey for the current participant.");
+            sb.AppendLine("\t/// Use GetSurveyResponses() to fetch that participant's completed responses from the VERA server.");
             sb.AppendLine("\t/// </summary>");
             sb.AppendLine("\tpublic static class VERASurveyHelper");
             sb.AppendLine("\t{");
@@ -496,6 +500,63 @@ namespace VERA
             sb.AppendLine("\t\t{");
             sb.AppendLine("\t\t\tStartSurvey(surveyToStart, onSurveyComplete: onSurveyComplete, runInWeb: true);");
             sb.AppendLine("\t\t}");
+            sb.AppendLine();
+        }
+
+        // Generates GetSurveyResponses and the survey-reference to survey-id lookup it uses
+        private static void GenerateGetSurveyResponsesMethod(StringBuilder sb, List<VERASurveyInfo> surveyInfos)
+        {
+            sb.AppendLine("\t\t/// <summary>");
+            sb.AppendLine("\t\t/// Fetches the current participant's completed responses for the specified survey from the VERA server.");
+            sb.AppendLine("\t\t/// <br/><br/>Leave sessionNumber and instanceNumber unset to return every completion of this survey.");
+            sb.AppendLine("\t\t/// <br/><br/>Rows are ordered by run, then by question number.");
+            sb.AppendLine("\t\t/// A participant who has not completed the survey invokes onFailure.");
+            sb.AppendLine("\t\t/// </summary>");
+            sb.AppendLine("\t\t/// <param name=\"survey\">The survey to fetch responses for.</param>");
+            sb.AppendLine("\t\t/// <param name=\"onSuccess\">Called with the response set when the request succeeds.</param>");
+            sb.AppendLine("\t\t/// <param name=\"sessionNumber\">Optional longitudinal visit number (1, 2, 3, ...). Filters responses to only the specified session.</param>");
+            sb.AppendLine("\t\t/// <param name=\"instanceNumber\">Optional run number (1, 2, 3, ...). Filters responses to only the specified run of the survey (i.e., the first time the participant took the survey, the second time they took it, etc.). If sessionNumber is also set, this filters responses to only the specified run of the survey within that session (for example, the second run of the survey within the second session visit).</param>");
+            sb.AppendLine("\t\t/// <param name=\"onFailure\">Called with an error message when the request fails.</param>");
+            sb.AppendLine("\t\tpublic static void GetSurveyResponses(VERASurveyReference survey, Action<VERASurveyResults> onSuccess, int? sessionNumber = null, int? instanceNumber = null, Action<string> onFailure = null)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tif (!TryGetSurveyId(survey, out string surveyId))");
+            sb.AppendLine("\t\t\t{");
+            sb.AppendLine("\t\t\t\tstring message = $\"[VERASurveyHelper] No survey ID found for survey reference: {survey}\";");
+            sb.AppendLine("\t\t\t\tDebug.LogWarning(message);");
+            sb.AppendLine("\t\t\t\tonFailure?.Invoke(message);");
+            sb.AppendLine("\t\t\t\treturn;");
+            sb.AppendLine("\t\t\t}");
+            sb.AppendLine();
+            sb.AppendLine("\t\t\tVERASessionManager.GetSurveyResponses(surveyId, onSuccess, sessionNumber, instanceNumber, onFailure);");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine();
+            sb.AppendLine("\t\tprivate static bool TryGetSurveyId(VERASurveyReference survey, out string surveyId)");
+            sb.AppendLine("\t\t{");
+            sb.AppendLine("\t\t\tsurveyId = survey switch");
+            sb.AppendLine("\t\t\t{");
+
+            foreach (var surveyInfo in surveyInfos)
+            {
+                if (string.IsNullOrEmpty(surveyInfo.surveyId))
+                    continue;
+
+                string enumName = SanitizeForEnum(surveyInfo.surveyName);
+                sb.AppendLine($"\t\t\t\tVERASurveyReference.S_{enumName} => \"{EscapeCsString(surveyInfo.surveyId)}\",");
+            }
+
+            sb.AppendLine("\t\t\t\t_ => null");
+            sb.AppendLine("\t\t\t};");
+            sb.AppendLine();
+            sb.AppendLine("\t\t\treturn !string.IsNullOrEmpty(surveyId);");
+            sb.AppendLine("\t\t}");
+        }
+
+        private static string EscapeCsString(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "";
+
+            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
         }
 
         // Sanitizes a survey name for use in an enum
