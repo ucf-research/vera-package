@@ -58,6 +58,9 @@ namespace VERA
         private bool sessionStartInProgress = false;
         private bool webXrParametersReceived = false;
         private bool pendingParticipantSessionStart = false;
+        private Dictionary<string, string> webXrUrlParameters = new Dictionary<string, string>();
+        private event Action urlParametersReceived;
+        internal bool AreUrlParametersReceived { get; private set; }
         private int? pendingManualParticipantId = null;
         public UnityEvent onLoggerInitialized = new UnityEvent();
         public UnityEvent onSessionStart = new UnityEvent();
@@ -372,6 +375,39 @@ namespace VERA
                 VERADebugger.LogError("Failed to connect to the VERA servers: " + www.error, "VERA Connection");
         }
 
+        /// <summary>
+        /// Receives the WebXR hosting-page query string forwarded by VERAWebXRHookup.InitializeFromWebXR.
+        /// The string includes siteId and participantId when the landing page resolved them, plus every
+        /// other query key (a repeated key keeps its last value).
+        /// </summary>
+        internal void ApplyWebXRQuery(string query)
+        {
+            webXrUrlParameters = WebXRQuery.Parse(query);
+            AreUrlParametersReceived = true;
+
+            webXrUrlParameters.TryGetValue("siteId", out string siteId);
+            webXrUrlParameters.TryGetValue("participantId", out string participantId);
+
+            string keys = webXrUrlParameters.Count == 0 ? "(none)" : string.Join(", ", webXrUrlParameters.Keys);
+            VERADebugger.Log(
+                "Received WebXR URL parameters (" + keys + "). Site ID: " + siteId + ", Participant ID: " + participantId + ".",
+                "VERA Logger",
+                DebugPreference.Informative);
+
+            // Store site and participant IDs, let listeners read the query, then start the session.
+            // A listener may start the session itself; in that case the start below is skipped.
+            StoreWebXrSiteAndParticipant(siteId, participantId);
+            try
+            {
+                NotifyUrlParametersReceived();
+            }
+            finally
+            {
+                if (!sessionInProgress && !sessionStartInProgress)
+                    TryBeginWebXrSession();
+            }
+        }
+
         // Stores site/participant IDs from WebXR (or a manual override) and starts the session
         // when auto-start is enabled, or when ManualStartParticipantSession() has already been requested.
         // If site is provided, override the active site with the provided ID; otherwise, use the active site from PlayerPrefs.
@@ -379,7 +415,12 @@ namespace VERA
         public void ManualInitialization(string siteId, string participantId)
         {
             VERADebugger.Log("Received session parameters (site ID: " + siteId + ", participant ID: " + participantId + ").", "VERA Logger", DebugPreference.Informative);
+            StoreWebXrSiteAndParticipant(siteId, participantId);
+            TryBeginWebXrSession();
+        }
 
+        private void StoreWebXrSiteAndParticipant(string siteId, string participantId)
+        {
             if (!string.IsNullOrEmpty(siteId))
             {
                 overrideActiveSite = true;
@@ -392,7 +433,41 @@ namespace VERA
             }
 
             webXrParametersReceived = true;
+        }
 
+        internal void AddUrlParametersReceivedListener(Action handler)
+        {
+            urlParametersReceived += handler;
+            if (AreUrlParametersReceived)
+                handler?.Invoke();
+        }
+
+        internal void RemoveUrlParametersReceivedListener(Action handler)
+        {
+            urlParametersReceived -= handler;
+        }
+
+        internal string GetUrlParameter(string key)
+        {
+            if (string.IsNullOrEmpty(key) || !AreUrlParametersReceived)
+                return null;
+
+            webXrUrlParameters.TryGetValue(key, out string value);
+            return value;
+        }
+
+        internal Dictionary<string, string> GetAllUrlParameters()
+        {
+            return new Dictionary<string, string>(webXrUrlParameters);
+        }
+
+        private void NotifyUrlParametersReceived()
+        {
+            urlParametersReceived?.Invoke();
+        }
+
+        private void TryBeginWebXrSession()
+        {
             if (GetAutoStartParticipantSessions() || pendingParticipantSessionStart)
             {
                 if (pendingParticipantSessionStart)

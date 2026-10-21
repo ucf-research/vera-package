@@ -398,6 +398,27 @@ public class Example : MonoBehaviour
                 "Any code which logs data, starts surveys, or uses participant IDs should run after a participant session has started (onSessionStart). Use onInitialized when you only need VERA to be ready before starting a session."
             ));
 
+            section.Add(CreateParagraph(
+                "Query parameters on the WebXR hosting page are forwarded into the build when it finishes loading, " +
+                "together with siteId and participantId. Read them from VERASessionManager. For a landing URL ending in ?group=2, " +
+                "GetUrlParameter(\"group\") returns \"2\". Parameters are available from onUrlParametersReceived, and remain available in onSessionStart."
+            ));
+
+            string urlParameterCode = @"// Example: reading a URL parameter forwarded from the WebXR page
+using VERA;
+
+public class Example : MonoBehaviour
+{
+    void Start()
+    {
+        VERASessionManager.onUrlParametersReceived += () =>
+        {
+            string group = VERASessionManager.GetUrlParameter(""group"");
+        };
+    }
+}";
+            section.Add(CreateCodeBlock(urlParameterCode));
+
             scrollView.Add(section);
         }
 

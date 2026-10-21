@@ -76,6 +76,49 @@ namespace VERA
         public static string prolificPID { get { return VERALogger.Instance.activeParticipant.prolificID; } }
 
         /// <summary>
+        /// Whether the WebXR hosting page has forwarded its URL query string into this build.
+        /// Remains false in the editor and in non-WebGL players.
+        /// </summary>
+        public static bool areUrlParametersReceived
+        {
+            get { return VERALogger.Instance != null && VERALogger.Instance.AreUrlParametersReceived; }
+        }
+
+        /// <summary>
+        /// Raised when the WebXR hosting page has forwarded its URL query string.
+        /// A handler subscribed after the parameters have already arrived is invoked immediately.
+        /// </summary>
+        public static event Action onUrlParametersReceived
+        {
+            add { VERALogger.Instance?.AddUrlParametersReceivedListener(value); }
+            remove { VERALogger.Instance?.RemoveUrlParametersReceivedListener(value); }
+        }
+
+        /// <summary>
+        /// Returns every URL parameter forwarded from the WebXR hosting page.
+        /// Includes siteId and participantId when the landing page resolved them.
+        /// Empty until <see cref="onUrlParametersReceived"/> fires.
+        /// </summary>
+        public static Dictionary<string, string> GetAllUrlParameters()
+        {
+            if (VERALogger.Instance == null)
+                return new Dictionary<string, string>();
+
+            return VERALogger.Instance.GetAllUrlParameters();
+        }
+
+        /// <summary>
+        /// Returns the decoded value of a URL parameter forwarded from the WebXR hosting page.
+        /// Returns null if that key was not present, or if the hosting page has not called in yet.
+        /// A landing URL ending in <c>?group=2</c> yields <c>GetUrlParameter("group") == "2"</c>.
+        /// </summary>
+        /// <param name="key">Parameter name as it appears in the hosting page URL.</param>
+        public static string GetUrlParameter(string key)
+        {
+            return VERALogger.Instance?.GetUrlParameter(key);
+        }
+
+        /// <summary>
         /// Whether the VERA logger singleton exists and session APIs can be accessed.
         /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
         /// </summary>
