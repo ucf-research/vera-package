@@ -90,7 +90,7 @@ namespace VERA
 
             // Wait, then finish the survey and continue with the experiment
             yield return new WaitForSeconds(3.5f);
-            surveyDisplay.FinishSurvey();
+            surveyDisplay.FinishSurvey(surveyInterfaceIO.submittedResults);
         }
 
 

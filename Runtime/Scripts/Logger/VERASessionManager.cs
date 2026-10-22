@@ -70,6 +70,55 @@ namespace VERA
         public static string participantSessionID { get { return VERALogger.Instance.activeParticipant.GetParticipantSessionLabel(); } }
 
         /// <summary>
+        /// The participant's Prolific PID when one is associated with this session.
+        /// Null if the participant has no Prolific ID.
+        /// </summary>
+        public static string prolificPID { get { return VERALogger.Instance.activeParticipant.prolificID; } }
+
+        /// <summary>
+        /// Whether the WebXR hosting page has forwarded its URL query string into this build.
+        /// Remains false in the editor and in non-WebGL players.
+        /// </summary>
+        public static bool areUrlParametersReceived
+        {
+            get { return VERALogger.Instance != null && VERALogger.Instance.AreUrlParametersReceived; }
+        }
+
+        /// <summary>
+        /// Raised when the WebXR hosting page has forwarded its URL query string.
+        /// A handler subscribed after the parameters have already arrived is invoked immediately.
+        /// </summary>
+        public static event Action onUrlParametersReceived
+        {
+            add { VERALogger.Instance?.AddUrlParametersReceivedListener(value); }
+            remove { VERALogger.Instance?.RemoveUrlParametersReceivedListener(value); }
+        }
+
+        /// <summary>
+        /// Returns every URL parameter forwarded from the WebXR hosting page.
+        /// Includes siteId and participantId when the landing page resolved them.
+        /// Empty until <see cref="onUrlParametersReceived"/> fires.
+        /// </summary>
+        public static Dictionary<string, string> GetAllUrlParameters()
+        {
+            if (VERALogger.Instance == null)
+                return new Dictionary<string, string>();
+
+            return VERALogger.Instance.GetAllUrlParameters();
+        }
+
+        /// <summary>
+        /// Returns the decoded value of a URL parameter forwarded from the WebXR hosting page.
+        /// Returns null if that key was not present, or if the hosting page has not called in yet.
+        /// A landing URL ending in <c>?group=2</c> yields <c>GetUrlParameter("group") == "2"</c>.
+        /// </summary>
+        /// <param name="key">Parameter name as it appears in the hosting page URL.</param>
+        public static string GetUrlParameter(string key)
+        {
+            return VERALogger.Instance?.GetUrlParameter(key);
+        }
+
+        /// <summary>
         /// Whether the VERA logger singleton exists and session APIs can be accessed.
         /// In WebXR builds, this becomes true once the runtime logger is created, before initialization completes.
         /// </summary>
@@ -109,6 +158,21 @@ namespace VERA
         /// Event that is invoked when a participant session has ended (after FinalizeSession completes).
         /// </summary>
         public static UnityEvent onSessionEnd { get { return VERALogger.Instance.onSessionEnd; } }
+
+        /// <summary>
+        /// Invoked when the participant submits a survey in the VERA survey interface.
+        /// The argument is that submission's responses, built from the answers just collected.
+        /// VERASurveyHelper.onSurveySubmitted forwards to this event.
+        /// </summary>
+        public static event Action<VERASurveyResults> onSurveySubmitted;
+
+        internal static void NotifySurveySubmitted(VERASurveyResults results)
+        {
+            if (results == null)
+                return;
+
+            onSurveySubmitted?.Invoke(results);
+        }
 
         /// <summary>
         /// Starts a participant session: creates or looks up the participant on the server and begins data collection.
@@ -184,12 +248,29 @@ namespace VERA
         /// automatically generated VERASurveyHelper static class to do so in a more convenient manner.
         /// </summary>
         /// <param name="surveyToStart">A VERASurveyInfo scriptable object representing the survey to start.</param>
-        /// <param name="onSurveyComplete">A callback Action that will be invoked when the survey is completed by the participant.</param>
+        /// <param name="onSurveyComplete">Invoked when the survey is completed by the participant.</param>
         /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
         /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
         /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
         /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
         public static void StartSurvey(VERASurveyInfo surveyToStart, System.Action onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
+        {
+            Action<VERASurveyResults> callback = onSurveyComplete == null ? null : _ => onSurveyComplete();
+            StartSurvey(surveyToStart, callback, runInWeb, transportToLobby, heightOffset, distanceOffset);
+        }
+
+        /// <summary>
+        /// Starts a survey for the current participant session, based on the provided SurveyInfo.
+        /// Whereas you can use this method to start any survey at any time, it is recommended to use the
+        /// automatically generated VERASurveyHelper static class to do so in a more convenient manner.
+        /// </summary>
+        /// <param name="surveyToStart">A VERASurveyInfo scriptable object representing the survey to start.</param>
+        /// <param name="onSurveyComplete">Invoked when the survey is completed. The argument is that submission's responses.</param>
+        /// <param name="runInWeb">Whether the survey should be run in the web context (i.e. not in VR). Default is false.</param>
+        /// <param name="transportToLobby">Whether to temporarily transport the participant to a survey lobby while the survey is active. Default is true.</param>
+        /// <param name="heightOffset">How far the survey will be offset vertically from the user's head position. Default is 0.</param>
+        /// <param name="distanceOffset">How far the survey will be offset horizontally from the user's head position. Default is 3.</param>
+        public static void StartSurvey(VERASurveyInfo surveyToStart, Action<VERASurveyResults> onSurveyComplete, bool runInWeb = false, bool transportToLobby = true, float heightOffset = 0f, float distanceOffset = 3f)
         {
             if (!sessionInProgress)
             {
@@ -198,6 +279,46 @@ namespace VERA
             }
 
             VERALogger.Instance.StartSurvey(surveyToStart, onSurveyComplete, runInWeb, transportToLobby, heightOffset, distanceOffset);
+        }
+
+        /// <summary>
+        /// Fetches the current participant's completed responses for a survey from the VERA server.
+        /// Prefer VERASurveyHelper.GetSurveyResponses, which accepts a generated survey reference.
+        /// Leave sessionNumber and instanceNumber unset to return every completion of this survey.
+        /// instanceNumber alone selects that run across all sessions.
+        /// sessionNumber alone returns every run from that visit.
+        /// When both are set, instanceNumber is the run inside that session.
+        /// A participant with no matching completion invokes onFailure.
+        /// </summary>
+        /// <param name="surveyId">Experiment survey id, not the global template id.</param>
+        /// <param name="onSuccess">Called with the response set when the request succeeds.</param>
+        /// <param name="sessionNumber">Optional longitudinal visit number (1, 2, 3, ...).</param>
+        /// <param name="instanceNumber">Optional run number. Counted inside the session when sessionNumber is also set.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetSurveyResponses(string surveyId, Action<VERASurveyResults> onSuccess, int? sessionNumber = null, int? instanceNumber = null, Action<string> onFailure = null)
+        {
+            if (onSuccess == null)
+            {
+                VERADebugger.LogWarning("Cannot get survey responses because no success callback was provided.", "VERASessionManager");
+                return;
+            }
+
+            if (!sessionInProgress)
+            {
+                const string message = "Cannot get survey responses because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
+                return;
+            }
+
+            if (VERALogger.Instance.activeParticipant == null)
+            {
+                onFailure?.Invoke("No active participant is available.");
+                return;
+            }
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetSurveyResponses(surveyId, onSuccess, sessionNumber, instanceNumber, onFailure));
         }
 
         /// <summary>
@@ -675,6 +796,90 @@ namespace VERA
 
             VERALogger.Instance.StartCoroutine(
                 VERALogger.Instance.activeParticipant.FetchAccessibilitySettings(onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Stores or updates a memory field for the current participant on the VERA server.
+        /// Memory persists across sessions for the same participant within an experiment.
+        /// Keys are trimmed, case-sensitive, max 128 characters, and cannot contain '/', '\', or control characters.
+        /// Values are plain strings up to 2 MB.
+        /// </summary>
+        /// <param name="keyName">The memory field name (e.g. "Gender").</param>
+        /// <param name="keyValue">The value to store (e.g. "Male").</param>
+        /// <param name="onSuccess">Called when the value is stored successfully.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void SetMemoryKey(string keyName, string keyValue, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("set a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.SetMemoryKey(keyName, keyValue, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Fetches a single memory field for the current participant from the VERA server.
+        /// If the key does not exist, <paramref name="onSuccess"/> is invoked with null (not treated as an error).
+        /// </summary>
+        /// <param name="keyName">The memory field name to retrieve.</param>
+        /// <param name="onSuccess">Called with the stored value, or null if the key does not exist.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetMemoryKey(string keyName, Action<string> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("get a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetMemoryKey(keyName, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Fetches all memory fields (with values) for the current participant from the VERA server.
+        /// </summary>
+        /// <param name="onSuccess">Called with a dictionary of key → value pairs when the request succeeds.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetAllMemoryKeys(Action<Dictionary<string, string>> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("get all memory keys", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.GetAllMemoryKeys(onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Deletes a memory field for the current participant on the VERA server.
+        /// Clearing a key that does not exist is treated as success.
+        /// </summary>
+        /// <param name="keyName">The memory field name to delete.</param>
+        /// <param name="onSuccess">Called when the key is cleared (or was already absent).</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void ClearMemoryKey(string keyName, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareMemoryApi("clear a memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERALogger.Instance.activeParticipant.ClearMemoryKey(keyName, onSuccess, onFailure));
+        }
+
+        private static bool TryPrepareMemoryApi(string actionDescription, Action<string> onFailure)
+        {
+            if (!sessionInProgress)
+            {
+                string message = "Cannot " + actionDescription + " because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
+                return false;
+            }
+
+            if (VERALogger.Instance?.activeParticipant == null)
+            {
+                onFailure?.Invoke("No active participant is available.");
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

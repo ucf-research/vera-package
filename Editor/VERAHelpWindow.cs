@@ -280,6 +280,17 @@ public class Example : MonoBehaviour
             VERASurveyHelper.VERASurveyReference.S_MySurvey, 
             onSurveyComplete: () => { /* Code here */ }
         );
+
+        // The same completion callback can receive the responses from that submission
+        VERASurveyHelper.StartSurvey(
+            VERASurveyHelper.VERASurveyReference.S_MySurvey,
+            onSurveyComplete: results => { /* results.results */ }
+        );
+
+        VERASurveyHelper.StartSurveyInWeb(
+            VERASurveyHelper.VERASurveyReference.S_MySurvey,
+            onSurveyComplete: results => { /* results.results */ }
+        );
     }
 }";
             section.Add(CreateCodeBlock(surveysCode));
@@ -287,6 +298,65 @@ public class Example : MonoBehaviour
             section.Add(CreateTipBox(
                 "When running a questionnaire using VERA, the questionnaire display, navigation, and response recording will be handled automatically for you."
             ));
+
+            section.Add(CreateParagraph(
+                "Subscribe to onSurveySubmitted to receive the responses as soon as the participant submits the questionnaire. " +
+                "The results come from the survey interface at submit time, so you can use them immediately:"
+            ));
+
+            string submittedCode = @"// Example: Reading the survey the participant just submitted
+using VERA;
+
+public class Example : MonoBehaviour
+{
+    void OnEnable()
+    {
+        VERASurveyHelper.onSurveySubmitted += OnSurveySubmitted;
+    }
+
+    void OnDisable()
+    {
+        VERASurveyHelper.onSurveySubmitted -= OnSurveySubmitted;
+    }
+
+    void OnSurveySubmitted(VERASurveyResults results)
+    {
+        // results.results contains each answered question
+    }
+}";
+            section.Add(CreateCodeBlock(submittedCode));
+
+            section.Add(CreateParagraph(
+                "You can also fetch the current participant's completed responses. Leave the session and instance numbers unset to get every completion. " +
+                "Set a session number to limit the request to that visit, an instance number to select one run, or both to select a run inside that visit:"
+            ));
+
+            string responsesCode = @"// Example: Reading survey responses in Unity
+using VERA;
+
+public class Example : MonoBehaviour
+{
+    void Start()
+    {
+        VERASessionManager.onSessionStart.AddListener(() =>
+        {
+            // Every completion of My Survey for this participant
+            VERASurveyHelper.GetSurveyResponses(
+                VERASurveyHelper.VERASurveyReference.S_MySurvey,
+                onSuccess: results => { /* results.results */ }
+            );
+
+            // The second run of session 2
+            VERASurveyHelper.GetSurveyResponses(
+                VERASurveyHelper.VERASurveyReference.S_MySurvey,
+                onSuccess: results => { /* results.results */ },
+                sessionNumber: 2,
+                instanceNumber: 2
+            );
+        });
+    }
+}";
+            section.Add(CreateCodeBlock(responsesCode));
 
             scrollView.Add(section);
         }
@@ -327,6 +397,27 @@ public class Example : MonoBehaviour
             section.Add(CreateTipBox(
                 "Any code which logs data, starts surveys, or uses participant IDs should run after a participant session has started (onSessionStart). Use onInitialized when you only need VERA to be ready before starting a session."
             ));
+
+            section.Add(CreateParagraph(
+                "Query parameters on the WebXR hosting page are forwarded into the build when it finishes loading, " +
+                "together with siteId and participantId. Read them from VERASessionManager. For a landing URL ending in ?group=2, " +
+                "GetUrlParameter(\"group\") returns \"2\". Parameters are available from onUrlParametersReceived, and remain available in onSessionStart."
+            ));
+
+            string urlParameterCode = @"// Example: reading a URL parameter forwarded from the WebXR page
+using VERA;
+
+public class Example : MonoBehaviour
+{
+    void Start()
+    {
+        VERASessionManager.onUrlParametersReceived += () =>
+        {
+            string group = VERASessionManager.GetUrlParameter(""group"");
+        };
+    }
+}";
+            section.Add(CreateCodeBlock(urlParameterCode));
 
             scrollView.Add(section);
         }

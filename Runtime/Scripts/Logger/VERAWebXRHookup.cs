@@ -6,31 +6,29 @@ using UnityEngine;
 using VERA;
 
 /// <summary>
-/// Connects WebXR initialization parameters to VERA session management.
+/// Connects WebXR callbacks to VERA session management.
 /// This script should not be touched directly by users; it serves as a bridge for WebXR setups, automatically handled internally by VERA.
+/// The hosting page calls InitializeFromWebXR on the VERALogger object after the build loads.
 /// </summary>
 public class VERAWebXRHookup : MonoBehaviour
 {
-
-    // VERAWebXRHookup is a connection point for initialization from WebXR
-
-
     /// <summary>
-    /// Connects WebXR initialization parameters to VERA session management.
-    /// This function should not be touched directly by users; it serves as a bridge for WebXR setups, automatically handled internally by VERA.
+    /// Receives the WebXR hosting-page query string. Called by the page on the VERALogger object
+    /// after the build loads. siteId and participantId are included when the landing page resolved
+    /// them; every other query key is forwarded as well.
     /// </summary>
+    [UnityEngine.Scripting.Preserve]
     public void InitializeFromWebXR(string incomingParams)
     {
-        // Parse the incoming parameters, site ID and participant ID
-        // incomingParams is a string in the format "siteId=XYZ&participantId=ABC"
-        var queryParams = System.Web.HttpUtility.ParseQueryString(incomingParams);
-        string siteId = queryParams["siteId"];
-        string participantId = queryParams["participantId"];
+        VERALogger logger = GetComponent<VERALogger>();
+        if (logger == null)
+        {
+            VERADebugger.LogError("VERALogger is missing; WebXR URL parameters were not applied.", "VERAWebXRHookup");
+            return;
+        }
 
-        VERADebugger.Log("Received WebXR parameters — Site ID: " + siteId + ", Participant ID: " + participantId, "VERAWebXRHookup", DebugPreference.Informative);
-        VERASessionManager.ManualInitialization(siteId, participantId);
+        logger.ApplyWebXRQuery(incomingParams);
     }
-
 
     /// <summary>
     /// This function is called from WebXR when the web survey that was launched from the WebXR

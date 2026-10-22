@@ -31,11 +31,18 @@ namespace VERA
         // Track survey instance counts for file naming
         private static Dictionary<string, int> surveyInstanceCounts = new Dictionary<string, int>();
 
+        // 1-based run count for live submission results during this play session
+        private static Dictionary<string, int> liveSubmissionCounts = new Dictionary<string, int>();
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ResetInstanceCounts()
         {
             surveyInstanceCounts = new Dictionary<string, int>();
+            liveSubmissionCounts = new Dictionary<string, int>();
         }
+
+        // Responses from the submission currently being uploaded. Passed to onSurveyComplete when the survey finishes.
+        internal VERASurveyResults submittedResults { get; private set; }
 
         [SerializeField] private UnityEvent OnSurveyCompleted;
 
@@ -292,6 +299,8 @@ namespace VERA
         // Flow: submit responses to the API, then record to the Survey_Responses CSV file type
         public IEnumerator OutputSurveyResults(VERASurveyInfo surveyToOutput, SurveyQuestionAnswer[] surveyResults)
         {
+            submittedResults = RaiseLiveSurveySubmitted(surveyToOutput, surveyResults);
+
             uploadSuccessful = false;
             fileUploadSuccessful = false;
             string instanceId = null;
@@ -426,6 +435,37 @@ namespace VERA
                 VERADebugger.LogWarning("[VERA Survey] Survey response file upload failed. Responses saved locally - retry required.");
                 uploadSuccessful = false;
             }
+        }
+
+        // Returns the responses just collected, before any server upload.
+        private static VERASurveyResults RaiseLiveSurveySubmitted(VERASurveyInfo surveyToOutput, SurveyQuestionAnswer[] surveyResults)
+        {
+            if (surveyToOutput == null)
+                return null;
+
+            string countKey = !string.IsNullOrEmpty(surveyToOutput.surveyId)
+                ? surveyToOutput.surveyId
+                : surveyToOutput.surveyName ?? "";
+
+            if (!liveSubmissionCounts.TryGetValue(countKey, out int instanceNumber))
+                instanceNumber = 0;
+
+            instanceNumber++;
+            liveSubmissionCounts[countKey] = instanceNumber;
+
+            VERASurveyResults liveResults = VERASurveyResults.FromLiveSubmission(
+                surveyToOutput,
+                surveyResults,
+                instanceNumber,
+                surveyToOutput.surveyInstanceId);
+
+            VERADebugger.Log(
+                $"Survey submitted with {(liveResults.results != null ? liveResults.results.Length : 0)} response(s): {surveyToOutput.surveyName}",
+                "VERA Survey",
+                DebugPreference.Informative);
+
+            VERASessionManager.NotifySurveySubmitted(liveResults);
+            return liveResults;
         }
 
         #endregion
