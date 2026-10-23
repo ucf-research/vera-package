@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.3] - 2026-10-23
+
+### Added
+* Manual session linkage and ID handling (https://github.com/ucf-research/vera-package/pull/39)
+* Longitudinal study support and multi-session management tools (https://github.com/ucf-research/vera-package/pull/40)
+* Memory tools for persistent storage between participant sessions (https://github.com/ucf-research/vera-package/pull/53)
+
+### Fixed
+* Silent authentication failure issue (https://github.com/ucf-research/vera-package/pull/52)
+
 ## [0.4.2] - 2026-08-13
 
 ### Fixed
