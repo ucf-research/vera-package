@@ -19,11 +19,11 @@
     "Education"
   ],
   "dependencies": {
-    "com.unity.inputsystem": "1.7.0",
+    "com.unity.inputsystem": "1.14.2",
     "com.unity.textmeshpro": "3.0.6",
     "com.unity.xr.interaction.toolkit": "3.0.3",
     "com.unity.xr.management": "4.4.0",
-    "com.unity.xr.oculus": "4.2.0"
+    "com.unity.xr.openxr": "1.15.1"
   },
   "samples": [
     {

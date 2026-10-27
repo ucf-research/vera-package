@@ -3,9 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-VERA
 
 #if UNITY_EDITOR
-using System;
-using System.Linq;
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -13,8 +10,8 @@ using UnityEngine.UIElements;
 
 /// <summary>
 /// Performs first-import setup checks for the VERA Sandbox Demo sample.
-/// Validates render pipeline configuration, XR provider settings,
-/// and shows a welcome window with demo information.
+/// Validates render pipeline configuration and shows a welcome window
+/// with demo information. Does not change the project's XR loader.
 /// </summary>
 [InitializeOnLoad]
 public class VERADemoStartupActions
@@ -34,7 +31,6 @@ public class VERADemoStartupActions
     {
         EditorPrefs.SetBool(FIRST_RUN_KEY, true);
         CheckRenderPipeline();
-        CheckXRProvider();
         VERADemoWelcomeWindow.ShowWindow();
     }
 
@@ -112,174 +108,6 @@ public class VERADemoStartupActions
 
         AssetDatabase.SaveAssets();
         Debug.Log("[VERA Sandbox Demo] PC_RPAsset has been applied as the render pipeline asset for all quality levels.");
-    }
-
-    #endregion
-
-    #region XR Provider Check
-
-    internal static void CheckXRProvider()
-    {
-        try
-        {
-            var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
-
-            // Find XR general settings asset
-            var perBuildTargetType = Type.GetType(
-                "UnityEditor.XR.Management.XRGeneralSettingsPerBuildTarget, Unity.XR.Management.Editor");
-            if (perBuildTargetType == null) return;
-
-            var settingsGuids = AssetDatabase.FindAssets("t:XRGeneralSettingsPerBuildTarget");
-            if (settingsGuids.Length == 0) return;
-
-            var settingsPath = AssetDatabase.GUIDToAssetPath(settingsGuids[0]);
-            var settingsObj = AssetDatabase.LoadAssetAtPath(settingsPath, perBuildTargetType);
-            if (settingsObj == null) return;
-
-            // Get settings for the active build target
-            var settingsForMethod = perBuildTargetType.GetMethod("SettingsForBuildTarget",
-                BindingFlags.Public | BindingFlags.Instance);
-            if (settingsForMethod == null) return;
-
-            var generalSettings = settingsForMethod.Invoke(settingsObj, new object[] { buildTargetGroup });
-            if (generalSettings == null)
-            {
-                SuggestOculus(null);
-                return;
-            }
-
-            // Get the XR Manager
-            var managerProp = generalSettings.GetType().GetProperty("Manager");
-            if (managerProp == null) return;
-
-            var manager = managerProp.GetValue(generalSettings);
-            if (manager == null)
-            {
-                SuggestOculus(null);
-                return;
-            }
-
-            // Check active loaders for Oculus / Meta
-            var loadersProp = manager.GetType().GetProperty("activeLoaders");
-            if (loadersProp == null) return;
-
-            var loaders = loadersProp.GetValue(manager) as System.Collections.IList;
-            if (loaders == null || loaders.Count == 0)
-            {
-                SuggestOculus(manager);
-                return;
-            }
-
-            bool hasOculus = false;
-            foreach (var loader in loaders)
-            {
-                string loaderName = loader.GetType().Name;
-                if (loaderName.Contains("Oculus") || loaderName.Contains("OculusLoader"))
-                {
-                    hasOculus = true;
-                    break;
-                }
-            }
-
-            if (!hasOculus)
-                SuggestOculus(manager);
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning("[VERA Sandbox Demo] Could not check XR provider settings: " + e.Message);
-        }
-    }
-
-    private static void SuggestOculus(object xrManager)
-    {
-        int result = EditorUtility.DisplayDialogComplex(
-            "VERA Sandbox Demo \u2013 XR Provider",
-            "The VERA Sandbox Demo recommends using \"Oculus\" as your XR Plug-in " +
-            "provider to ensure consistent controller orientations.\n\n" +
-            "Would you like to enable it now?",
-            "Enable Oculus",
-            "Skip",
-            "Open XR Settings");
-
-        if (result == 0)
-            TryEnableOculusLoader(xrManager);
-        else if (result == 2)
-            SettingsService.OpenProjectSettings("Project/XR Plug-in Management");
-    }
-
-    private static void TryEnableOculusLoader(object xrManager)
-    {
-        try
-        {
-            // Check if the Oculus XR package is installed
-            var oculusLoaderType = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
-                .FirstOrDefault(t => t.Name == "OculusLoader");
-
-            if (oculusLoaderType == null)
-            {
-                bool openPM = EditorUtility.DisplayDialog(
-                    "VERA Sandbox Demo",
-                    "The Oculus XR Plugin package is not installed in this project.\n\n" +
-                    "Would you like to open the Package Manager to install it?",
-                    "Open Package Manager",
-                    "Skip");
-
-                if (openPM)
-                    UnityEditor.PackageManager.UI.Window.Open("com.unity.xr.oculus");
-                return;
-            }
-
-            // Try to assign the loader via XRPackageMetadataStore
-            if (xrManager != null)
-            {
-                var buildTargetGroup = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
-
-                var metadataStoreType = Type.GetType(
-                    "UnityEditor.XR.Management.Metadata.XRPackageMetadataStore, Unity.XR.Management.Editor");
-
-                if (metadataStoreType != null)
-                {
-                    var assignMethod = metadataStoreType.GetMethod("AssignLoader",
-                        BindingFlags.Public | BindingFlags.Static,
-                        null,
-                        new Type[] { xrManager.GetType(), typeof(string), typeof(BuildTargetGroup) },
-                        null);
-
-                    if (assignMethod != null)
-                    {
-                        bool success = (bool)assignMethod.Invoke(null, new object[]
-                        {
-                            xrManager,
-                            oculusLoaderType.FullName,
-                            buildTargetGroup
-                        });
-
-                        if (success)
-                        {
-                            Debug.Log("[VERA Sandbox Demo] Oculus XR loader has been enabled.");
-                            if (xrManager is UnityEngine.Object obj)
-                                EditorUtility.SetDirty(obj);
-                            AssetDatabase.SaveAssets();
-                            return;
-                        }
-                    }
-                }
-            }
-
-            // Fallback: open XR settings for manual configuration
-            EditorUtility.DisplayDialog(
-                "VERA Sandbox Demo",
-                "Could not automatically enable the Oculus XR loader.\n\n" +
-                "Please enable it manually in Project Settings > XR Plug-in Management.",
-                "OK");
-            SettingsService.OpenProjectSettings("Project/XR Plug-in Management");
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning("[VERA Sandbox Demo] Error enabling Oculus loader: " + e.Message);
-            SettingsService.OpenProjectSettings("Project/XR Plug-in Management");
-        }
     }
 
     #endregion
@@ -477,7 +305,7 @@ public class VERADemoWelcomeWindow : EditorWindow
         validationCard.Add(validationTitle);
 
         var validationDesc = new Label(
-            "Re-run the render pipeline and XR provider checks to ensure your " +
+            "Re-run the render pipeline check to ensure your " +
             "project is configured correctly for this demo.");
         validationDesc.style.fontSize = 13;
         validationDesc.style.color = TEXT_PRIMARY;
@@ -489,7 +317,6 @@ public class VERADemoWelcomeWindow : EditorWindow
         {
             VERADemoStartupActions.ResetFirstRunFlag();
             VERADemoStartupActions.CheckRenderPipeline();
-            VERADemoStartupActions.CheckXRProvider();
         });
         rerunBtn.text = "Re-run Validation Checks";
         rerunBtn.style.paddingTop = 8;
