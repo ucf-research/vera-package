@@ -23,7 +23,7 @@ namespace VERA
         private bool isLoading = false;
         private string errorMessage = null;
 
-        [MenuItem("VERA/View Trial Workflow")]
+        //[MenuItem("VERA/View Trial Workflow")]
         public static void ShowWindow()
         {
             VERATrialWorkflowViewer window = GetWindow<VERATrialWorkflowViewer>("Trial Workflow");

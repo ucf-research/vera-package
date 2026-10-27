@@ -31,7 +31,7 @@ namespace VERA
         }
 
 
-        [MenuItem("VERA/Surveys/Sync Spatial Keyboard Resources")]
+        //[MenuItem("VERA/Surveys/Sync Spatial Keyboard Resources")]
         private static void SyncFromMenu()
         {
             if (SyncIfNeeded(force: true))

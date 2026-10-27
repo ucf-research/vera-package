@@ -1131,7 +1131,7 @@ namespace VERA
         #region FILE TYPE / COLUMN MANAGEMENT
 
 
-        [MenuItem("VERA/Refresh File Types")]
+        //[MenuItem("VERA/Refresh File Types")]
         public static void MenuRefreshFileTypes()
         {
             if (PlayerPrefs.GetInt("VERA_UserAuthenticated") != 1)
