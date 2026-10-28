@@ -731,6 +731,11 @@ namespace VERA
                 using (HttpClient http = new HttpClient())
                 using (MultipartFormDataContent content = new MultipartFormDataContent())
                 {
+                    // Default HttpClient.Timeout is 100 seconds and covers both the upload and
+                    // the wait for POST /webxr to unzip the build and write it to S3. That timer
+                    // is what throws TaskCanceledException. A few hundred MB needs much longer.
+                    http.Timeout = TimeSpan.FromMinutes(30);
+
                     // File part
                     ByteArrayContent zipContent = new ByteArrayContent(zipBytes);
                     zipContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");

@@ -883,6 +883,91 @@ namespace VERA
         }
 
         /// <summary>
+        /// Stores or replaces an experiment-wide memory field on the VERA server.
+        /// The value is shared by every participant in this experiment and persists until it is cleared or the experiment is deleted.
+        /// Keys are trimmed, case-sensitive, max 128 characters, and cannot contain '/', '\', or control characters.
+        /// Values are plain strings up to 2 MB. The last write wins if two sessions set the same key at the same time.
+        /// Use <see cref="AddToExperimentMemoryKey"/> when several sessions need to count.
+        /// </summary>
+        /// <param name="keyName">The memory field name (e.g. "RecruitmentStatus").</param>
+        /// <param name="keyValue">The string value to store. Send numbers as strings, such as "15".</param>
+        /// <param name="onSuccess">Called when the value is stored successfully.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void SetExperimentMemoryKey(string keyName, string keyValue, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareExperimentMemoryApi("set an experiment memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERAExperimentMemory.SetKey(keyName, keyValue, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Fetches a single experiment-wide memory field from the VERA server.
+        /// If the key has never been saved, <paramref name="onSuccess"/> is invoked with null.
+        /// When the field is used as a counter, treat that null as zero.
+        /// </summary>
+        /// <param name="keyName">The memory field name to retrieve.</param>
+        /// <param name="onSuccess">Called with the stored value, or null if the key does not exist.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void GetExperimentMemoryKey(string keyName, Action<string> onSuccess, Action<string> onFailure = null)
+        {
+            if (!TryPrepareExperimentMemoryApi("get an experiment memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERAExperimentMemory.GetKey(keyName, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Adds <paramref name="delta"/> to an integer experiment-wide memory field.
+        /// Pass a negative delta to subtract. The default delta is 1.
+        /// If the key does not exist, it is created and set to <paramref name="delta"/>.
+        /// This update is safe when several sessions count the same key. The stored value must be an integer string.
+        /// </summary>
+        /// <param name="keyName">The memory field name to adjust (e.g. "ParticipantsInConditionA").</param>
+        /// <param name="delta">Amount to add. Negative values subtract. Defaults to 1.</param>
+        /// <param name="onSuccess">Called with the new total, as a string, when the update succeeds.</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void AddToExperimentMemoryKey(string keyName, int delta = 1, Action<string> onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareExperimentMemoryApi("add to an experiment memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERAExperimentMemory.AddToKey(keyName, delta, onSuccess, onFailure));
+        }
+
+        /// <summary>
+        /// Deletes an experiment-wide memory field on the VERA server.
+        /// Clearing a key that does not exist is treated as success.
+        /// </summary>
+        /// <param name="keyName">The memory field name to delete.</param>
+        /// <param name="onSuccess">Called when the key is cleared (or was already absent).</param>
+        /// <param name="onFailure">Called with an error message when the request fails.</param>
+        public static void ClearExperimentMemoryKey(string keyName, Action onSuccess = null, Action<string> onFailure = null)
+        {
+            if (!TryPrepareExperimentMemoryApi("clear an experiment memory key", onFailure))
+                return;
+
+            VERALogger.Instance.StartCoroutine(
+                VERAExperimentMemory.ClearKey(keyName, onSuccess, onFailure));
+        }
+
+        private static bool TryPrepareExperimentMemoryApi(string actionDescription, Action<string> onFailure)
+        {
+            if (!sessionInProgress)
+            {
+                string message = "Cannot " + actionDescription + " because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onFailure?.Invoke("No participant session is in progress.");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Randomizes the trial workflow using a specific seed for reproducible results.
         /// Must be called after VERA initialization but before starting any trials.
         /// Useful for debugging or when deterministic randomization is needed.
