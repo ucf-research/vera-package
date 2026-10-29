@@ -7,8 +7,8 @@ using System;
 namespace VERA
 {
     /// <summary>
-    /// A single participant memory field stored on the VERA server.
-    /// Memory persists across sessions for the same participant within an experiment.
+    /// A single memory field stored on the VERA server.
+    /// Participant memory is scoped to one participant. Experiment memory is shared by the whole experiment.
     /// </summary>
     [Serializable]
     public class VERAMemoryEntry
@@ -28,6 +28,12 @@ namespace VERA
     internal class VERAMemoryValuePayload
     {
         public string value;
+    }
+
+    [Serializable]
+    internal class VERAMemoryDeltaPayload
+    {
+        public int delta;
     }
 
     [Serializable]
