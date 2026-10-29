@@ -929,21 +929,28 @@ namespace VERA
 
 
         // Uploads a file to a non-CSV file type
-        public void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
+        public void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension, Action onUploadComplete = null, Action<string> onError = null)
         {
             if (!sessionInProgress || !initialized)
             {
-                VERADebugger.LogWarning("Cannot upload file because VERA is not initialized or no participant session is in progress.", "VERA Logger");
+                string message = "Cannot upload file because VERA is not initialized or no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERA Logger");
+                onError?.Invoke(message);
                 return;
             }
 
             DataRecordingType recordingType = GetDataRecordingType();
             if (recordingType == DataRecordingType.DoNotRecord)
+            {
+                onError?.Invoke("Cannot upload file because data recording is disabled.");
                 return;
+            }
 
             if (!nonCsvFileTypes.ContainsKey(fileTypeName))
             {
-                VERADebugger.LogError($"No non-CSV file type could be found associated with provided name \"{fileTypeName}\"; cannot upload file.", "VERA Logger");
+                string message = $"No non-CSV file type could be found associated with provided name \"{fileTypeName}\"; cannot upload file.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 return;
             }
 
@@ -951,7 +958,9 @@ namespace VERA
             string actualExtension = Path.GetExtension(filePath);
             if (string.IsNullOrEmpty(actualExtension))
             {
-                VERADebugger.LogError($"The file \"{filePath}\" has no extension. Expected .{expectedExtension}.", "VERA Logger");
+                string message = $"The file \"{filePath}\" has no extension. Expected .{expectedExtension}.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 return;
             }
 
@@ -960,23 +969,27 @@ namespace VERA
             string normalizedExpected = expectedExtension.TrimStart('.').ToLowerInvariant();
             if (normalizedActual != normalizedExpected)
             {
-                VERADebugger.LogError($"The file \"{filePath}\" has extension .{normalizedActual}, but the file type \"{fileTypeName}\" expects .{normalizedExpected}.", "VERA Logger");
+                string message = $"The file \"{filePath}\" has extension .{normalizedActual}, but the file type \"{fileTypeName}\" expects .{normalizedExpected}.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 return;
             }
 
             if (!File.Exists(filePath))
             {
-                VERADebugger.LogError($"The file \"{filePath}\" does not exist.", "VERA Logger");
+                string message = $"The file \"{filePath}\" does not exist.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 return;
             }
 
             VERAColumnDefinition fileTypeDef = nonCsvFileTypes[fileTypeName];
-            StartCoroutine(UploadFileTypeFileCoroutine(fileTypeDef, filePath));
+            StartCoroutine(UploadFileTypeFileCoroutine(fileTypeDef, filePath, onUploadComplete, onError));
         }
 
 
         // Coroutine to upload a file to a non-CSV file type
-        private IEnumerator UploadFileTypeFileCoroutine(VERAColumnDefinition fileTypeDef, string filePath)
+        private IEnumerator UploadFileTypeFileCoroutine(VERAColumnDefinition fileTypeDef, string filePath, Action onUploadComplete, Action<string> onError)
         {
             string fileTypeId = fileTypeDef.fileType.fileTypeId;
             string fileTypeName = fileTypeDef.fileType.name;
@@ -987,11 +1000,17 @@ namespace VERA
             VERADebugger.Log($"Uploading file \"{filePath}\" to file type \"{fileTypeName}\"...", "VERA Logger", DebugPreference.Informative);
 
             byte[] fileData = null;
-            yield return ReadBinaryDataFile(filePath, (result) => fileData = result);
+            string readError = null;
+            yield return ReadBinaryDataFile(filePath, (result) => fileData = result, (error) => readError = error);
 
             if (fileData == null)
             {
-                VERADebugger.LogError($"Failed to read file \"{filePath}\" for upload.", "VERA Logger");
+                if (string.IsNullOrEmpty(readError))
+                {
+                    readError = $"Failed to read file \"{filePath}\" for upload.";
+                    VERADebugger.LogError(readError, "VERA Logger");
+                }
+                onError?.Invoke(readError);
                 yield break;
             }
 
@@ -1012,10 +1031,13 @@ namespace VERA
             if (request.result == UnityWebRequest.Result.Success)
             {
                 VERADebugger.Log($"Successfully uploaded \"{fileName}\" to file type \"{fileTypeName}\".", "VERA Logger", DebugPreference.Informative);
+                onUploadComplete?.Invoke();
             }
             else
             {
-                VERADebugger.LogError($"Failed to upload \"{fileName}\" to file type \"{fileTypeName}\": {request.error}", "VERA Logger");
+                string message = $"Failed to upload \"{fileName}\" to file type \"{fileTypeName}\": {request.error}";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
             }
 
             request.Dispose();
@@ -2079,8 +2101,9 @@ namespace VERA
         }
 
 
-        // Reads a binary data file and invokes the callback with the read data
-        public IEnumerator ReadBinaryDataFile(string filePath, Action<byte[]> callback)
+        // Reads a binary data file and invokes the callback with the read data.
+        // onError is invoked with a message when the file cannot be read or exceeds the upload size limit.
+        public IEnumerator ReadBinaryDataFile(string filePath, Action<byte[]> callback, Action<string> onError = null)
         {
             bool fileReadSuccess = false;
             byte[] fileData = null;
@@ -2108,13 +2131,17 @@ namespace VERA
 
             if (!fileReadSuccess)
             {
-                VERADebugger.LogError("Failed to read the file after multiple attempts.", "VERA Logger");
+                string message = "Failed to read the file after multiple attempts.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 yield break;
             }
 
-            if (fileData.Length > 50 * 1024 * 1024)
+            if (fileData.Length > 500 * 1024 * 1024)
             {
-                VERADebugger.LogError("File \"" + filePath + "\" size exceeds the limit of 50MB. File will not be uploaded.", "VERA Logger");
+                string message = "File \"" + filePath + "\" size exceeds the limit of 500MB. File will not be uploaded.";
+                VERADebugger.LogError(message, "VERA Logger");
+                onError?.Invoke(message);
                 yield break;
             }
 

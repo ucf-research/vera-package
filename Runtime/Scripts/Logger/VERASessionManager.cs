@@ -346,15 +346,25 @@ namespace VERA
         /// <param name="fileTypeName">The name of the file type to upload to.</param>
         /// <param name="filePath">The full path to the file to upload.</param>
         /// <param name="expectedExtension">The expected file extension (e.g., "json", "txt").</param>
-        public static void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension)
+        /// <param name="onUploadComplete">Optional callback invoked when the file has finished uploading successfully.</param>
+        /// <param name="onError">Optional callback invoked with an error message when the upload fails.</param>
+        public static void UploadFileTypeFile(string fileTypeName, string filePath, string expectedExtension, Action onUploadComplete = null, Action<string> onError = null)
         {
             if (!sessionInProgress)
             {
-                VERADebugger.LogWarning("Cannot upload file because no participant session is in progress.", "VERASessionManager");
+                string message = "Cannot upload file because no participant session is in progress.";
+                VERADebugger.LogWarning(message, "VERASessionManager");
+                onError?.Invoke(message);
                 return;
             }
 
-            VERALogger.Instance.UploadFileTypeFile(fileTypeName, filePath, expectedExtension);
+            if (VERALogger.Instance == null)
+            {
+                onError?.Invoke("Cannot upload file because VERA is not initialized.");
+                return;
+            }
+
+            VERALogger.Instance.UploadFileTypeFile(fileTypeName, filePath, expectedExtension, onUploadComplete, onError);
         }
 
         /// <summary>

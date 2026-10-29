@@ -454,9 +454,11 @@ namespace VERA
             sb.AppendLine($"\t\t/// The file must have a .{extension} extension.");
             sb.AppendLine("\t\t/// </summary>");
             sb.AppendLine($"\t\t/// <param name=\"filePath\">The full path to the .{extension} file to upload.</param>");
-            sb.AppendLine($"\t\tpublic static void UploadFile(string filePath)");
+            sb.AppendLine("\t\t/// <param name=\"onUploadComplete\">Optional callback invoked when the file has finished uploading successfully.</param>");
+            sb.AppendLine("\t\t/// <param name=\"onError\">Optional callback invoked with an error message when the upload fails.</param>");
+            sb.AppendLine("\t\tpublic static void UploadFile(string filePath, Action onUploadComplete = null, Action<string> onError = null)");
             sb.AppendLine("\t\t{");
-            sb.AppendLine($"\t\t\tVERASessionManager.UploadFileTypeFile(fileName, filePath, \"{extension}\");");
+            sb.AppendLine($"\t\t\tVERASessionManager.UploadFileTypeFile(fileName, filePath, \"{extension}\", onUploadComplete, onError);");
             sb.AppendLine("\t\t}");
         }
     }
