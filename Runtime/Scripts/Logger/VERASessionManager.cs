@@ -898,6 +898,7 @@ namespace VERA
         /// Keys are trimmed, case-sensitive, max 128 characters, and cannot contain '/', '\', or control characters.
         /// Values are plain strings up to 2 MB. The last write wins if two sessions set the same key at the same time.
         /// Use <see cref="AddToExperimentMemoryKey"/> when several sessions need to count.
+        /// Available once VERA is initialized. A participant session does not have to be in progress.
         /// </summary>
         /// <param name="keyName">The memory field name (e.g. "RecruitmentStatus").</param>
         /// <param name="keyValue">The string value to store. Send numbers as strings, such as "15".</param>
@@ -916,6 +917,7 @@ namespace VERA
         /// Fetches a single experiment-wide memory field from the VERA server.
         /// If the key has never been saved, <paramref name="onSuccess"/> is invoked with null.
         /// When the field is used as a counter, treat that null as zero.
+        /// Available once VERA is initialized. A participant session does not have to be in progress.
         /// </summary>
         /// <param name="keyName">The memory field name to retrieve.</param>
         /// <param name="onSuccess">Called with the stored value, or null if the key does not exist.</param>
@@ -934,6 +936,7 @@ namespace VERA
         /// Pass a negative delta to subtract. The default delta is 1.
         /// If the key does not exist, it is created and set to <paramref name="delta"/>.
         /// This update is safe when several sessions count the same key. The stored value must be an integer string.
+        /// Available once VERA is initialized. A participant session does not have to be in progress.
         /// </summary>
         /// <param name="keyName">The memory field name to adjust (e.g. "ParticipantsInConditionA").</param>
         /// <param name="delta">Amount to add. Negative values subtract. Defaults to 1.</param>
@@ -951,6 +954,7 @@ namespace VERA
         /// <summary>
         /// Deletes an experiment-wide memory field on the VERA server.
         /// Clearing a key that does not exist is treated as success.
+        /// Available once VERA is initialized. A participant session does not have to be in progress.
         /// </summary>
         /// <param name="keyName">The memory field name to delete.</param>
         /// <param name="onSuccess">Called when the key is cleared (or was already absent).</param>
@@ -964,13 +968,16 @@ namespace VERA
                 VERAExperimentMemory.ClearKey(keyName, onSuccess, onFailure));
         }
 
+        // Experiment memory is keyed to the experiment, not a participant, and the
+        // credentials it needs are loaded during initialization. A participant session
+        // is not required, so condition assignment can read a key before data recording starts.
         private static bool TryPrepareExperimentMemoryApi(string actionDescription, Action<string> onFailure)
         {
-            if (!sessionInProgress)
+            if (!initialized)
             {
-                string message = "Cannot " + actionDescription + " because no participant session is in progress.";
+                string message = "Cannot " + actionDescription + " because VERA is not initialized.";
                 VERADebugger.LogWarning(message, "VERASessionManager");
-                onFailure?.Invoke("No participant session is in progress.");
+                onFailure?.Invoke("VERA is not initialized.");
                 return false;
             }
 
