@@ -64,7 +64,7 @@ namespace VERA
             }
 
             // Open the authentication URL in the default browser
-            Application.OpenURL(VERAHost.hostUrl + "/Authenticate");
+            Application.OpenURL(VERAHost.hostUrl + "/researcher/authenticate");
         }
 
         // Starts the server

@@ -20,6 +20,7 @@ using UnityEditor.Build.Reporting;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using UnityEngine.XR.Management;
+using UnityEngine.InputSystem;
 
 namespace VERA
 {
@@ -451,8 +452,80 @@ namespace VERA
                 AssetDatabase.SaveAssets();
             }
 
+            // Keep Input System devices enabled across Quest Browser focus transitions
+            EnsureInputSystemIgnoreFocus();
+
+            // Controller-only default: do not request hand-tracking on the WebXR session
+            EnsureWebXROptionalFeaturesCleared();
+
             // Disable Anti-Aliasing for WebXR builds
             DisableAA();
+        }
+
+        // De-Panther WebXR docs require Background Behavior = Ignore Focus so controllers
+        // are not reset/disabled when the browser tab loses focus on Enter VR.
+        private static void EnsureInputSystemIgnoreFocus()
+        {
+            const string settingsKey = "com.unity.input.settings";
+            const string settingsPath = "Assets/InputSystem.inputsettings.asset";
+
+            InputSettings settings = null;
+            if (!EditorBuildSettings.TryGetConfigObject(settingsKey, out settings) || settings == null)
+            {
+                settings = AssetDatabase.LoadAssetAtPath<InputSettings>(settingsPath);
+                if (settings == null)
+                {
+                    settings = ScriptableObject.CreateInstance<InputSettings>();
+                    AssetDatabase.CreateAsset(settings, settingsPath);
+                }
+
+                EditorBuildSettings.AddConfigObject(settingsKey, settings, true);
+            }
+
+            if (settings.backgroundBehavior != InputSettings.BackgroundBehavior.IgnoreFocus)
+            {
+                settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+                EditorUtility.SetDirty(settings);
+                VERADebugger.Log(
+                    "Set Input System Background Behavior to Ignore Focus for WebXR controller tracking.",
+                    "VERA Build Uploader",
+                    DebugPreference.Informative);
+            }
+
+            // Ensure the active project settings point at this asset
+            if (InputSystem.settings != settings)
+                InputSystem.settings = settings;
+
+            AssetDatabase.SaveAssets();
+        }
+
+        // Clears WebXR VROptionalFeatures (e.g. hand_tracking) via SerializedObject so
+        // vera-package does not hard-depend on the WebXR assembly.
+        private static void EnsureWebXROptionalFeaturesCleared()
+        {
+            if (!EditorBuildSettings.TryGetConfigObject("WebXR.Settings", out ScriptableObject webxrSettings) ||
+                webxrSettings == null)
+            {
+                return;
+            }
+
+            SerializedObject so = new SerializedObject(webxrSettings);
+            SerializedProperty optionalFeatures = so.FindProperty("VROptionalFeatures");
+            if (optionalFeatures == null)
+                return;
+
+            if (optionalFeatures.intValue == 0)
+                return;
+
+            optionalFeatures.intValue = 0;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(webxrSettings);
+            AssetDatabase.SaveAssets();
+
+            VERADebugger.Log(
+                "Cleared WebXR VROptionalFeatures (disabled hand-tracking) for controller-focused WebXR builds.",
+                "VERA Build Uploader",
+                DebugPreference.Informative);
         }
 
 
